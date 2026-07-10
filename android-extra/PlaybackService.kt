@@ -49,9 +49,12 @@ class PlaybackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_PLAY, ACTION_PAUSE, ACTION_NEXT, ACTION_PREV -> {
-                // Forward to the webview via Tauri's JS-side event listener
-                // (registered in MainActivity / a small Tauri mobile plugin).
-                MainActivity.emitMediaControl(intent.action!!)
+                // TODO: forward this to the webview/JS side. Tauri v2 has no
+                // built-in channel for a plain Service to talk back to the
+                // JS runtime - that needs a small custom Tauri mobile
+                // plugin (see README "Known gaps"). Until then, notification
+                // buttons show but don't control playback yet.
+                android.util.Log.d("PlaybackService", "media control: ${intent.action}")
             }
         }
 
