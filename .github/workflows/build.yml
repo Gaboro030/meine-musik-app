@@ -105,13 +105,6 @@ jobs:
           node scripts/make-placeholder-icon.mjs
           npx tauri icon icons-source.png
 
-      - name: Download yt-dlp sidecar (Android arm64)
-        run: |
-          mkdir -p src-tauri/binaries
-          curl -L -o src-tauri/binaries/yt-dlp-aarch64-linux-android \
-            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
-          chmod +x src-tauri/binaries/yt-dlp-aarch64-linux-android
-
       - name: Init Android project
         run: npx tauri android init
 

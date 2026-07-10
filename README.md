@@ -46,3 +46,12 @@ toolchain (`cargo`/`rustc` missing), so nothing here has compiled yet.
   too, since there's no ytmusicapi equivalent in Rust).
 - No lyrics, party-mode/LAN-sync, QR guest page, or trash/recycle-bin yet.
 - Icons are not generated (build will fail on `tauri build` until step 4 is done).
+- **YouTube downloads are desktop-only.** yt-dlp doesn't publish official
+  Android/ARM binaries, so there's no real sidecar to bundle for Android -
+  `download_track` will fail there until a proper on-device downloader
+  exists (either a statically-linked ARM yt-dlp build you compile yourself,
+  or reimplementing extraction natively). `tauri.android.conf.json` clears
+  `bundle.externalBin` for the Android build so it doesn't fail looking for
+  sidecar files that were never going to work anyway. Streaming/playing
+  already-downloaded tracks is unaffected - only fetching *new* ones from
+  YouTube is desktop-only for now.
