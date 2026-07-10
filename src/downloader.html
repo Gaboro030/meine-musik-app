@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a10" />
+  <title>YT Music → MP3 Downloader</title>
+  <link rel="stylesheet" href="downloader.css" />
+</head>
+<body>
+  <div id="toastContainer" class="toast-container"></div>
+
+  <div class="wrap">
+    <header>
+      <h1>🎵 YT Music → MP3</h1>
+      <p class="sub">Spotify-, YouTube- oder YouTube-Music-Link einfügen, Titel auswählen und als MP3 oder MP4 in die Bibliothek laden.</p>
+      <a href="index.html" class="player-link">🎧 Zum Player</a>
+    </header>
+
+    <form id="loadForm" class="search">
+      <input id="urlInput" type="text" placeholder="Spotify- / YouTube- / YouTube-Music-Playlist oder -Link …" autocomplete="off" />
+      <div class="format-toggle" id="formatToggle">
+        <button type="button" class="format-btn active" data-format="mp3">MP3</button>
+        <button type="button" class="format-btn" data-format="mp4">MP4</button>
+      </div>
+      <select id="bitrate" title="MP3-Qualität">
+        <option value="128">128 kbps</option>
+        <option value="192" selected>192 kbps</option>
+        <option value="256">256 kbps</option>
+        <option value="320">320 kbps</option>
+      </select>
+      <select id="videoQuality" title="Video-Qualität" class="hidden">
+        <option value="best" selected>Beste Qualität</option>
+        <option value="1080">1080p</option>
+        <option value="720">720p</option>
+        <option value="480">480p</option>
+      </select>
+      <button id="loadBtn" type="submit">Laden</button>
+    </form>
+
+    <label class="clean-audio-toggle" id="cleanAudioLabel">
+      <input type="checkbox" id="cleanAudioToggle" checked />
+      🎧 Original-Studio-Audio bevorzugen (wie Spotify, ohne Musikvideo-Sound)
+    </label>
+
+    <label class="clean-audio-toggle" id="saveLibraryLabel">
+      <input type="checkbox" id="saveLibraryToggle" checked disabled />
+      💾 Landet direkt in der Bibliothek (im <a href="index.html">Player</a> abspielbar)
+    </label>
+
+    <div id="status" class="status"></div>
+
+    <div id="globalProgress" class="global-progress hidden">
+      <div class="global-progress-header">
+        <span id="gpTitle" class="global-progress-title">Sammel-Download</span>
+        <div class="global-progress-stats">
+          <span>Fortschritt: <span id="gpPercent" class="val">0%</span></span>
+        </div>
+      </div>
+      <div class="global-progress-bar-wrap">
+        <div id="gpBar" class="global-progress-bar"></div>
+      </div>
+      <div class="global-progress-detail">
+        <span id="gpTrackName" class="track-name">Vorbereitung …</span>
+        <span id="gpTrackCount">0 / 0</span>
+      </div>
+    </div>
+
+    <section id="results" class="results hidden">
+      <div class="toolbar">
+        <div class="meta">
+          <h2 id="plTitle"></h2>
+          <span id="plCount" class="count"></span>
+        </div>
+        <div class="actions">
+          <label class="checkall"><input type="checkbox" id="selectAll" checked /> Alle</label>
+          <button id="zipReportBtn" type="button" class="report-btn hidden">Fehlerbericht</button>
+          <button id="zipBtn" type="button" class="primary">Auswahl in Bibliothek laden</button>
+        </div>
+      </div>
+      <ul id="trackList" class="tracks"></ul>
+    </section>
+
+    <footer>
+      <p>Nur für Inhalte verwenden, an denen du die Rechte besitzt.</p>
+    </footer>
+  </div>
+
+  <div id="reportModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>⚠️ Fehlerbericht</h3>
+        <button id="reportModalClose" type="button" class="modal-close">✕</button>
+      </div>
+      <div id="reportModalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="downloader.js"></script>
+</body>
+</html>

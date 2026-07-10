@@ -456,6 +456,119 @@ pub async fn download_track(
     Ok(())
 }
 
+/// Same download as above, but streams live percentage back to the
+/// frontend as Tauri events (`dl-progress-<task_id>`) instead of just
+/// resolving at the end - the downloader UI's per-track/batch progress
+/// bars are wired to this. There's no server here to hold an SSE
+/// connection open like the old Flask /api/download-progress route did,
+/// so Tauri's own event bus does the same job: this parses yt-dlp's own
+/// `--newline` progress output (e.g. "[download]  45.2% of ...") line by
+/// line as it downloads and re-emits each percentage.
+///
+/// `uploader`/`duration`/`thumbnail`/`prefer_audio` are accepted for UI
+/// parity with the old Flask endpoint (which used them to look up a
+/// cleaner "- Topic" / YT Music catalog match) but aren't used for any
+/// matching here - there's no ytmusicapi equivalent in Rust, so this
+/// always just downloads the given video_id directly.
+#[tauri::command]
+pub async fn download_track_progress(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+    video_id: String,
+    title: String,
+    _uploader: String,
+    _duration: Option<f64>,
+    _thumbnail: Option<String>,
+    bitrate: String,
+    format: String,
+    quality: String,
+    _prefer_audio: bool,
+    playlist_name: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    use tauri_plugin_shell::process::CommandEvent;
+    use tauri_plugin_shell::ShellExt;
+
+    if !video_id.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        || video_id.len() < 6
+        || video_id.len() > 20
+    {
+        return Err("Ungueltige Video-ID.".into());
+    }
+
+    let clean_playlist = safe_filename(&playlist_name);
+    let dest_dir = state.music_root.join(&clean_playlist);
+    std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    let safe_title = safe_filename(&title);
+    let out_template = dest_dir.join(format!("{safe_title}.%(ext)s"));
+
+    let mut args: Vec<String> = vec!["--newline".into(), "-o".into(), out_template.to_string_lossy().to_string()];
+    if format == "mp4" {
+        let cap = if quality != "best" { format!("[height<=?{quality}]") } else { String::new() };
+        args.push("-f".into());
+        args.push(format!("bv*{cap}+ba/b{cap}"));
+        args.push("--merge-output-format".into());
+        args.push("mp4".into());
+    } else {
+        args.push("-f".into());
+        args.push("bestaudio/best".into());
+        args.push("-x".into());
+        args.push("--audio-format".into());
+        args.push("mp3".into());
+        args.push("--audio-quality".into());
+        args.push(format!("{bitrate}K"));
+    }
+    args.push(format!("https://www.youtube.com/watch?v={video_id}"));
+
+    let shell = app.shell();
+    let (mut rx, _child) = shell
+        .sidecar("yt-dlp")
+        .map_err(|e| e.to_string())?
+        .args(args)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    let progress_re = regex::Regex::new(r"([\d.]+)%").unwrap();
+    let event_name = format!("dl-progress-{task_id}");
+    let mut last_err: Option<String> = None;
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
+                let line = String::from_utf8_lossy(&bytes);
+                if let Some(caps) = progress_re.captures(&line) {
+                    if let Ok(pct) = caps[1].parse::<f64>() {
+                        let phase = if line.contains("ExtractAudio") || line.contains("Merger") || line.contains("VideoConvertor") {
+                            "converting"
+                        } else {
+                            "downloading"
+                        };
+                        let _ = app.emit(&event_name, serde_json::json!({ "percent": pct, "phase": phase }));
+                    }
+                }
+            }
+            CommandEvent::Error(e) => last_err = Some(e),
+            CommandEvent::Terminated(status) => {
+                if status.code != Some(0) {
+                    last_err.get_or_insert_with(|| format!("yt-dlp beendet mit Code {:?}", status.code));
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(e) = last_err {
+        return Err(e);
+    }
+
+    let ext = if format == "mp4" { "mp4" } else { "mp3" };
+    let out_path = dest_dir.join(format!("{safe_title}.{ext}"));
+    if !out_path.is_file() {
+        return Err("Download fehlgeschlagen (Datei nicht gefunden).".into());
+    }
+    Ok(())
+}
+
 // --- Local streaming with byte-range support ------------------------------
 // Registered as the "stream://" custom protocol in main.rs. Handles
 // `Range: bytes=start-end` for scrubbing and returns 206 Partial Content,

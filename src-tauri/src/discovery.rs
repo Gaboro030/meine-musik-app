@@ -28,7 +28,7 @@ fn bad_variant_re() -> &'static Regex {
         .unwrap()
     })
 }
-fn is_bad_variant(text: &str) -> bool {
+pub(crate) fn is_bad_variant(text: &str) -> bool {
     bad_variant_re().is_match(text)
 }
 
@@ -58,7 +58,7 @@ fn normalize_title(text: &str) -> String {
 /// YouTube and dump flat JSON metadata per result, which is enough for
 /// title/uploader/duration/thumbnail/id. Desktop only, same sidecar
 /// limitation as download_track (see README).
-async fn yt_search(app: &tauri::AppHandle, query: &str, limit: u32) -> Result<Vec<OnlineTrack>, String> {
+pub(crate) async fn yt_search(app: &tauri::AppHandle, query: &str, limit: u32) -> Result<Vec<OnlineTrack>, String> {
     let shell = app.shell();
     let output = shell
         .sidecar("yt-dlp")

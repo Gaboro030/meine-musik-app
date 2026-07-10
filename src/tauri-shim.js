@@ -205,36 +205,6 @@
     }
     if (qrHint) qrHint.textContent = "Party-Modus & QR folgen in einem späteren Update.";
 
-    // The old app's /downloader page doesn't exist in the native app -
-    // its links now open a quick YouTube-download dialog instead.
-    document.addEventListener("click", (e) => {
-      const a = e.target.closest && e.target.closest('a[href="/downloader"]');
-      if (!a) return;
-      e.preventDefault();
-      promptYoutubeDownload();
-    });
-
-    async function promptYoutubeDownload() {
-      const toast = window.showToast || ((m) => alert(m));
-      const raw = window.prompt("YouTube-Link oder Video-ID:");
-      if (!raw) return;
-      const m = raw.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,20})/) || raw.match(/^([\w-]{6,20})$/);
-      if (!m) {
-        toast("Konnte keine Video-ID erkennen.");
-        return;
-      }
-      const title = window.prompt("Titel für die Datei:", "Song") || "Song";
-      const playlist = window.prompt("In welche Playlist? (neue oder bestehende)", "Meins") || "Meins";
-      toast("⏳ Lade von YouTube …");
-      try {
-        await invoke("download_track", { videoId: m[1], playlistName: playlist, title });
-        toast(`⬇ „${title}" zu „${playlist}" hinzugefügt`);
-        if (window.refreshLibrary) await window.refreshLibrary();
-      } catch (err) {
-        toast(String(err) || "Download fehlgeschlagen.");
-      }
-    }
-
     // Live volume percentage (user-requested addition on top of the 1:1
     // port): audioEl fires "volumechange" whenever player.js sets .volume.
     const audioEl = document.getElementById("audioEl");

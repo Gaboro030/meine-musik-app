@@ -1,6 +1,7 @@
 mod commands;
 mod discovery;
 mod lyrics;
+mod playlist;
 mod trash;
 
 use std::fs;
@@ -58,6 +59,8 @@ pub fn run() {
             commands::upload_track,
             commands::fetch_thumbnail,
             commands::download_track,
+            commands::download_track_progress,
+            playlist::resolve_playlist,
             trash::list_trash,
             trash::restore_trash,
             trash::delete_trash_forever,
