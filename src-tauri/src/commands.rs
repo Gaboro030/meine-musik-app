@@ -456,20 +456,117 @@ pub async fn download_track(
     Ok(())
 }
 
+/// One try in the download cascade below: which bitrate/resolution to ask
+/// for, and whether this is the last-resort attempt (loosest possible
+/// format selector, alternate extractor client, no thumbnail embed - in
+/// case any of those were themselves what broke the earlier tries).
+struct DlAttempt {
+    bitrate: &'static str,
+    quality: &'static str,
+    fallback: bool,
+}
+
+const BITRATE_LEVELS: [&str; 4] = ["320", "256", "192", "128"];
+const QUALITY_LEVELS: [&str; 4] = ["best", "1080", "720", "480"];
+
+/// Requested quality first, then step down through the remaining levels
+/// (a bitrate/resolution genuinely unavailable for this video is the most
+/// common failure), and finally one maximally permissive attempt.
+fn build_attempts(format: &str, bitrate: &str, quality: &str) -> Vec<DlAttempt> {
+    let mut out = Vec::new();
+    if format == "mp4" {
+        let start = QUALITY_LEVELS.iter().position(|q| *q == quality).unwrap_or(0);
+        for q in &QUALITY_LEVELS[start..] {
+            out.push(DlAttempt { bitrate: "192", quality: q, fallback: false });
+        }
+        out.push(DlAttempt { bitrate: "192", quality: "best", fallback: true });
+    } else {
+        let start = BITRATE_LEVELS.iter().position(|b| *b == bitrate).unwrap_or(1);
+        for b in &BITRATE_LEVELS[start..] {
+            out.push(DlAttempt { bitrate: b, quality: "best", fallback: false });
+        }
+        out.push(DlAttempt { bitrate: "128", quality: "best", fallback: true });
+    }
+    out
+}
+
+fn build_ytdlp_args(out_template: &Path, video_id: &str, format: &str, a: &DlAttempt) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "--newline".into(),
+        "--no-mtime".into(),
+        "--concurrent-fragments".into(),
+        "4".into(),
+        "--retries".into(),
+        "3".into(),
+        "--fragment-retries".into(),
+        "3".into(),
+        "-o".into(),
+        out_template.to_string_lossy().to_string(),
+    ];
+    if a.fallback {
+        // Bypasses most "Sign in to confirm you're not a bot" blocks -
+        // last resort since it's occasionally a bit slower.
+        args.push("--extractor-args".into());
+        args.push("youtube:player_client=android".into());
+    }
+    if format == "mp4" {
+        let cap = if a.quality != "best" { format!("[height<=?{}]", a.quality) } else { String::new() };
+        args.push("-f".into());
+        args.push(if a.fallback { "best".into() } else { format!("bv*{cap}+ba/b{cap}") });
+        args.push("--merge-output-format".into());
+        args.push("mp4".into());
+    } else {
+        args.push("-f".into());
+        args.push("bestaudio/best".into());
+        args.push("-x".into());
+        args.push("--audio-format".into());
+        args.push("mp3".into());
+        args.push("--audio-quality".into());
+        args.push(format!("{}K", a.bitrate));
+        if !a.fallback {
+            // Embeds the video thumbnail as the MP3's cover art (id3 APIC
+            // frame, via the bundled ffmpeg) - skipped on the fallback try
+            // in case a broken/missing thumbnail is itself the failure.
+            args.push("--embed-thumbnail".into());
+            args.push("--add-metadata".into());
+        }
+    }
+    args.push(format!("https://www.youtube.com/watch?v={video_id}"));
+    args
+}
+
+fn eta_re() -> &'static regex::Regex {
+    static CELL: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| regex::Regex::new(r"ETA\s+([\d:]+)").unwrap())
+}
+fn speed_re() -> &'static regex::Regex {
+    static CELL: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| regex::Regex::new(r"at\s+([\d.]+\w+/s)").unwrap())
+}
+
+fn friendly_download_error(stderr: &str) -> String {
+    if stderr.contains("Sign in to confirm") || stderr.contains("not a bot") {
+        return "YouTube blockiert die Anfrage (Bot-Schutz). Später erneut versuchen.".into();
+    }
+    if stderr.contains("Video unavailable") {
+        return "Video nicht verfuegbar.".into();
+    }
+    stderr.lines().last().unwrap_or("Download fehlgeschlagen.").to_string()
+}
+
 /// Same download as above, but streams live percentage back to the
 /// frontend as Tauri events (`dl-progress-<task_id>`) instead of just
 /// resolving at the end - the downloader UI's per-track/batch progress
 /// bars are wired to this. There's no server here to hold an SSE
 /// connection open like the old Flask /api/download-progress route did,
 /// so Tauri's own event bus does the same job: this parses yt-dlp's own
-/// `--newline` progress output (e.g. "[download]  45.2% of ...") line by
-/// line as it downloads and re-emits each percentage.
+/// `--newline` progress output (e.g. "[download]  45.2% of ... at 1.2MiB/s
+/// ETA 00:12") line by line as it downloads and re-emits percent/eta/speed.
 ///
-/// `uploader`/`duration`/`thumbnail`/`prefer_audio` are accepted for UI
-/// parity with the old Flask endpoint (which used them to look up a
-/// cleaner "- Topic" / YT Music catalog match) but aren't used for any
-/// matching here - there's no ytmusicapi equivalent in Rust, so this
-/// always just downloads the given video_id directly.
+/// If a try fails, it's retried at a lower bitrate/resolution (the most
+/// common cause is that quality simply isn't available for this video),
+/// then a final maximally-permissive attempt - so a download only truly
+/// fails once every reasonable option has been exhausted.
 #[tauri::command]
 pub async fn download_track_progress(
     app: tauri::AppHandle,
@@ -477,13 +574,13 @@ pub async fn download_track_progress(
     task_id: String,
     video_id: String,
     title: String,
-    _uploader: String,
+    uploader: String,
     _duration: Option<f64>,
     _thumbnail: Option<String>,
     bitrate: String,
     format: String,
     quality: String,
-    _prefer_audio: bool,
+    prefer_audio: bool,
     playlist_name: String,
 ) -> Result<(), String> {
     use tauri::Emitter;
@@ -503,70 +600,81 @@ pub async fn download_track_progress(
     let safe_title = safe_filename(&title);
     let out_template = dest_dir.join(format!("{safe_title}.%(ext)s"));
 
-    let mut args: Vec<String> = vec!["--newline".into(), "-o".into(), out_template.to_string_lossy().to_string()];
-    if format == "mp4" {
-        let cap = if quality != "best" { format!("[height<=?{quality}]") } else { String::new() };
-        args.push("-f".into());
-        args.push(format!("bv*{cap}+ba/b{cap}"));
-        args.push("--merge-output-format".into());
-        args.push("mp4".into());
-    } else {
-        args.push("-f".into());
-        args.push("bestaudio/best".into());
-        args.push("-x".into());
-        args.push("--audio-format".into());
-        args.push("mp3".into());
-        args.push("--audio-quality".into());
-        args.push(format!("{bitrate}K"));
-    }
-    args.push(format!("https://www.youtube.com/watch?v={video_id}"));
-
-    let shell = app.shell();
-    let (mut rx, _child) = shell
-        .sidecar("yt-dlp")
-        .map_err(|e| e.to_string())?
-        .args(args)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    let progress_re = regex::Regex::new(r"([\d.]+)%").unwrap();
     let event_name = format!("dl-progress-{task_id}");
-    let mut last_err: Option<String> = None;
 
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
-                let line = String::from_utf8_lossy(&bytes);
-                if let Some(caps) = progress_re.captures(&line) {
-                    if let Ok(pct) = caps[1].parse::<f64>() {
-                        let phase = if line.contains("ExtractAudio") || line.contains("Merger") || line.contains("VideoConvertor") {
-                            "converting"
-                        } else {
-                            "downloading"
-                        };
-                        let _ = app.emit(&event_name, serde_json::json!({ "percent": pct, "phase": phase }));
-                    }
-                }
-            }
-            CommandEvent::Error(e) => last_err = Some(e),
-            CommandEvent::Terminated(status) => {
-                if status.code != Some(0) {
-                    last_err.get_or_insert_with(|| format!("yt-dlp beendet mit Code {:?}", status.code));
-                }
-            }
-            _ => {}
+    // "Original-Studio-Audio bevorzugen": swap to a plain/"Topic" audio
+    // upload of the same song when one exists, instead of ripping the
+    // audio out of a music video. No hit just means we keep the video.
+    let mut video_id = video_id;
+    if format == "mp3" && prefer_audio && !uploader.is_empty() {
+        if let Some(alt) = crate::discovery::find_audio_alternative(&app, &title, &uploader, &video_id).await {
+            video_id = alt;
         }
     }
-    if let Some(e) = last_err {
-        return Err(e);
-    }
 
+    let attempts = build_attempts(&format, &bitrate, &quality);
+    let progress_re = regex::Regex::new(r"([\d.]+)%").unwrap();
     let ext = if format == "mp4" { "mp4" } else { "mp3" };
     let out_path = dest_dir.join(format!("{safe_title}.{ext}"));
-    if !out_path.is_file() {
-        return Err("Download fehlgeschlagen (Datei nicht gefunden).".into());
+    let mut last_err = String::new();
+
+    for (i, attempt) in attempts.iter().enumerate() {
+        if i > 0 {
+            let note = if attempt.fallback {
+                "Letzter Versuch mit einfacheren Einstellungen …".to_string()
+            } else if format == "mp4" {
+                format!("Erneuter Versuch mit {}p …", attempt.quality)
+            } else {
+                format!("Erneuter Versuch mit {} kbps …", attempt.bitrate)
+            };
+            let _ = app.emit(&event_name, serde_json::json!({ "percent": 0.0, "phase": "retrying", "attempt": i + 1, "note": note }));
+        }
+
+        let args = build_ytdlp_args(&out_template, &video_id, &format, attempt);
+        let spawned = app.shell().sidecar("yt-dlp").map_err(|e| e.to_string()).and_then(|c| c.args(args).spawn().map_err(|e| e.to_string()));
+        let (mut rx, _child) = match spawned {
+            Ok(v) => v,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+
+        let mut attempt_err: Option<String> = None;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
+                    let line = String::from_utf8_lossy(&bytes);
+                    if let Some(caps) = progress_re.captures(&line) {
+                        if let Ok(pct) = caps[1].parse::<f64>() {
+                            let phase = if line.contains("ExtractAudio") || line.contains("Merger") || line.contains("VideoConvertor") {
+                                "converting"
+                            } else {
+                                "downloading"
+                            };
+                            let eta = eta_re().captures(&line).map(|c| c[1].to_string());
+                            let speed = speed_re().captures(&line).map(|c| c[1].to_string());
+                            let _ = app.emit(&event_name, serde_json::json!({ "percent": pct, "phase": phase, "eta": eta, "speed": speed, "attempt": i + 1 }));
+                        }
+                    }
+                }
+                CommandEvent::Error(e) => attempt_err = Some(e),
+                CommandEvent::Terminated(status) => {
+                    if status.code != Some(0) {
+                        attempt_err.get_or_insert_with(|| format!("yt-dlp beendet mit Code {:?}", status.code));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if attempt_err.is_none() && out_path.is_file() {
+            return Ok(());
+        }
+        last_err = attempt_err.unwrap_or_else(|| "Download fehlgeschlagen (Datei nicht gefunden).".to_string());
     }
-    Ok(())
+
+    Err(friendly_download_error(&last_err))
 }
 
 // --- Local streaming with byte-range support ------------------------------

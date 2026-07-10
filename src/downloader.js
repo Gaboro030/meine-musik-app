@@ -245,7 +245,16 @@ async function downloadOne(id, btn, trackEl) {
     const pct = d.percent || 0;
     bar.style.width = `${pct}%`;
     pctEl.textContent = `${Math.round(pct)}%`;
-    etaEl.textContent = d.phase === "converting" ? "Konvertiere …" : "";
+    if (d.phase === "retrying") {
+      etaEl.textContent = d.note || "Erneuter Versuch …";
+    } else if (d.phase === "converting") {
+      etaEl.textContent = "Konvertiere …";
+    } else {
+      const parts = [];
+      if (d.speed) parts.push(d.speed);
+      if (d.eta) parts.push(`noch ${d.eta}`);
+      etaEl.textContent = parts.join(" · ");
+    }
   });
 
   try {

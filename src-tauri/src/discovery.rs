@@ -32,6 +32,59 @@ pub(crate) fn is_bad_variant(text: &str) -> bool {
     bad_variant_re().is_match(text)
 }
 
+/// Detects "Official Video"/"Music Video" uploads - these often carry
+/// intro dialogue, applause or a different mix than the plain studio
+/// release. Used to prefer a "Topic"/plain-audio upload when one exists.
+fn official_video_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| Regex::new(r"(?i)\bofficial\s*(music\s*)?video\b|\bmv\b").unwrap())
+}
+
+/// Lower is preferred. "- Topic" channels are YouTube Music's own
+/// auto-generated audio-only uploads (no video track at all) - the closest
+/// thing to a Spotify studio master. Explicit "Official Video"/"MV" titles
+/// are pushed to the back; everything else (plain uploads, "Official
+/// Audio") sits in between.
+pub(crate) fn audio_preference_score(title: &str, uploader: &str) -> i32 {
+    if uploader.to_lowercase().trim_end().ends_with("- topic") {
+        0
+    } else if official_video_re().is_match(title) {
+        2
+    } else {
+        1
+    }
+}
+
+/// When the user wants clean studio audio instead of a music-video rip,
+/// search for a Topic-channel/plain-audio upload of the same song and swap
+/// to that video id. Returns None (keep the original) if nothing better
+/// turns up - not finding one isn't an error, the official video is a fine
+/// fallback.
+pub(crate) async fn find_audio_alternative(
+    app: &tauri::AppHandle,
+    title: &str,
+    uploader: &str,
+    original_id: &str,
+) -> Option<String> {
+    let own_score = audio_preference_score(title, uploader);
+    if own_score == 0 {
+        return None;
+    }
+    let query = format!("{title} {uploader}");
+    let results = yt_search(app, &query, 6).await.ok()?;
+    let mut candidates: Vec<_> = results
+        .into_iter()
+        .filter(|r| r.video_id != original_id && !is_bad_variant(&format!("{} {}", r.title, r.artist)))
+        .collect();
+    candidates.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
+    let best = candidates.into_iter().next()?;
+    if audio_preference_score(&best.title, &best.artist) < own_score {
+        Some(best.video_id)
+    } else {
+        None
+    }
+}
+
 /// Lowercases a track title and strips bracketed/video-only noise words,
 /// for fuzzy "already own this" matching. Mirrors _normalize_title.
 fn normalize_title(text: &str) -> String {
