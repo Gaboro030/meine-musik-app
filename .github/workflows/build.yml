@@ -91,8 +91,11 @@ jobs:
       - name: Set up Android SDK/NDK
         uses: android-actions/setup-android@v3
 
-      - name: Install NDK
-        run: sdkmanager "ndk;26.1.10909125"
+      - name: Install NDK and export NDK_HOME
+        run: |
+          sdkmanager "ndk;26.1.10909125"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
 
       - name: Install frontend deps
         run: npm install
@@ -111,16 +114,12 @@ jobs:
 
       - name: Init Android project
         run: npx tauri android init
-        env:
-          NDK_HOME: ${{ steps.setup-android.outputs.ndk-path }}
 
       - name: Merge background-playback service into generated Android project
         run: node scripts/merge-android-extras.mjs
 
       - name: Build APK
         run: npm run build:android
-        env:
-          NDK_HOME: ${{ steps.setup-android.outputs.ndk-path }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
