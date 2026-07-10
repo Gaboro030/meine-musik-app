@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <title>Meine Musik</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="ambientGlow" class="ambient-glow"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">🎵 Meine Musik</div>
+      <nav class="nav-main">
+        <button type="button" class="nav-item active" data-view="home">🏠 Home</button>
+        <button type="button" class="nav-item" data-view="library">📚 Bibliothek</button>
+      </nav>
+      <div class="sidebar-section-title">Playlists</div>
+      <div class="playlist-list" id="playlistList"></div>
+      <button type="button" id="settingsToggleBtn" class="sidebar-tool-btn">⚙️ Einstellungen</button>
+    </aside>
+
+    <main class="main-content">
+      <header class="main-header">
+        <button type="button" id="menuBtn" class="menu-btn" aria-label="Menü">☰</button>
+        <div class="header-title">Meine Musik</div>
+      </header>
+
+      <div class="content-scroll" id="playlistView">
+        <div class="playlist-hero">
+          <img id="playlistCover" class="playlist-cover" src="" alt="" />
+          <h1 id="playlistTitle">—</h1>
+        </div>
+        <div class="track-list" id="trackList"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="settingsModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>⚙️ Einstellungen</h3>
+        <button type="button" id="settingsModalClose" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-row">
+          <span>Dynamic Glow</span>
+          <button type="button" id="glowToggleSwitch" class="toggle-switch active"></button>
+        </div>
+        <div class="settings-section-title">Hotkeys (Desktop)</div>
+        <div class="hotkey-list" id="hotkeyList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="addToPlaylistMenu" class="add-to-playlist-menu hidden"></div>
+  <div id="toast" class="toast"></div>
+
+  <footer class="player-bar">
+    <div class="pb-left">
+      <img id="pbCover" class="pb-cover" src="" alt="" />
+      <div class="pb-info">
+        <div id="pbTitle" class="pb-title">Kein Titel</div>
+        <div id="pbArtist" class="pb-artist">—</div>
+      </div>
+    </div>
+    <div class="pb-center">
+      <div class="pb-controls">
+        <button id="pbShuffle" class="pb-btn">🔀</button>
+        <button id="pbPrev" class="pb-btn">⏮</button>
+        <button id="pbPlay" class="pb-btn pb-play">▶</button>
+        <button id="pbNext" class="pb-btn">⏭</button>
+      </div>
+      <div class="pb-progress-wrap" id="pbProgressWrap">
+        <div class="pb-progress-track"><div class="pb-progress-bar" id="pbProgressBar"></div></div>
+      </div>
+    </div>
+  </footer>
+
+  <audio id="audioEl" preload="metadata"></audio>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

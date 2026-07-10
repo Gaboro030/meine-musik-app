@@ -1,0 +1,119 @@
+name: Build native apps
+
+# Runs on every push to main and on demand. Builds Windows + Linux desktop
+# bundles and an Android APK in parallel, native-per-platform (this is the
+# actual answer to "cross-compile Tauri for Windows/Linux/Android from one
+# machine" - you don't; you use one CI runner per target OS instead, which
+# is exactly what GitHub Actions' matrix gives for free).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            name: windows
+          - platform: ubuntu-22.04
+            name: linux
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system deps (webkit2gtk etc.)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf build-essential curl wget file libssl-dev \
+            libgtk-3-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend deps
+        run: npm install
+
+      - name: Download yt-dlp sidecar
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          if [ "${{ matrix.name }}" = "windows" ]; then
+            curl -L -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe \
+              https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+          else
+            curl -L -o src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu \
+              https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
+            chmod +x src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-app-${{ matrix.name }}
+          path: dist-app/${{ matrix.name }}-*
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK/NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager "ndk;26.1.10909125"
+
+      - name: Install frontend deps
+        run: npm install
+
+      - name: Download yt-dlp sidecar (Android arm64)
+        run: |
+          mkdir -p src-tauri/binaries
+          curl -L -o src-tauri/binaries/yt-dlp-aarch64-linux-android \
+            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
+          chmod +x src-tauri/binaries/yt-dlp-aarch64-linux-android
+
+      - name: Init Android project
+        run: npx tauri android init
+        env:
+          NDK_HOME: ${{ steps.setup-android.outputs.ndk-path }}
+
+      - name: Merge background-playback service into generated Android project
+        run: node scripts/merge-android-extras.mjs
+
+      - name: Build APK
+        run: npm run build:android
+        env:
+          NDK_HOME: ${{ steps.setup-android.outputs.ndk-path }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-app-android
+          path: dist-app/android-*
+          if-no-files-found: error
