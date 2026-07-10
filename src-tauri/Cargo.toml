@@ -24,7 +24,7 @@ id3 = "1"
 # per-target OpenSSL cross-build and is what broke aarch64-linux-android).
 # rustls-tls is pure Rust, no C toolchain/OpenSSL needed at all - same
 # reason tauri-plugin-http above is pinned to it too.
-reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "json"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 mime_guess = "2"
