@@ -1,4 +1,5 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use id3::TagLike;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -8,6 +9,8 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
 pub struct AppState {
     pub music_root: PathBuf,
+    pub trash_dir: PathBuf,
+    pub trash_index_file: PathBuf,
 }
 
 /// music_root/<playlist>/*.mp3 on disk IS the library - no separate JSON
@@ -38,7 +41,7 @@ pub struct PlaylistOut {
 /// "../../" anywhere in `rel` canonicalizes outside `root` and is rejected
 /// here, before any read/write ever touches disk - mirrors the
 /// realpath()+commonpath() check the previous Flask backend used.
-fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
+pub(crate) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.is_empty() {
         return Err("Leerer Pfad".into());
     }
@@ -63,7 +66,7 @@ fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
 /// component - mirrors the old Flask safe_filename(): strips path
 /// separators and other characters that could otherwise be combined with
 /// safe_join()'s checks in surprising ways, caps length.
-fn safe_filename(name: &str) -> String {
+pub(crate) fn safe_filename(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .map(|c| if r#"\/:*?"<>|"#.contains(c) { '_' } else { c })
@@ -145,16 +148,13 @@ fn scan_playlist_dir(dir: &Path, name: &str) -> Option<PlaylistOut> {
     })
 }
 
-#[tauri::command]
-pub fn list_playlists(state: tauri::State<AppState>) -> Result<Vec<PlaylistOut>, String> {
-    let _lock = LIBRARY_LOCK.lock().unwrap();
-    let root = &state.music_root;
+pub(crate) fn list_playlists_inner(root: &Path) -> Vec<PlaylistOut> {
     if !root.is_dir() {
-        return Ok(vec![]);
+        return vec![];
     }
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(root).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
+    let Ok(entries) = std::fs::read_dir(root) else { return vec![]; };
+    for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -165,7 +165,13 @@ pub fn list_playlists(state: tauri::State<AppState>) -> Result<Vec<PlaylistOut>,
         }
     }
     out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(out)
+    out
+}
+
+#[tauri::command]
+pub fn list_playlists(state: tauri::State<AppState>) -> Result<Vec<PlaylistOut>, String> {
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+    Ok(list_playlists_inner(&state.music_root))
 }
 
 #[tauri::command]
@@ -210,6 +216,10 @@ pub fn delete_playlist(state: tauri::State<AppState>, name: String) -> Result<()
     std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())
 }
 
+/// Moves the track to the trash instead of unlinking it outright - same
+/// "soft delete, undoable" behavior the old Flask backend had (Papierkorb
+/// tab lists these, restore/delete-forever are separate commands in
+/// trash.rs).
 #[tauri::command]
 pub fn remove_track_from_playlist(
     state: tauri::State<AppState>,
@@ -225,7 +235,7 @@ pub fn remove_track_from_playlist(
     if !path.is_file() {
         return Err("Datei nicht gefunden.".into());
     }
-    std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    crate::trash::move_to_trash(&state, &playlist_name, &filename, &path)?;
     if std::fs::read_dir(&playlist_dir)
         .map(|mut d| d.next().is_none())
         .unwrap_or(false)

@@ -1,4 +1,7 @@
 mod commands;
+mod discovery;
+mod lyrics;
+mod trash;
 
 use std::fs;
 use tauri::Manager;
@@ -20,7 +23,15 @@ pub fn run() {
                 .join("MeineMusik");
             fs::create_dir_all(&root).ok();
 
-            app.manage(commands::AppState { music_root: root });
+            let data_dir = handle.path().app_data_dir().unwrap();
+            let trash_dir = data_dir.join("trash");
+            fs::create_dir_all(&trash_dir).ok();
+
+            app.manage(commands::AppState {
+                music_root: root,
+                trash_dir,
+                trash_index_file: data_dir.join("trash_index.json"),
+            });
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("stream", |ctx, request, responder| {
@@ -47,6 +58,13 @@ pub fn run() {
             commands::upload_track,
             commands::fetch_thumbnail,
             commands::download_track,
+            trash::list_trash,
+            trash::restore_trash,
+            trash::delete_trash_forever,
+            lyrics::fetch_lyrics,
+            discovery::discover_tracks,
+            discovery::recommend_for_playlist,
+            discovery::search_online,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
