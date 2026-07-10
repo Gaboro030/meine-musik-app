@@ -20,13 +20,7 @@ pub fn run() {
                 .join("MeineMusik");
             fs::create_dir_all(&root).ok();
 
-            let data_dir = handle.path().app_data_dir().unwrap();
-            fs::create_dir_all(&data_dir).ok();
-
-            app.manage(commands::AppState {
-                music_root: root,
-                playlists_file: data_dir.join("playlists.json"),
-            });
+            app.manage(commands::AppState { music_root: root });
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("stream", |ctx, request, responder| {
@@ -46,8 +40,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_playlists,
             commands::create_playlist,
+            commands::rename_playlist,
+            commands::delete_playlist,
             commands::add_track_to_playlist,
             commands::remove_track_from_playlist,
+            commands::upload_track,
             commands::fetch_thumbnail,
             commands::download_track,
         ])

@@ -1,15 +1,22 @@
-# Meine Musik — Tauri v2 rewrite (scaffold)
+# Meine Musik — Tauri v2 rewrite
 
-Status: scaffold written, **not built or tested** — this machine has no Rust
-toolchain (`cargo`/`rustc` missing), so nothing here has compiled yet.
+Status: Windows + Linux builds are green in CI (GitHub Actions). Android
+builds too, but see the gaps below - background playback control isn't
+wired up yet. Verified via `.github/workflows/build.yml`, not locally
+(this dev machine has no Rust toolchain installed).
 
 ## What's here
-- `src-tauri/` — Rust core: `commands.rs` (playlists, path-traversal-safe
-  streaming, SSRF-checked thumbnail fetch, yt-dlp sidecar download),
-  `main.rs` (window setup, `stream://` protocol registration).
-- `src/` — frontend (`index.html`, `styles.css`, `app.js`): mobile-first
-  CSS (44px+ touch targets, swipe-to-skip on the player bar), configurable
-  hotkeys, Dynamic Glow, settings modal, add-to-playlist menu.
+- `src-tauri/` — Rust core: `commands.rs` (playlist CRUD, real ID3 tag/cover
+  reading via the `id3` crate, path-traversal-safe streaming, SSRF-checked
+  thumbnail fetch, yt-dlp sidecar download), `lib.rs`/`main.rs` (window
+  setup, `stream://` protocol registration - the library has no separate
+  JSON index, `music_root/<playlist>/*.mp3` on disk IS the library, same
+  model the old Flask `scan_library()` used).
+- `src/` — full 1:1 visual port of the Flask player's UI (`styles.css` is
+  the same Spotify-style CSS incl. all 13 color themes, `index.html`/
+  `app.js` are a trimmed port - same playback engine, shuffle, equalizer,
+  soft crossfade, drag-and-drop playlist import, add-to-playlist menu,
+  configurable hotkeys, Dynamic Glow, settings modal).
 - `android-extra/` — `PlaybackService.kt` + manifest additions for Android
   background/lockscreen playback. Not merged into `gen/android` yet because
   that folder only exists after `tauri android init` runs.
@@ -40,12 +47,22 @@ toolchain (`cargo`/`rustc` missing), so nothing here has compiled yet.
    `npm run build:android`.
 
 ## Known gaps vs. the old Flask app (not yet ported)
-- No YouTube *search*/playlist-URL resolution in Rust yet — `download_track`
-  only takes a raw video ID. Porting `ytmusicapi`'s search/matching logic
-  needs its own pass (likely: shell out to `yt-dlp --dump-json` for search
-  too, since there's no ytmusicapi equivalent in Rust).
-- No lyrics, party-mode/LAN-sync, QR guest page, or trash/recycle-bin yet.
-- Icons are not generated (build will fail on `tauri build` until step 4 is done).
+- No YouTube *search* - the sidebar "YouTube-Song laden" button is a plain
+  `prompt()` for a video ID/URL + title, no search-and-pick UI. Porting
+  `ytmusicapi`'s search/matching needs its own pass (likely: shell out to
+  `yt-dlp --dump-json` for search too, since there's no ytmusicapi
+  equivalent in Rust).
+- No "Discover"/recommendations rows, lyrics, party-mode/LAN-sync, QR guest
+  page, or trash/recycle-bin yet - all needed either ytmusicapi or a
+  Python-side API the Rust rewrite doesn't have yet. Deleting a track is
+  permanent (no undo) until a Rust-side trash equivalent gets built.
+- Track duration shows "—" always - `id3` only reads tags, not audio frame
+  structure, so getting exact duration needs an MP3-decoding crate
+  (`symphonia` or similar), not done yet.
+- `upload_track` sends file bytes as a JSON number array over the Tauri IPC
+  bridge - correct but not the fastest way to move large files; fine for
+  a personal library, would want a real binary transfer for very large
+  bulk imports.
 - **YouTube downloads are desktop-only.** yt-dlp doesn't publish official
   Android/ARM binaries, so there's no real sidecar to bundle for Android -
   `download_track` will fail there until a proper on-device downloader

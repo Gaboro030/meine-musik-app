@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::http::{header, Response, StatusCode};
@@ -8,29 +8,28 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
 pub struct AppState {
     pub music_root: PathBuf,
-    pub playlists_file: PathBuf,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
-pub struct Playlist {
+/// music_root/<playlist>/*.mp3 on disk IS the library - no separate JSON
+/// index to fall out of sync with reality, same model the old Flask
+/// backend used (scan_library() walked LIBRARY_DIR fresh on every call).
+static LIBRARY_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Serialize, Clone, Default)]
+pub struct TrackMeta {
+    pub file: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration: Option<f64>,
+    pub cover: Option<String>,
+}
+
+#[derive(Serialize, Clone, Default)]
+pub struct PlaylistOut {
     pub name: String,
-    pub tracks: Vec<String>,
-}
-
-type PlaylistMap = HashMap<String, Playlist>;
-static PLAYLIST_LOCK: Mutex<()> = Mutex::new(());
-
-fn load_playlists(file: &Path) -> PlaylistMap {
-    std::fs::read_to_string(file)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-fn save_playlists(file: &Path, map: &PlaylistMap) {
-    if let Ok(s) = serde_json::to_string_pretty(map) {
-        let _ = std::fs::write(file, s);
-    }
+    pub tracks: Vec<TrackMeta>,
+    pub cover: Option<String>,
 }
 
 /// Path Traversal guard used by every filesystem command: canonicalize the
@@ -60,34 +59,155 @@ fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(canon_parent.join(candidate.file_name().ok_or("Ungueltiger Dateiname")?))
 }
 
-#[tauri::command]
-pub fn list_playlists(state: tauri::State<AppState>) -> Result<Vec<Playlist>, String> {
-    let _lock = PLAYLIST_LOCK.lock().unwrap();
-    Ok(load_playlists(&state.playlists_file).into_values().collect())
+/// Turn an arbitrary playlist/track name into a filesystem-safe path
+/// component - mirrors the old Flask safe_filename(): strips path
+/// separators and other characters that could otherwise be combined with
+/// safe_join()'s checks in surprising ways, caps length.
+fn safe_filename(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| if r#"\/:*?"<>|"#.contains(c) { '_' } else { c })
+        .collect();
+    let trimmed = cleaned.trim();
+    let capped: String = trimmed.chars().take(180).collect();
+    if capped.is_empty() {
+        "track".to_string()
+    } else {
+        capped
+    }
+}
+
+fn read_track_meta(path: &Path) -> TrackMeta {
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let fallback_title = path
+        .file_stem()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| file_name.clone());
+
+    let mut meta = TrackMeta {
+        file: file_name,
+        title: fallback_title,
+        ..Default::default()
+    };
+
+    // Best-effort: a track with no/corrupt ID3 tags still shows up with its
+    // filename as the title, same as the old Flask _read_track_tags().
+    if let Ok(tag) = id3::Tag::read_from_path(path) {
+        if let Some(title) = tag.title() {
+            meta.title = title.to_string();
+        }
+        if let Some(artist) = tag.artist() {
+            meta.artist = artist.to_string();
+        }
+        if let Some(album) = tag.album() {
+            meta.album = album.to_string();
+        }
+        if let Some(pic) = tag.pictures().next() {
+            let encoded = BASE64.encode(&pic.data);
+            meta.cover = Some(format!("data:{};base64,{}", pic.mime_type, encoded));
+        }
+    }
+    // Precise duration needs decoding the actual MP3 frames (id3 only reads
+    // tags, not audio structure) - left as None/"-" in the UI for now
+    // rather than faked from file size, same "don't lie about what we
+    // don't know" call as the rest of this port.
+    meta
+}
+
+fn scan_playlist_dir(dir: &Path, name: &str) -> Option<PlaylistOut> {
+    if !dir.is_dir() {
+        return None;
+    }
+    let mut tracks: Vec<TrackMeta> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("mp3"))
+                .unwrap_or(false)
+        })
+        .map(|p| read_track_meta(&p))
+        .collect();
+    tracks.sort_by(|a, b| a.file.to_lowercase().cmp(&b.file.to_lowercase()));
+    if tracks.is_empty() {
+        return None;
+    }
+    let cover = tracks.iter().find_map(|t| t.cover.clone());
+    Some(PlaylistOut {
+        name: name.to_string(),
+        tracks,
+        cover,
+    })
 }
 
 #[tauri::command]
-pub fn add_track_to_playlist(
-    state: tauri::State<AppState>,
-    playlist_name: String,
-    filename: String,
-) -> Result<(), String> {
-    // Confirms both playlist_name and filename resolve inside music_root
-    // before the JSON index is ever touched.
-    safe_join(&state.music_root, &format!("{playlist_name}/{filename}"))?;
-    let _lock = PLAYLIST_LOCK.lock().unwrap();
-    let mut map = load_playlists(&state.playlists_file);
-    let entry = map.entry(playlist_name.clone()).or_insert_with(|| Playlist {
-        name: playlist_name,
-        tracks: vec![],
-    });
-    if !entry.tracks.contains(&filename) {
-        entry.tracks.push(filename);
-    } else {
-        return Err("Titel ist schon in dieser Playlist.".into());
+pub fn list_playlists(state: tauri::State<AppState>) -> Result<Vec<PlaylistOut>, String> {
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+    let root = &state.music_root;
+    if !root.is_dir() {
+        return Ok(vec![]);
     }
-    save_playlists(&state.playlists_file, &map);
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(root).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if let Some(pl) = scan_playlist_dir(&path, &name) {
+            out.push(pl);
+        }
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn create_playlist(state: tauri::State<AppState>, name: String) -> Result<(), String> {
+    let clean = safe_filename(&name);
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+    let dir = safe_join(&state.music_root, &clean)?;
+    std::fs::create_dir_all(dir.parent().unwrap_or(&state.music_root).join(&clean))
+        .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn rename_playlist(
+    state: tauri::State<AppState>,
+    old_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    let new_clean = safe_filename(&new_name);
+    if new_clean.is_empty() {
+        return Err("Neuer Name fehlt.".into());
+    }
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+    let old_dir = safe_join(&state.music_root, &old_name)?;
+    let new_dir = safe_join(&state.music_root, &new_clean)?;
+    if !old_dir.is_dir() {
+        return Err("Playlist nicht gefunden.".into());
+    }
+    if new_dir.exists() {
+        return Err("Es gibt schon eine Playlist mit diesem Namen.".into());
+    }
+    std::fs::rename(&old_dir, &new_dir).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_playlist(state: tauri::State<AppState>, name: String) -> Result<(), String> {
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+    let dir = safe_join(&state.music_root, &name)?;
+    if !dir.is_dir() {
+        return Err("Playlist nicht gefunden.".into());
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -96,29 +216,109 @@ pub fn remove_track_from_playlist(
     playlist_name: String,
     filename: String,
 ) -> Result<(), String> {
-    let _lock = PLAYLIST_LOCK.lock().unwrap();
-    let mut map = load_playlists(&state.playlists_file);
-    if let Some(pl) = map.get_mut(&playlist_name) {
-        pl.tracks.retain(|f| f != &filename);
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+    let playlist_dir = safe_join(&state.music_root, &playlist_name)?
+        .parent()
+        .unwrap()
+        .join(safe_filename(&playlist_name));
+    let path = safe_join(&playlist_dir, &filename)?;
+    if !path.is_file() {
+        return Err("Datei nicht gefunden.".into());
     }
-    save_playlists(&state.playlists_file, &map);
+    std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    if std::fs::read_dir(&playlist_dir)
+        .map(|mut d| d.next().is_none())
+        .unwrap_or(false)
+    {
+        let _ = std::fs::remove_dir(&playlist_dir);
+    }
     Ok(())
 }
 
+/// Add one track to a (new or existing) playlist. Two modes, same as the
+/// old Flask /api/playlists/add-track route:
+/// - already local (source_playlist + filename): copies the file, no
+///   re-download needed.
+/// - not yet downloaded (video_id + title): caller downloads first via
+///   download_track(), then calls this to also register it - kept as two
+///   separate commands here since Tauri commands are simple RPCs, easier
+///   to reason about than one command branching on optional fields.
 #[tauri::command]
-pub fn create_playlist(state: tauri::State<AppState>, name: String) -> Result<(), String> {
-    let clean = name.trim();
-    if clean.is_empty() {
-        return Err("Name fehlt.".into());
+pub fn add_track_to_playlist(
+    state: tauri::State<AppState>,
+    source_playlist: String,
+    filename: String,
+    target_playlist: String,
+) -> Result<(), String> {
+    let target_clean = safe_filename(&target_playlist);
+    if target_clean.is_empty() {
+        return Err("Ziel-Playlist fehlt.".into());
     }
-    let _lock = PLAYLIST_LOCK.lock().unwrap();
-    let mut map = load_playlists(&state.playlists_file);
-    map.entry(clean.to_string()).or_insert_with(|| Playlist {
-        name: clean.to_string(),
-        tracks: vec![],
-    });
-    save_playlists(&state.playlists_file, &map);
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+
+    let source_dir = safe_join(&state.music_root, &safe_filename(&source_playlist))?;
+    let src_path = safe_join(&source_dir, &filename)?;
+    if !src_path.is_file() {
+        return Err("Titel nicht gefunden.".into());
+    }
+
+    let target_dir = safe_join(&state.music_root, &target_clean)?;
+    std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+
+    let base = safe_filename(
+        &src_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    );
+    let mut dest = target_dir.join(format!("{base}.mp3"));
+    let mut n = 2;
+    while dest.exists() {
+        if dest.canonicalize().ok() == src_path.canonicalize().ok() {
+            return Err("Titel ist schon in dieser Playlist.".into());
+        }
+        dest = target_dir.join(format!("{base} ({n}).mp3"));
+        n += 1;
+    }
+    std::fs::copy(&src_path, &dest).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Writes raw bytes (from a browser <input type=file> drag/drop, read
+/// client-side via File.arrayBuffer()) straight into a playlist folder -
+/// the "add local MP3s" flow, since there's no separate Downloader page in
+/// this rewrite yet.
+#[tauri::command]
+pub fn upload_track(
+    state: tauri::State<AppState>,
+    playlist_name: String,
+    filename: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    if !filename.to_lowercase().ends_with(".mp3") {
+        return Err("Nur MP3-Dateien werden unterstuetzt.".into());
+    }
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+    let clean_playlist = safe_filename(&playlist_name);
+    let dir = state.music_root.join(&clean_playlist);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let base = safe_filename(
+        &Path::new(&filename)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    );
+    let mut dest = safe_join(&state.music_root, &format!("{clean_playlist}/{base}.mp3"))?;
+    let mut n = 2;
+    while dest.exists() {
+        dest = safe_join(
+            &state.music_root,
+            &format!("{clean_playlist}/{base} ({n}).mp3"),
+        )?;
+        n += 1;
+    }
+    std::fs::write(&dest, data).map_err(|e| e.to_string())
 }
 
 // --- SSRF guard: thumbnail fetch ------------------------------------------
@@ -172,6 +372,7 @@ pub async fn fetch_thumbnail(url: String) -> Result<Vec<u8>, String> {
 // as Tauri sidecars and drive them from Rust via tauri-plugin-shell, same
 // division of labor the old Flask backend had (Python called out to the
 // yt-dlp *library*, this calls the yt-dlp *binary* - same underlying tool).
+// Desktop only - see README, yt-dlp has no official Android/ARM builds.
 #[tauri::command]
 pub async fn download_track(
     app: tauri::AppHandle,
@@ -189,12 +390,11 @@ pub async fn download_track(
         return Err("Ungueltige Video-ID.".into());
     }
 
-    let dest_dir = safe_join(&state.music_root, &playlist_name)?
-        .parent()
-        .unwrap()
-        .to_path_buf();
+    let clean_playlist = safe_filename(&playlist_name);
+    let dest_dir = state.music_root.join(&clean_playlist);
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-    let out_path = dest_dir.join(format!("{title}.%(ext)s"));
+    let safe_title = safe_filename(&title);
+    let out_path = dest_dir.join(format!("{safe_title}.%(ext)s"));
 
     let shell = app.shell();
     let output = shell

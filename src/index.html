@@ -2,78 +2,284 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
   <title>Meine Musik</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="ambientGlow" class="ambient-glow"></div>
-
   <div class="app-shell">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand">🎵 Meine Musik</div>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">🎵</span>
+        <span class="brand-name">Meine Musik</span>
+      </div>
+
       <nav class="nav-main">
-        <button type="button" class="nav-item active" data-view="home">🏠 Home</button>
-        <button type="button" class="nav-item" data-view="library">📚 Bibliothek</button>
+        <button type="button" class="nav-item active" data-view="home">
+          <span class="nav-icon">🏠</span> Home
+        </button>
+        <button type="button" class="nav-item" data-view="library">
+          <span class="nav-icon">📚</span> Bibliothek
+        </button>
       </nav>
+
+      <div class="sidebar-divider"></div>
+
       <div class="sidebar-section-title">Playlists</div>
-      <div class="playlist-list" id="playlistList"></div>
-      <button type="button" id="settingsToggleBtn" class="sidebar-tool-btn">⚙️ Einstellungen</button>
+      <div class="playlist-list" id="playlistList">
+        <div class="playlist-list-empty" id="playlistListEmpty">Noch keine Playlist</div>
+      </div>
+
+      <div class="sidebar-tools">
+        <div class="sidebar-tool-wrap">
+          <button type="button" id="themeToggleBtn" class="sidebar-tool-btn" title="Design">🎨</button>
+          <div id="themePopover" class="sidebar-tool-popover hidden">
+            <div class="sidebar-tool-popover-title">Design</div>
+            <div class="theme-options">
+              <button type="button" class="theme-option" data-theme="spotify-green"><span class="theme-swatch" style="background:#1db954"></span> Spotify-Green</button>
+              <button type="button" class="theme-option" data-theme="neon-purple"><span class="theme-swatch" style="background:#a855f7"></span> Neon-Purple</button>
+              <button type="button" class="theme-option" data-theme="cyberpunk-cyan"><span class="theme-swatch" style="background:#22e0ff"></span> Cyberpunk-Cyan</button>
+              <button type="button" class="theme-option" data-theme="crimson-red"><span class="theme-swatch" style="background:#e63946"></span> Crimson-Red</button>
+              <button type="button" class="theme-option" data-theme="sunset-orange"><span class="theme-swatch" style="background:#ff8c1a"></span> Sunset-Orange</button>
+              <button type="button" class="theme-option" data-theme="ocean-blue"><span class="theme-swatch" style="background:#2f9dff"></span> Ocean-Blue</button>
+              <button type="button" class="theme-option" data-theme="rose-pink"><span class="theme-swatch" style="background:#ff5ca8"></span> Rose-Pink</button>
+              <button type="button" class="theme-option" data-theme="arctic-white"><span class="theme-swatch" style="background:#f0f1f3;border:1px solid #999"></span> Arctic-White</button>
+              <button type="button" class="theme-option" data-theme="matrix-green"><span class="theme-swatch" style="background:#00ff41"></span> Matrix-Green</button>
+              <button type="button" class="theme-option" data-theme="gold-luxus"><span class="theme-swatch" style="background:#d4af37"></span> Gold-Luxus</button>
+              <button type="button" class="theme-option" data-theme="midnight-blue"><span class="theme-swatch" style="background:#7c9eff"></span> Midnight-Blue</button>
+              <button type="button" class="theme-option" data-theme="rgb-wave"><span class="theme-swatch" style="background:linear-gradient(90deg,#ff004c,#00c3ff,#7b2fff)"></span> RGB-Wave</button>
+              <button type="button" class="theme-option" data-theme="mocha-braun"><span class="theme-swatch" style="background:#c98d4e"></span> Mocha-Braun</button>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-tool-wrap">
+          <button type="button" id="settingsToggleBtn" class="sidebar-tool-btn" title="Einstellungen">⚙️</button>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button type="button" id="addYoutubeBtn" class="nav-item nav-external">
+          <span class="nav-icon">📥</span> YouTube-Song laden
+        </button>
+      </div>
     </aside>
 
     <main class="main-content">
       <header class="main-header">
-        <button type="button" id="menuBtn" class="menu-btn" aria-label="Menü">☰</button>
-        <div class="header-title">Meine Musik</div>
+        <div class="header-nav-arrows">
+          <button class="nav-arrow" id="navBackBtn" disabled>‹</button>
+          <button class="nav-arrow" disabled>›</button>
+        </div>
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" class="search-input" placeholder="Songs, Playlists, Interpreten suchen…" autocomplete="off" />
+        </div>
       </header>
 
-      <div class="content-scroll" id="playlistView">
-        <div class="playlist-hero">
-          <img id="playlistCover" class="playlist-cover" src="" alt="" />
-          <h1 id="playlistTitle">—</h1>
+      <div class="content-scroll">
+        <div id="emptyState" class="empty-state">
+          <div class="empty-icon">🎧</div>
+          <h2>Noch keine Musik in deiner Bibliothek</h2>
+          <p>Ziehe einen Ordner mit MP3-Dateien in die Bibliothek, oder lade einen Song direkt von YouTube über den Button links unten.</p>
+          <button type="button" id="emptyStateLibraryBtn" class="btn-primary">Zur Bibliothek</button>
         </div>
-        <div class="track-list" id="trackList"></div>
+
+        <div id="homeView" class="view-section hidden">
+          <h1 id="homeGreeting" class="home-greeting">Guten Tag</h1>
+          <section class="home-section">
+            <h2 class="home-section-title">Zuletzt hinzugefügt</h2>
+            <div class="card-grid" id="recentGrid"></div>
+          </section>
+        </div>
+
+        <div id="libraryView" class="view-section hidden">
+          <h1 class="library-heading">Deine Bibliothek</h1>
+          <div class="card-grid" id="libraryGrid">
+            <div class="card card-dropzone" id="libraryDropzone" tabindex="0">
+              <div class="dropzone-icon">📁</div>
+              <div class="card-title">Playlist hinzufügen</div>
+              <div class="card-sub">Songordner per Drag &amp; Drop hierher ziehen</div>
+              <input type="file" id="libraryFileInput" webkitdirectory multiple class="hidden" />
+            </div>
+          </div>
+        </div>
+
+        <div id="playlistView" class="view-section hidden">
+          <div class="playlist-hero" id="playlistDropzone">
+            <img id="playlistCover" class="playlist-cover" src="" alt="" />
+            <div class="playlist-meta">
+              <span class="playlist-kind">PLAYLIST</span>
+              <div class="playlist-title-row">
+                <h1 id="playlistTitle">—</h1>
+                <button type="button" id="renamePlaylistBtn" class="icon-btn" title="Playlist umbenennen">✏️</button>
+                <button type="button" id="deletePlaylistBtn" class="icon-btn icon-btn-danger" title="Playlist löschen">🗑️</button>
+              </div>
+              <div class="playlist-sub">
+                <span id="playlistTrackCount">0 Titel</span>
+                <span class="playlist-drop-hint">— Songs hierher ziehen zum Hinzufügen</span>
+              </div>
+            </div>
+            <div class="dropzone-overlay" id="playlistDropOverlay">
+              <div class="dropzone-icon">📁</div>
+              <div>Songs hier ablegen</div>
+            </div>
+          </div>
+
+          <div class="playlist-actions">
+            <button id="playAllBtn" class="btn-play-circle" title="Alle abspielen">▶</button>
+            <button id="shuffleAllBtn" class="btn-shuffle-circle" title="Zufallswiedergabe">🔀</button>
+          </div>
+
+          <table class="track-table">
+            <thead>
+              <tr>
+                <th class="col-index">#</th>
+                <th>Titel</th>
+                <th>Album</th>
+                <th class="col-duration">⏱</th>
+                <th class="col-add"></th>
+                <th class="col-remove"></th>
+              </tr>
+            </thead>
+            <tbody id="trackTableBody"></tbody>
+          </table>
+        </div>
+
+        <div id="searchView" class="view-section hidden">
+          <h1 class="library-heading">Suchergebnisse</h1>
+          <section class="home-section hidden" id="searchSongsSection">
+            <h2 class="home-section-title">In deiner Bibliothek</h2>
+            <div class="card-grid" id="searchSongsGrid"></div>
+          </section>
+          <section class="home-section hidden" id="searchPlaylistsSection">
+            <h2 class="home-section-title">Gefundene Playlists</h2>
+            <div class="card-grid" id="searchPlaylistsGrid"></div>
+          </section>
+          <div id="searchNothingAtAll" class="card-sub hidden" style="padding: 20px 0;">Keine Ergebnisse.</div>
+        </div>
       </div>
     </main>
   </div>
 
-  <div id="settingsModal" class="modal-overlay hidden">
+  <div id="settingsModal" class="modal-overlay settings-modal hidden">
     <div class="modal">
       <div class="modal-header">
         <h3>⚙️ Einstellungen</h3>
         <button type="button" id="settingsModalClose" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
-        <div class="settings-row">
-          <span>Dynamic Glow</span>
-          <button type="button" id="glowToggleSwitch" class="toggle-switch active"></button>
+        <div class="settings-section">
+          <div class="settings-section-title">Darstellung</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Dynamic Glow</div>
+              <div class="settings-row-desc">Hintergrund passt sich der Cover-Farbe des Songs an</div>
+            </div>
+            <button type="button" id="glowToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
+          </div>
         </div>
-        <div class="settings-section-title">Hotkeys (Desktop)</div>
-        <div class="hotkey-list" id="hotkeyList"></div>
+        <div class="settings-section">
+          <div class="settings-section-title">Hotkeys</div>
+          <div class="hotkey-list" id="hotkeyList"></div>
+          <div class="settings-row-desc" style="margin-top:8px;">Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.</div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div id="addToPlaylistMenu" class="add-to-playlist-menu hidden"></div>
-  <div id="toast" class="toast"></div>
-
-  <footer class="player-bar">
-    <div class="pb-left">
-      <img id="pbCover" class="pb-cover" src="" alt="" />
-      <div class="pb-info">
-        <div id="pbTitle" class="pb-title">Kein Titel</div>
-        <div id="pbArtist" class="pb-artist">—</div>
+  <div id="confirmModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle">Bist du sicher?</h3>
+        <button type="button" id="confirmModalClose" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmModalText"></p>
+        <div class="modal-actions">
+          <button type="button" id="confirmModalCancel" class="btn-secondary">Abbrechen</button>
+          <button type="button" id="confirmModalOk" class="btn-danger">Löschen</button>
+        </div>
       </div>
     </div>
-    <div class="pb-center">
-      <div class="pb-controls">
-        <button id="pbShuffle" class="pb-btn">🔀</button>
-        <button id="pbPrev" class="pb-btn">⏮</button>
-        <button id="pbPlay" class="pb-btn pb-play">▶</button>
-        <button id="pbNext" class="pb-btn">⏭</button>
+  </div>
+
+  <div id="renameModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Playlist umbenennen</h3>
+        <button type="button" id="renameModalClose" class="modal-close">✕</button>
       </div>
-      <div class="pb-progress-wrap" id="pbProgressWrap">
-        <div class="pb-progress-track"><div class="pb-progress-bar" id="pbProgressBar"></div></div>
+      <div class="modal-body">
+        <input type="text" id="renameInput" class="modal-input" maxlength="180" />
+        <div class="modal-actions">
+          <button type="button" id="renameModalCancel" class="btn-secondary">Abbrechen</button>
+          <button type="button" id="renameModalOk" class="btn-primary-sm">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="uploadToast" class="player-toast upload-toast hidden"></div>
+
+  <footer class="player-bar">
+    <div class="player-bar-left">
+      <img id="pbCover" class="pb-cover" src="" alt="" />
+      <div class="pb-info">
+        <div id="pbTitle" class="pb-title">Kein Titel ausgewählt</div>
+        <div id="pbArtist" class="pb-artist">—</div>
+      </div>
+      <button id="pbLike" class="pb-like" title="Merken">♡</button>
+    </div>
+
+    <div class="player-bar-center">
+      <div class="pb-controls">
+        <button id="pbShuffle" class="pb-btn" title="Zufallswiedergabe">🔀</button>
+        <button id="pbPrev" class="pb-btn" title="Zurück">⏮</button>
+        <button id="pbPlay" class="pb-btn pb-play" title="Abspielen">▶</button>
+        <button id="pbNext" class="pb-btn" title="Vor">⏭</button>
+        <button id="pbRepeat" class="pb-btn" title="Wiederholen">🔁</button>
+      </div>
+      <div class="pb-scrubber">
+        <span id="pbTimeCurrent" class="pb-time">0:00</span>
+        <div class="pb-progress-wrap" id="pbProgressWrap">
+          <div class="pb-progress-track">
+            <div class="pb-progress-bar" id="pbProgressBar"></div>
+            <div class="pb-progress-handle" id="pbProgressHandle"></div>
+          </div>
+        </div>
+        <span id="pbTimeTotal" class="pb-time">0:00</span>
+      </div>
+    </div>
+
+    <div class="player-bar-right">
+      <div class="eq-wrap">
+        <button id="eqToggleBtn" class="pb-vol-icon eq-toggle-btn" title="Equalizer">🎚️</button>
+        <div id="eqPopover" class="eq-popover hidden">
+          <div class="eq-popover-title">Equalizer</div>
+          <div class="eq-sliders">
+            <div class="eq-slider-col">
+              <input type="range" id="eqBassSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
+              <span class="eq-slider-label">Bass</span>
+            </div>
+            <div class="eq-slider-col">
+              <input type="range" id="eqMidSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
+              <span class="eq-slider-label">Mid</span>
+            </div>
+            <div class="eq-slider-col">
+              <input type="range" id="eqTrebleSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
+              <span class="eq-slider-label">Treble</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <span id="pbVolIcon" class="pb-vol-icon">🔊</span>
+      <div class="pb-volume-wrap" id="pbVolumeWrap">
+        <div class="pb-volume-track">
+          <div class="pb-volume-bar" id="pbVolumeBar"></div>
+          <div class="pb-volume-handle" id="pbVolumeHandle"></div>
+        </div>
       </div>
     </div>
   </footer>
