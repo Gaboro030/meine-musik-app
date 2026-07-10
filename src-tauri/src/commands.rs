@@ -26,6 +26,26 @@ pub struct TrackMeta {
     pub album: String,
     pub duration: Option<f64>,
     pub cover: Option<String>,
+    // player.js is the verbatim Flask frontend and reads these two straight
+    // off each track object: stream_url feeds <audio>.src, added drives the
+    // Home screen's "Zuletzt hinzugefügt" sort.
+    pub stream_url: String,
+    pub added: f64,
+}
+
+/// Platform-correct URL for the custom "stream" protocol registered in
+/// lib.rs. Tauri serves custom protocols as `<scheme>://localhost/` on
+/// macOS/Linux but as `http://<scheme>.localhost/` on Windows and Android
+/// (WebView2/Android WebView don't allow arbitrary schemes in http
+/// contexts) - hardcoding one form breaks playback on the other platforms.
+fn stream_url_for(playlist: &str, file: &str) -> String {
+    let enc =
+        |s: &str| percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string();
+    if cfg!(any(windows, target_os = "android")) {
+        format!("http://stream.localhost/{}/{}", enc(playlist), enc(file))
+    } else {
+        format!("stream://localhost/{}/{}", enc(playlist), enc(file))
+    }
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -113,10 +133,16 @@ fn read_track_meta(path: &Path) -> TrackMeta {
             meta.cover = Some(format!("data:{};base64,{}", pic.mime_type, encoded));
         }
     }
-    // Precise duration needs decoding the actual MP3 frames (id3 only reads
-    // tags, not audio structure) - left as None/"-" in the UI for now
-    // rather than faked from file size, same "don't lie about what we
-    // don't know" call as the rest of this port.
+    // id3 only reads tags, not audio structure - mp3-duration walks the
+    // actual MP3 frames for the real playing time (what mutagen's
+    // audio.info.length did in the Flask backend).
+    meta.duration = mp3_duration::from_path(path).ok().map(|d| d.as_secs_f64());
+    meta.added = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
     meta
 }
 
@@ -134,7 +160,11 @@ fn scan_playlist_dir(dir: &Path, name: &str) -> Option<PlaylistOut> {
                 .map(|e| e.eq_ignore_ascii_case("mp3"))
                 .unwrap_or(false)
         })
-        .map(|p| read_track_meta(&p))
+        .map(|p| {
+            let mut meta = read_track_meta(&p);
+            meta.stream_url = stream_url_for(name, &meta.file);
+            meta
+        })
         .collect();
     tracks.sort_by(|a, b| a.file.to_lowercase().cmp(&b.file.to_lowercase()));
     if tracks.is_empty() {
@@ -476,9 +506,17 @@ pub async fn stream_file(
     }
 
     let is_partial = range_header.is_some();
+    // ACAO is required: on Windows/Android the webview page lives on
+    // http://tauri.localhost while streams come from http://stream.localhost
+    // - cross-origin. player.js pipes the <audio> element through a Web
+    // Audio graph (equalizer/fade via createMediaElementSource), and
+    // cross-origin media WITHOUT CORS approval gets tainted there, which
+    // plays back as pure silence. The <audio> tag carries
+    // crossorigin="anonymous" to match.
     let mut builder = Response::builder()
         .status(if is_partial { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK })
         .header(header::CONTENT_TYPE, mime.as_ref())
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(header::ACCEPT_RANGES, "bytes")
         .header(header::CONTENT_LENGTH, chunk_len.to_string());
     if is_partial {

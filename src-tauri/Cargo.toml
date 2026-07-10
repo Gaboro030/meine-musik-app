@@ -32,6 +32,9 @@ percent-encoding = "2.3"
 base64 = "0.22"
 regex = "1"
 rand = "0.8"
+# Real MP3 playing time by walking the audio frames - id3 alone can't (it
+# only reads tags). Same job mutagen's audio.info.length did in Flask.
+mp3-duration = "0.1"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

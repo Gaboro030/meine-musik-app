@@ -219,6 +219,48 @@ pub async fn recommend_for_playlist(
     Ok(gather(&app, &queries, &have_titles, &exclude, 4).await)
 }
 
+#[derive(Serialize, Clone)]
+pub struct DiscoverRow {
+    pub title: String,
+    pub recommendations: Vec<OnlineTrack>,
+}
+
+/// Per-artist "Mehr von <Artist>" shelves for the Home screen - one row per
+/// top library artist, 8 picks each. Mirrors the Flask
+/// /api/library/discover-rows endpoint (recommend_discover_rows).
+#[tauri::command]
+pub async fn discover_rows(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    exclude_ids: Vec<String>,
+) -> Result<Vec<DiscoverRow>, String> {
+    let playlists = list_playlists_inner(&state.music_root);
+    let all_tracks: Vec<crate::commands::TrackMeta> =
+        playlists.into_iter().flat_map(|p| p.tracks).collect();
+    if all_tracks.is_empty() {
+        return Ok(vec![]);
+    }
+    let have_titles: HashSet<String> =
+        all_tracks.iter().map(|t| normalize_title(&t.title)).collect();
+    let artists = top_artists(&all_tracks, 3);
+
+    let mut used: HashSet<String> = exclude_ids.into_iter().collect();
+    let mut rows = Vec::new();
+    for artist in artists {
+        let picks = gather(&app, &[artist.clone()], &have_titles, &used, 8).await;
+        for p in &picks {
+            used.insert(p.video_id.clone());
+        }
+        if !picks.is_empty() {
+            rows.push(DiscoverRow {
+                title: format!("Mehr von {artist}"),
+                recommendations: picks,
+            });
+        }
+    }
+    Ok(rows)
+}
+
 /// Online part of the search bar - hits yt-dlp directly, so it can find
 /// any song, not just what's already downloaded.
 #[tauri::command]

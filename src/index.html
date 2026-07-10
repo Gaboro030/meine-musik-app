@@ -1,10 +1,14 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
-  <title>Meine Musik</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <title>Player – Meine Musik</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -37,23 +41,67 @@
 
       <div class="sidebar-tools">
         <div class="sidebar-tool-wrap">
+          <button type="button" id="qrToggleBtn" class="sidebar-tool-btn" title="Freunde einladen">👥</button>
+          <div id="qrPopover" class="sidebar-tool-popover hidden">
+            <div class="sidebar-tool-popover-title">Freunde einladen</div>
+            <img id="qrImage" class="qr-image" src="/api/qr" alt="QR-Code zur Gäste-Seite" />
+            <div id="qrHint" class="qr-hint">Scannen &amp; Songs zur Warteschlange hinzufügen</div>
+          </div>
+        </div>
+        <div class="sidebar-tool-wrap">
+          <button type="button" id="partyPopoverToggleBtn" class="sidebar-tool-btn" title="Party-Modus">🎉</button>
+          <div id="partyPopover" class="sidebar-tool-popover hidden">
+            <div class="sidebar-tool-popover-title">Party-Modus</div>
+            <div id="partyStatusText" class="party-popover-status">
+              Spielt auf allen Geräten im WLAN exakt denselben Song synchron ab.
+            </div>
+            <button type="button" id="partyModeBtn" class="party-toggle-switch">Party starten</button>
+          </div>
+        </div>
+        <div class="sidebar-tool-wrap">
           <button type="button" id="themeToggleBtn" class="sidebar-tool-btn" title="Design">🎨</button>
           <div id="themePopover" class="sidebar-tool-popover hidden">
             <div class="sidebar-tool-popover-title">Design</div>
             <div class="theme-options">
-              <button type="button" class="theme-option" data-theme="spotify-green"><span class="theme-swatch" style="background:#1db954"></span> Spotify-Green</button>
-              <button type="button" class="theme-option" data-theme="neon-purple"><span class="theme-swatch" style="background:#a855f7"></span> Neon-Purple</button>
-              <button type="button" class="theme-option" data-theme="cyberpunk-cyan"><span class="theme-swatch" style="background:#22e0ff"></span> Cyberpunk-Cyan</button>
-              <button type="button" class="theme-option" data-theme="crimson-red"><span class="theme-swatch" style="background:#e63946"></span> Crimson-Red</button>
-              <button type="button" class="theme-option" data-theme="sunset-orange"><span class="theme-swatch" style="background:#ff8c1a"></span> Sunset-Orange</button>
-              <button type="button" class="theme-option" data-theme="ocean-blue"><span class="theme-swatch" style="background:#2f9dff"></span> Ocean-Blue</button>
-              <button type="button" class="theme-option" data-theme="rose-pink"><span class="theme-swatch" style="background:#ff5ca8"></span> Rose-Pink</button>
-              <button type="button" class="theme-option" data-theme="arctic-white"><span class="theme-swatch" style="background:#f0f1f3;border:1px solid #999"></span> Arctic-White</button>
-              <button type="button" class="theme-option" data-theme="matrix-green"><span class="theme-swatch" style="background:#00ff41"></span> Matrix-Green</button>
-              <button type="button" class="theme-option" data-theme="gold-luxus"><span class="theme-swatch" style="background:#d4af37"></span> Gold-Luxus</button>
-              <button type="button" class="theme-option" data-theme="midnight-blue"><span class="theme-swatch" style="background:#7c9eff"></span> Midnight-Blue</button>
-              <button type="button" class="theme-option" data-theme="rgb-wave"><span class="theme-swatch" style="background:linear-gradient(90deg,#ff004c,#00c3ff,#7b2fff)"></span> RGB-Wave</button>
-              <button type="button" class="theme-option" data-theme="mocha-braun"><span class="theme-swatch" style="background:#c98d4e"></span> Mocha-Braun</button>
+              <button type="button" class="theme-option" data-theme="spotify-green">
+                <span class="theme-swatch" style="background:#1db954"></span> Spotify-Green
+              </button>
+              <button type="button" class="theme-option" data-theme="neon-purple">
+                <span class="theme-swatch" style="background:#a855f7"></span> Neon-Purple
+              </button>
+              <button type="button" class="theme-option" data-theme="cyberpunk-cyan">
+                <span class="theme-swatch" style="background:#22e0ff"></span> Cyberpunk-Cyan
+              </button>
+              <button type="button" class="theme-option" data-theme="crimson-red">
+                <span class="theme-swatch" style="background:#e63946"></span> Crimson-Red
+              </button>
+              <button type="button" class="theme-option" data-theme="sunset-orange">
+                <span class="theme-swatch" style="background:#ff8c1a"></span> Sunset-Orange
+              </button>
+              <button type="button" class="theme-option" data-theme="ocean-blue">
+                <span class="theme-swatch" style="background:#2f9dff"></span> Ocean-Blue
+              </button>
+              <button type="button" class="theme-option" data-theme="rose-pink">
+                <span class="theme-swatch" style="background:#ff5ca8"></span> Rose-Pink
+              </button>
+              <button type="button" class="theme-option" data-theme="arctic-white">
+                <span class="theme-swatch" style="background:#f0f1f3;border:1px solid #999"></span> Arctic-White
+              </button>
+              <button type="button" class="theme-option" data-theme="matrix-green">
+                <span class="theme-swatch" style="background:#00ff41"></span> Matrix-Green
+              </button>
+              <button type="button" class="theme-option" data-theme="gold-luxus">
+                <span class="theme-swatch" style="background:#d4af37"></span> Gold-Luxus
+              </button>
+              <button type="button" class="theme-option" data-theme="midnight-blue">
+                <span class="theme-swatch" style="background:#7c9eff"></span> Midnight-Blue
+              </button>
+              <button type="button" class="theme-option" data-theme="rgb-wave">
+                <span class="theme-swatch" style="background:linear-gradient(90deg,#ff004c,#00c3ff,#7b2fff)"></span> RGB-Wave
+              </button>
+              <button type="button" class="theme-option" data-theme="mocha-braun">
+                <span class="theme-swatch" style="background:#c98d4e"></span> Mocha-Braun
+              </button>
             </div>
           </div>
         </div>
@@ -63,9 +111,9 @@
       </div>
 
       <div class="sidebar-footer">
-        <button type="button" id="addYoutubeBtn" class="nav-item nav-external">
-          <span class="nav-icon">📥</span> YouTube-Song laden
-        </button>
+        <a href="/downloader" class="nav-item nav-external">
+          <span class="nav-icon">📥</span> Musik hinzufügen
+        </a>
       </div>
     </aside>
 
@@ -79,14 +127,18 @@
           <span class="search-icon">🔍</span>
           <input type="text" id="searchInput" class="search-input" placeholder="Songs, Playlists, Interpreten suchen…" autocomplete="off" />
         </div>
+        <a href="/downloader" class="header-downloader-btn">⬇️ Downloader</a>
       </header>
 
       <div class="content-scroll">
         <div id="emptyState" class="empty-state">
           <div class="empty-icon">🎧</div>
           <h2>Noch keine Musik in deiner Bibliothek</h2>
-          <p>Ziehe einen Ordner mit MP3-Dateien in die Bibliothek, oder lade einen Song direkt von YouTube über den Button links unten.</p>
-          <button type="button" id="emptyStateLibraryBtn" class="btn-primary">Zur Bibliothek</button>
+          <p>
+            Lade Titel im <a href="/downloader">Downloader</a> herunter und aktiviere dort
+            „In Bibliothek speichern" — sie tauchen dann automatisch hier auf.
+          </p>
+          <a href="/downloader" class="btn-primary">Zum Downloader</a>
         </div>
 
         <div id="homeView" class="view-section hidden">
@@ -102,6 +154,7 @@
             </div>
             <div class="card-grid recs-grid" id="discoverGrid"></div>
           </section>
+          <div id="discoverArtistRows"></div>
         </div>
 
         <div id="libraryView" class="view-section hidden">
@@ -140,6 +193,7 @@
           <div class="playlist-actions">
             <button id="playAllBtn" class="btn-play-circle" title="Alle abspielen">▶</button>
             <button id="shuffleAllBtn" class="btn-shuffle-circle" title="Zufallswiedergabe">🔀</button>
+            <button id="offlineDownloadBtn" class="btn-offline-circle" title="Offline herunterladen">⬇️ Offline herunterladen</button>
           </div>
 
           <table class="track-table">
@@ -333,11 +387,13 @@
           <div class="pb-volume-handle" id="pbVolumeHandle"></div>
         </div>
       </div>
-      <span id="pbVolumePercent" class="pb-volume-percent">80%</span>
+      <span id="pbVolumePercent" class="pb-volume-percent">100%</span>
     </div>
   </footer>
 
-  <audio id="audioEl" preload="metadata"></audio>
-  <script type="module" src="app.js"></script>
+  <audio id="audioEl" preload="metadata" crossorigin="anonymous"></audio>
+
+  <script src="tauri-shim.js"></script>
+  <script src="player.js"></script>
 </body>
 </html>

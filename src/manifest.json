@@ -1,0 +1,14 @@
+{
+  "name": "Meine Musik",
+  "short_name": "Meine Musik",
+  "description": "Lokaler Spotify-Klon – eigene Musikbibliothek, im WLAN und offline abspielbar.",
+  "start_url": "/player",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

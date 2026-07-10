@@ -63,6 +63,7 @@ pub fn run() {
             trash::delete_trash_forever,
             lyrics::fetch_lyrics,
             discovery::discover_tracks,
+            discovery::discover_rows,
             discovery::recommend_for_playlist,
             discovery::search_online,
         ])
