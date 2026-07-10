@@ -47,15 +47,22 @@ wired up yet. Verified via `.github/workflows/build.yml`, not locally
    `npm run build:android`.
 
 ## Known gaps vs. the old Flask app (not yet ported)
-- No YouTube *search* - the sidebar "YouTube-Song laden" button is a plain
-  `prompt()` for a video ID/URL + title, no search-and-pick UI. Porting
-  `ytmusicapi`'s search/matching needs its own pass (likely: shell out to
-  `yt-dlp --dump-json` for search too, since there's no ytmusicapi
-  equivalent in Rust).
-- No "Discover"/recommendations rows, lyrics, party-mode/LAN-sync, QR guest
-  page, or trash/recycle-bin yet - all needed either ytmusicapi or a
-  Python-side API the Rust rewrite doesn't have yet. Deleting a track is
-  permanent (no undo) until a Rust-side trash equivalent gets built.
+- **Party-mode/LAN-sync + QR guest page still missing.** This is the one
+  remaining piece from the original app - it needs an embedded HTTP+SSE
+  server running inside the Rust process so other devices on the LAN can
+  connect (`/guest` page, `/api/party/state`, `/api/queue`, SSE broadcast),
+  which is a bigger architectural addition than the rest of this rewrite.
+  Planned next, not started yet.
+- Discover/recommendations, search-online, and lyrics are now implemented
+  in Rust (`discovery.rs`, `lyrics.rs`) - but discovery uses yt-dlp's own
+  `ytsearchN:` search instead of ytmusicapi (no Rust equivalent exists),
+  so result quality/ranking won't be identical to the old YT-Music-backed
+  version. Trash/recycle-bin is implemented (`trash.rs`) - deleting a track
+  moves it to a trash folder + JSON index, restorable from the Papierkorb
+  view, same as before.
+- No home-screen "Mehr von <Artist>" per-artist rows (just the one generic
+  "Andere Songs entdecken" shelf) - straightforward to add on top of
+  `discover_tracks`, just trimmed for scope in this pass.
 - Track duration shows "—" always - `id3` only reads tags, not audio frame
   structure, so getting exact duration needs an MP3-decoding crate
   (`symphonia` or similar), not done yet.

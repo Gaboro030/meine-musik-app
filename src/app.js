@@ -33,6 +33,25 @@ const searchPlaylistsGrid = document.getElementById("searchPlaylistsGrid");
 const searchSongsSection = document.getElementById("searchSongsSection");
 const searchPlaylistsSection = document.getElementById("searchPlaylistsSection");
 const searchNothingAtAll = document.getElementById("searchNothingAtAll");
+const searchOnlineSection = document.getElementById("searchOnlineSection");
+const searchOnlineGrid = document.getElementById("searchOnlineGrid");
+
+const discoverGrid = document.getElementById("discoverGrid");
+const discoverRefreshBtn = document.getElementById("discoverRefreshBtn");
+const recsSection = document.getElementById("recsSection");
+const recsGrid = document.getElementById("recsGrid");
+const recsRefreshBtn = document.getElementById("recsRefreshBtn");
+
+const trashView = document.getElementById("trashView");
+const trashTableBody = document.getElementById("trashTableBody");
+const trashEmpty = document.getElementById("trashEmpty");
+
+const pbLyrics = document.getElementById("pbLyrics");
+const lyricsOverlay = document.getElementById("lyricsOverlay");
+const lyricsTitle = document.getElementById("lyricsTitle");
+const lyricsArtist = document.getElementById("lyricsArtist");
+const lyricsBody = document.getElementById("lyricsBody");
+const lyricsCloseBtn = document.getElementById("lyricsCloseBtn");
 
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 const themePopover = document.getElementById("themePopover");
@@ -98,6 +117,7 @@ let shuffleOrder = [];
 let isLiked = false;
 let currentView = "home";
 let previousView = "home";
+let nowPlayingMeta = null; // {title, artist, cover} - feeds the lyrics overlay
 
 /* ===== Helpers ===== */
 function fmtTime(sec) {
@@ -136,12 +156,13 @@ async function loadLibrary() {
 
 /* ===== View Switching ===== */
 function showView(view) {
-  if (!library.length) {
+  if (!library.length && view !== "trash") {
     emptyState.classList.remove("hidden");
     homeView.classList.add("hidden");
     libraryView.classList.add("hidden");
     playlistView.classList.add("hidden");
     searchView.classList.add("hidden");
+    trashView.classList.add("hidden");
     navBackBtn.disabled = true;
     return;
   }
@@ -150,6 +171,7 @@ function showView(view) {
   homeView.classList.toggle("hidden", view !== "home");
   libraryView.classList.toggle("hidden", view !== "library");
   playlistView.classList.toggle("hidden", view !== "playlist");
+  trashView.classList.toggle("hidden", view !== "trash");
   searchView.classList.add("hidden");
 
   document.querySelectorAll(".nav-item[data-view]").forEach((el) => {
@@ -161,6 +183,7 @@ function showView(view) {
     playlistList.querySelectorAll(".playlist-item").forEach((el) => el.classList.remove("active"));
   }
   navBackBtn.disabled = view !== "playlist";
+  if (view === "trash") loadTrash();
   currentView = view;
 }
 
@@ -220,6 +243,8 @@ function renderHome() {
     card.addEventListener("click", () => playTrackIn(plIdx, trackIdx));
     recentGrid.appendChild(card);
   });
+
+  loadDiscover();
 }
 
 /* ===== Library View ===== */
@@ -319,6 +344,7 @@ function selectPlaylist(idx) {
   playlistTrackCount.textContent = `${currentPlaylist.tracks.length} Titel`;
   if (isShuffle) buildShuffleOrder();
   renderTrackTable();
+  loadRecommendations();
 }
 
 /* ===== Confirm / Rename Modals ===== */
@@ -636,6 +662,7 @@ function playTrack(index) {
   updatePlayButton(true);
   updateMediaSessionMetadata(track);
   updateAmbientGlow(track.cover);
+  nowPlayingMeta = { title: track.title, artist: track.artist, cover: track.cover };
 }
 
 function updatePlayButton(playing) {
@@ -1350,9 +1377,42 @@ function exitSearchAndOpenPlaylist(plIdx) {
   setSearchActive(false);
   selectPlaylist(plIdx);
 }
+let onlineSearchTimer = null;
+let onlineSearchToken = 0;
+
+function updateSearchNothingState() {
+  const anyVisible = !searchSongsSection.classList.contains("hidden") ||
+    !searchPlaylistsSection.classList.contains("hidden") ||
+    !searchOnlineSection.classList.contains("hidden");
+  searchNothingAtAll.classList.toggle("hidden", anyVisible);
+}
+
+async function runOnlineSearch(q, token) {
+  let results = [];
+  try {
+    results = await invoke("search_online", { query: q });
+  } catch (_) {
+    results = [];
+  }
+  if (token !== onlineSearchToken) return;
+  renderOnlineResults(results);
+}
+function renderOnlineResults(results) {
+  searchOnlineGrid.innerHTML = "";
+  searchOnlineSection.classList.toggle("hidden", !results.length);
+  updateSearchNothingState();
+  if (!results.length) return;
+  results.forEach((rec) => searchOnlineGrid.appendChild(buildDiscoverCard(rec)));
+}
+
 function performSearch() {
   const q = searchInput.value.trim().toLowerCase();
-  if (!q) { setSearchActive(false); return; }
+  if (!q) {
+    setSearchActive(false);
+    clearTimeout(onlineSearchTimer);
+    onlineSearchToken++;
+    return;
+  }
   setSearchActive(true);
 
   const matchedTracks = [];
@@ -1366,8 +1426,328 @@ function performSearch() {
   });
   renderSearchSongs(matchedTracks);
   renderSearchPlaylists(matchedPlaylists);
-  searchNothingAtAll.classList.toggle("hidden", matchedTracks.length > 0 || matchedPlaylists.length > 0);
+
+  searchOnlineGrid.innerHTML = "";
+  searchOnlineSection.classList.remove("hidden");
+  const loading = document.createElement("div");
+  loading.className = "card-sub";
+  loading.textContent = "🌐 Suche online …";
+  searchOnlineGrid.appendChild(loading);
+  updateSearchNothingState();
+  clearTimeout(onlineSearchTimer);
+  const token = ++onlineSearchToken;
+  onlineSearchTimer = setTimeout(() => runOnlineSearch(searchInput.value.trim(), token), 450);
 }
 searchInput.addEventListener("input", performSearch);
+
+/* ===== Discover / Recommendations (yt-dlp search backed, desktop only) =====
+   Shared card builder for "found online, not downloaded yet" results -
+   used by Home's Discover row, playlist recommendations, and the search
+   bar's online section, so all three look and behave identically. */
+function buildDiscoverCard(rec) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.title = "Auf YouTube ansehen";
+
+  const coverWrap = document.createElement("div");
+  coverWrap.className = "card-cover-wrap";
+  const img = document.createElement("img");
+  img.className = "card-cover";
+  img.src = rec.cover || PLACEHOLDER_COVER;
+  img.alt = "";
+  const dlBtn = document.createElement("button");
+  dlBtn.className = "card-download-btn";
+  dlBtn.textContent = "⬇";
+  dlBtn.title = "In Bibliothek herunterladen";
+  dlBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    downloadDiscoverTrack(rec, dlBtn);
+  });
+  coverWrap.append(img, dlBtn);
+
+  const title = document.createElement("div");
+  title.className = "card-title";
+  title.textContent = rec.title;
+  const sub = document.createElement("div");
+  sub.className = "card-sub";
+  sub.textContent = rec.artist || "Unbekannter Interpret";
+
+  card.append(coverWrap, title, sub);
+  card.addEventListener("click", () => window.open(rec.url, "_blank", "noopener"));
+  return card;
+}
+
+async function downloadDiscoverTrack(rec, btn) {
+  btn.disabled = true;
+  btn.textContent = "⏳";
+  try {
+    await invoke("download_track", { videoId: rec.videoId, playlistName: "Entdeckt", title: rec.title });
+    btn.textContent = "✓";
+    btn.classList.add("done");
+    showToast(`⬇ „${rec.title}" in „Entdeckt" gespeichert`);
+    await refreshLibrary();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "⬇";
+    showToast(String(err) || "Download fehlgeschlagen.");
+  }
+}
+
+let currentDiscoverIds = [];
+async function loadDiscover(excludeIds) {
+  let recs = [];
+  try {
+    recs = await invoke("discover_tracks", { excludeIds: excludeIds || [] });
+  } catch (_) {
+    recs = [];
+  }
+  currentDiscoverIds = recs.map((r) => r.videoId);
+  renderDiscover(recs);
+}
+function renderDiscover(recs) {
+  discoverGrid.innerHTML = "";
+  if (!recs.length) {
+    const empty = document.createElement("div");
+    empty.className = "card-sub";
+    empty.textContent = "Gerade keine Vorschläge gefunden.";
+    discoverGrid.appendChild(empty);
+    return;
+  }
+  recs.forEach((rec) => discoverGrid.appendChild(buildDiscoverCard(rec)));
+}
+discoverRefreshBtn.addEventListener("click", async () => {
+  discoverRefreshBtn.classList.add("spinning");
+  discoverGrid.classList.add("swapping");
+  await loadDiscover(currentDiscoverIds);
+  discoverGrid.classList.remove("swapping");
+  setTimeout(() => discoverRefreshBtn.classList.remove("spinning"), 600);
+});
+
+let currentRecIds = [];
+async function loadRecommendations(excludeIds) {
+  if (!currentPlaylist) return;
+  const playlistName = currentPlaylist.name;
+  let recs = [];
+  try {
+    recs = await invoke("recommend_for_playlist", { playlistName, excludeIds: excludeIds || [] });
+  } catch (_) {
+    recs = [];
+  }
+  if (!currentPlaylist || currentPlaylist.name !== playlistName) return;
+  currentRecIds = recs.map((r) => r.videoId);
+  renderRecommendations(recs);
+}
+function renderRecommendations(recs) {
+  recsGrid.innerHTML = "";
+  if (!recs.length) {
+    const empty = document.createElement("div");
+    empty.className = "card-sub";
+    empty.textContent = "Gerade keine Vorschläge gefunden.";
+    recsGrid.appendChild(empty);
+    return;
+  }
+  recs.forEach((rec) => recsGrid.appendChild(buildDiscoverCard(rec)));
+}
+recsRefreshBtn.addEventListener("click", async () => {
+  recsRefreshBtn.classList.add("spinning");
+  recsGrid.classList.add("swapping");
+  await loadRecommendations(currentRecIds);
+  recsGrid.classList.remove("swapping");
+  setTimeout(() => recsRefreshBtn.classList.remove("spinning"), 600);
+});
+
+/* ===== Trash (Papierkorb) ===== */
+async function loadTrash() {
+  let entries = [];
+  try {
+    entries = await invoke("list_trash");
+  } catch (_) {
+    entries = [];
+  }
+  renderTrash(entries);
+}
+function renderTrash(entries) {
+  trashTableBody.innerHTML = "";
+  trashEmpty.classList.toggle("hidden", entries.length > 0);
+  entries
+    .slice()
+    .sort((a, b) => (b.trashedAt || 0) - (a.trashedAt || 0))
+    .forEach((entry) => {
+      const tr = document.createElement("tr");
+      tr.className = "track-row";
+
+      const tdTitle = document.createElement("td");
+      tdTitle.textContent = entry.filename;
+      const tdPlaylist = document.createElement("td");
+      tdPlaylist.textContent = entry.playlist;
+      const tdDate = document.createElement("td");
+      tdDate.textContent = entry.trashedAt
+        ? new Date(entry.trashedAt * 1000).toLocaleString("de-DE")
+        : "—";
+
+      const tdActions = document.createElement("td");
+      tdActions.className = "trash-actions-cell";
+      const restoreBtn = document.createElement("button");
+      restoreBtn.className = "trash-restore-btn";
+      restoreBtn.textContent = "↩️";
+      restoreBtn.title = "Wiederherstellen";
+      restoreBtn.addEventListener("click", async () => {
+        try {
+          await invoke("restore_trash", { trashId: entry.id });
+          showToast(`↩️ „${entry.filename}" wiederhergestellt`);
+          await refreshLibrary();
+          loadTrash();
+        } catch (err) {
+          showToast(String(err) || "Wiederherstellen fehlgeschlagen.");
+        }
+      });
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "trash-delete-btn";
+      deleteBtn.textContent = "🗑";
+      deleteBtn.title = "Endgültig löschen";
+      deleteBtn.addEventListener("click", () => {
+        showConfirmModal("Endgültig löschen?", `„${entry.filename}" wird unwiderruflich gelöscht.`, async () => {
+          try {
+            await invoke("delete_trash_forever", { trashId: entry.id });
+            showToast("🗑 Endgültig gelöscht");
+            loadTrash();
+          } catch (err) {
+            showToast(String(err) || "Löschen fehlgeschlagen.");
+          }
+        });
+      });
+      tdActions.append(restoreBtn, deleteBtn);
+
+      tr.append(tdTitle, tdPlaylist, tdDate, tdActions);
+      trashTableBody.appendChild(tr);
+    });
+}
+
+/* ===== Lyrics Overlay (karaoke-style synced highlighting) =====
+   fetch_lyrics returns `synced` (LRC string with [mm:ss.xx] timestamps)
+   when lrclib has the song, else plain text. Text lands via textContent -
+   lyrics come from an external API and could contain arbitrary markup. */
+let lyricsSyncLines = null;
+let lyricsActiveIdx = -1;
+let lyricsRequestToken = 0;
+
+function parseLrc(lrc) {
+  const out = [];
+  lrc.split("\n").forEach((raw) => {
+    const times = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
+    if (!times.length) return;
+    const text = raw.replace(/\[\d+:\d+(?:\.\d+)?\]/g, "").trim();
+    times.forEach((m) => out.push({ t: Number(m[1]) * 60 + Number(m[2]), text }));
+  });
+  return out.sort((a, b) => a.t - b.t);
+}
+function renderSyncedLyrics(lines) {
+  lyricsBody.textContent = "";
+  lyricsBody.classList.remove("static");
+  lyricsSyncLines = [];
+  lyricsActiveIdx = -1;
+  lines.forEach(({ t, text }) => {
+    const div = document.createElement("div");
+    div.className = "lyrics-line";
+    const base = document.createElement("span");
+    base.className = "lyrics-line-base";
+    base.textContent = text || "♪";
+    const fill = document.createElement("span");
+    fill.className = "lyrics-line-fill";
+    fill.textContent = text || "♪";
+    div.append(base, fill);
+    lyricsBody.appendChild(div);
+    lyricsSyncLines.push({ t, el: div });
+  });
+  updateLyricsHighlight();
+}
+function renderStaticLyrics(text) {
+  lyricsSyncLines = null;
+  lyricsActiveIdx = -1;
+  lyricsBody.classList.add("static");
+  lyricsBody.textContent = text;
+}
+
+let lyricsRafId = null;
+function updateLyricsHighlight() {
+  if (!lyricsSyncLines) return;
+  const t = audioEl.currentTime;
+  let idx = -1;
+  for (let i = 0; i < lyricsSyncLines.length; i++) {
+    if (lyricsSyncLines[i].t <= t) idx = i;
+    else break;
+  }
+  if (idx !== lyricsActiveIdx) {
+    lyricsSyncLines.forEach(({ el }, i) => {
+      el.classList.toggle("active", i === idx);
+      el.classList.toggle("sung", i < idx);
+      if (i !== idx) el.style.removeProperty("--wipe");
+    });
+    lyricsActiveIdx = idx;
+    if (idx >= 0) lyricsSyncLines[idx].el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  if (idx >= 0) {
+    const start = lyricsSyncLines[idx].t;
+    const end = idx + 1 < lyricsSyncLines.length ? lyricsSyncLines[idx + 1].t : start + 6;
+    const pct = Math.min(Math.max((t - start) / Math.max(end - start, 0.3), 0), 1) * 100;
+    lyricsSyncLines[idx].el.style.setProperty("--wipe", `${pct.toFixed(1)}%`);
+  }
+}
+function lyricsFrameLoop() {
+  updateLyricsHighlight();
+  lyricsRafId = lyricsOverlay.classList.contains("hidden") ? null : requestAnimationFrame(lyricsFrameLoop);
+}
+function startLyricsLoop() {
+  if (lyricsRafId === null) lyricsRafId = requestAnimationFrame(lyricsFrameLoop);
+}
+function stopLyricsLoop() {
+  if (lyricsRafId !== null) {
+    cancelAnimationFrame(lyricsRafId);
+    lyricsRafId = null;
+  }
+}
+
+async function openLyrics() {
+  if (!nowPlayingMeta) {
+    showToast("Gerade wird kein Titel abgespielt.");
+    return;
+  }
+  const meta = nowPlayingMeta;
+  const token = ++lyricsRequestToken;
+  lyricsOverlay.classList.remove("hidden");
+  startLyricsLoop();
+  lyricsTitle.textContent = meta.title;
+  lyricsArtist.textContent = meta.artist || "Unbekannter Interpret";
+  renderStaticLyrics("Lade Songtext …");
+  try {
+    const duration = isFinite(audioEl.duration) && audioEl.duration > 0 ? Math.round(audioEl.duration) : null;
+    const data = await invoke("fetch_lyrics", { title: meta.title, artist: meta.artist || "", duration });
+    if (token !== lyricsRequestToken) return;
+    if (data.synced) {
+      const lines = parseLrc(data.synced);
+      if (lines.length) {
+        renderSyncedLyrics(lines);
+        return;
+      }
+    }
+    renderStaticLyrics(data.lyrics || `${meta.title}\n\nKeine Lyrics gefunden.`);
+  } catch (_) {
+    if (token === lyricsRequestToken) renderStaticLyrics("Songtext konnte nicht geladen werden.");
+  }
+}
+function closeLyrics() {
+  lyricsOverlay.classList.add("hidden");
+  stopLyricsLoop();
+  lyricsSyncLines = null;
+  lyricsActiveIdx = -1;
+}
+audioEl.addEventListener("loadedmetadata", () => {
+  if (!lyricsOverlay.classList.contains("hidden") && nowPlayingMeta && lyricsTitle.textContent !== nowPlayingMeta.title) {
+    openLyrics();
+  }
+});
+pbLyrics.addEventListener("click", openLyrics);
+lyricsCloseBtn.addEventListener("click", closeLyrics);
+lyricsOverlay.addEventListener("click", (e) => { if (e.target === lyricsOverlay) closeLyrics(); });
 
 loadLibrary();
