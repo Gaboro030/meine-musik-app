@@ -108,7 +108,7 @@ async fn extract_youtube(app: &tauri::AppHandle, url: &str) -> Result<PlaylistEx
             });
         entries.push(PlaylistTrack {
             url: format!("https://www.youtube.com/watch?v={id}"),
-            id,
+            id: id.to_string(),
             title,
             uploader,
             duration,
