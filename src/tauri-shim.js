@@ -216,5 +216,14 @@
       audioEl.addEventListener("volumechange", update);
       update();
     }
+
+    // Full song name on hover (user-requested addition): every truncated
+    // title/artist label gets its complete text as a native tooltip.
+    // Delegated, so it also covers cards/rows rendered later.
+    const TRUNCATED = ".card-title, .card-sub, .track-title, .track-artist, .pb-title, .pb-artist";
+    document.addEventListener("mouseover", (e) => {
+      const el = e.target instanceof Element ? e.target.closest(TRUNCATED) : null;
+      if (el && !el.title && el.textContent) el.title = el.textContent;
+    });
   });
 })();

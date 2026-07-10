@@ -285,7 +285,7 @@ async function loadDiscover(excludeIds) {
 function buildDiscoverCard(rec) {
   const card = document.createElement("div");
   card.className = "card";
-  card.title = "Auf YouTube ansehen";
+  card.title = `${rec.title}${rec.artist ? " – " + rec.artist : ""}\nAuf YouTube ansehen`;
 
   const coverWrap = document.createElement("div");
   coverWrap.className = "card-cover-wrap";

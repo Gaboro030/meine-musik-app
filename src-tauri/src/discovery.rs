@@ -195,7 +195,7 @@ async fn gather(
     let mut seen = exclude_ids.clone();
     let mut candidates = Vec::new();
     for q in queries {
-        let Ok(results) = yt_search(app, q, 10).await else { continue };
+        let Ok(results) = yt_search(app, q, 15).await else { continue };
         for r in results {
             if seen.contains(&r.video_id) {
                 continue;
@@ -235,7 +235,7 @@ pub async fn discover_tracks(
         return Ok(vec![]);
     }
     let exclude: HashSet<String> = exclude_ids.into_iter().collect();
-    Ok(gather(&app, &queries, &have_titles, &exclude, 8).await)
+    Ok(gather(&app, &queries, &have_titles, &exclude, 12).await)
 }
 
 const GENERIC_PLAYLIST_NAMES: &[&str] = &[
@@ -269,7 +269,7 @@ pub async fn recommend_for_playlist(
         return Ok(vec![]);
     }
     let exclude: HashSet<String> = exclude_ids.into_iter().collect();
-    Ok(gather(&app, &queries, &have_titles, &exclude, 4).await)
+    Ok(gather(&app, &queries, &have_titles, &exclude, 8).await)
 }
 
 #[derive(Serialize, Clone)]
@@ -295,12 +295,12 @@ pub async fn discover_rows(
     }
     let have_titles: HashSet<String> =
         all_tracks.iter().map(|t| normalize_title(&t.title)).collect();
-    let artists = top_artists(&all_tracks, 3);
+    let artists = top_artists(&all_tracks, 4);
 
     let mut used: HashSet<String> = exclude_ids.into_iter().collect();
     let mut rows = Vec::new();
     for artist in artists {
-        let picks = gather(&app, &[artist.clone()], &have_titles, &used, 8).await;
+        let picks = gather(&app, &[artist.clone()], &have_titles, &used, 10).await;
         for p in &picks {
             used.insert(p.video_id.clone());
         }
@@ -321,7 +321,7 @@ pub async fn search_online(app: tauri::AppHandle, query: String) -> Result<Vec<O
     if query.trim().chars().count() < 2 {
         return Ok(vec![]);
     }
-    let results = yt_search(&app, &query, 12).await?;
+    let results = yt_search(&app, &query, 24).await?;
     Ok(results
         .into_iter()
         .filter(|r| !is_bad_variant(&format!("{} {}", r.title, r.artist)))

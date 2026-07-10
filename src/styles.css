@@ -1820,3 +1820,35 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   width: 34px;
   flex-shrink: 0;
 }
+
+/* ========= TAURI ADDITION (user request): full-length song names =========
+   Card titles/subtitles were single-line with ellipsis - long song names
+   were unreadable. Now wrap up to 2 lines (3 for the artist row shelves is
+   unnecessary - 2 covers virtually every real title) and the full name is
+   also available as a hover tooltip (set in player.js/shim). */
+.card-title {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+  min-height: calc(1.3em * 2);
+}
+.card-sub {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+/* Search results / discover shelves: slightly smaller cards -> more per row. */
+#searchOnlineGrid.card-grid,
+#discoverGrid.card-grid,
+#discoverArtistRows .card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+}
