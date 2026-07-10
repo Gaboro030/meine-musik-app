@@ -1,4 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
+// Bare npm-style import ("@tauri-apps/api/core") does NOT resolve in a
+// plain <script> served as a static file - no bundler in this project to
+// rewrite it, so the browser throws "Failed to resolve module specifier"
+// and the ENTIRE script aborts before a single addEventListener runs
+// (that's why every button did nothing). window.__TAURI__ is Tauri's own
+// injected global (enabled via app.withGlobalTauri in tauri.conf.json) -
+// no import needed at all.
+const { invoke } = window.__TAURI__.core;
 
 /* ===== DOM Elements ===== */
 const playlistList = document.getElementById("playlistList");
@@ -852,6 +859,7 @@ window.addEventListener("mousemove", (e) => { if (scrubbing) seekFromEvent(e); }
 window.addEventListener("mouseup", () => { scrubbing = false; });
 
 /* ===== Volume ===== */
+const pbVolumePercent = document.getElementById("pbVolumePercent");
 function setVolumeFromEvent(e) {
   const rect = pbVolumeWrap.querySelector(".pb-volume-track").getBoundingClientRect();
   const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
@@ -859,12 +867,19 @@ function setVolumeFromEvent(e) {
   audioEl.volume = pct;
   pbVolumeBar.style.width = `${pct * 100}%`;
   pbVolumeHandle.style.left = `${pct * 100}%`;
+  pbVolumePercent.textContent = `${Math.round(pct * 100)}%`;
   pbVolIcon.textContent = pct === 0 ? "🔇" : pct < 0.5 ? "🔉" : "🔊";
 }
 let scrubbingVolume = false;
 pbVolumeWrap.addEventListener("mousedown", (e) => { scrubbingVolume = true; setVolumeFromEvent(e); });
 window.addEventListener("mousemove", (e) => { if (scrubbingVolume) setVolumeFromEvent(e); });
 window.addEventListener("mouseup", () => { scrubbingVolume = false; });
+
+// Initial state: audioEl defaults to volume 1.0 with no user interaction
+// yet - sync the bar/handle/% to match on load instead of showing 0%.
+pbVolumeBar.style.width = `${audioEl.volume * 100}%`;
+pbVolumeHandle.style.left = `${audioEl.volume * 100}%`;
+pbVolumePercent.textContent = `${Math.round(audioEl.volume * 100)}%`;
 
 /* ===== Add local MP3s (drag & drop / file picker) =====
    Reads each dropped file client-side and sends its raw bytes to the Rust

@@ -478,6 +478,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .pb-progress-wrap:hover .pb-progress-handle { opacity: 1; }
 .player-bar-right { display: flex; align-items: center; gap: 8px; justify-self: end; }
 .pb-vol-icon { font-size: 1rem; color: var(--sp-muted); }
+.pb-volume-percent { font-size: 0.72rem; color: var(--sp-muted); font-variant-numeric: tabular-nums; width: 34px; flex-shrink: 0; }
 .pb-volume-wrap { width: 100px; padding: 8px 0; cursor: pointer; }
 .pb-volume-track { position: relative; height: 4px; border-radius: 100px; background: rgba(255,255,255,0.3); }
 .pb-volume-bar { position: absolute; inset: 0; width: 80%; background: var(--sp-text); border-radius: 100px; }
