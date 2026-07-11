@@ -6,7 +6,7 @@
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build && node scripts/collect-dist.mjs",
-    "build:android": "tauri android build && node scripts/collect-dist.mjs android",
+    "build:android": "tauri android build --apk --debug && node scripts/collect-dist.mjs android",
     "android:init": "tauri android init"
   },
   "devDependencies": {

@@ -44,7 +44,9 @@ wired up yet. Verified via `.github/workflows/build.yml`, not locally
    `ANDROID_HOME`/`NDK_HOME` set), then copy `android-extra/PlaybackService.kt`
    into the generated `gen/android/app/src/main/java/com/meinemusik/app/`,
    merge `AndroidManifest.additions.xml` into the generated manifest, then
-   `npm run build:android`.
+   `npm run build:android` - produces exactly one file, `dist-app/android-MeineMusik.apk`,
+   debug-keystore-signed so it installs straight from the phone by tapping
+   it (no `.aab`, no Play Store detour, no separate signing step needed).
 
 ## Party mode (ported)
 Party mode/LAN sync + QR guest page now live in `party.rs`: an embedded

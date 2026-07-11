@@ -33,10 +33,11 @@ function walk(dir, exts) {
 
 let files = [];
 if (mode === "android") {
-  files = walk(
-    join(root, "src-tauri", "gen", "android", "app", "build", "outputs"),
-    [".apk", ".aab"]
-  );
+  // .apk only - the user installs this by tapping it directly on their
+  // phone. An .aab (Android App Bundle) can't be sideloaded at all, it
+  // only exists for Play Store uploads, so it's deliberately excluded here
+  // (and "npm run build:android" now passes --apk to skip building one).
+  files = walk(join(root, "src-tauri", "gen", "android", "app", "build", "outputs"), [".apk"]);
 } else {
   files = walk(join(root, "src-tauri", "target", "release", "bundle"), [
     ".exe",
@@ -51,7 +52,11 @@ if (!files.length) {
   console.warn(`No build artifacts found for mode="${mode}" - did the build actually succeed?`);
 }
 for (const f of files) {
-  const dest = join(distApp, `${mode}-${f.split(/[\\/]/).pop()}`);
+  // One universal (non-split-per-abi) debug-signed APK is expected in
+  // android mode - give it a clean, predictable name instead of Gradle's
+  // "app-universal-debug.apk" so it's obvious which file to install.
+  const name = mode === "android" && files.length === 1 ? "MeineMusik.apk" : f.split(/[\\/]/).pop();
+  const dest = join(distApp, `${mode}-${name}`);
   copyFileSync(f, dest);
   console.log(`-> dist-app/${dest.split(/[\\/]/).pop()}`);
 }
