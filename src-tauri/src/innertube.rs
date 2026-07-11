@@ -1,10 +1,9 @@
-//! Native YouTube extraction over the Innertube API (what the official
-//! Android app itself uses, and what NewPipe builds on) - no yt-dlp, no
-//! ffmpeg, pure reqwest. This is the Android download path: yt-dlp ships
-//! no Android/ARM binary, so search/playlist/download all go through here
-//! on that platform. The ANDROID client profile is used deliberately -
-//! its stream URLs come back directly playable, with no signature
-//! deciphering step.
+//! Native YouTube extraction over the Innertube API (the same private API
+//! NewPipe/yt-dlp reverse-engineered) - no yt-dlp, no ffmpeg, pure
+//! reqwest. This is the Android download path: yt-dlp ships no Android/ARM
+//! binary, so search/playlist/download all go through here on that
+//! platform. See `web_context()`/`player_context()` below for which
+//! Innertube client profile is used where and why.
 //!
 //! Trade-off vs. the desktop yt-dlp path: no MP3 conversion (no ffmpeg on
 //! the phone), so audio downloads land as `.m4a` (AAC), which Android's
@@ -14,17 +13,37 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 const YT_API: &str = "https://www.youtube.com/youtubei/v1";
-const ANDROID_KEY: &str = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w";
-const CLIENT_VERSION: &str = "19.44.38";
-const UA: &str = "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip";
+// Public, widely-used Innertube key (same one youtube.com's own web client
+// ships in its page source) - works for both client profiles below.
+const INNERTUBE_KEY: &str = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
 
-fn context() -> Value {
+/// Google tightened the ANDROID client in 2024/2025: server-side (non-real-
+/// device) requests now get a bare 400 "Precondition check failed" on
+/// every endpoint, and the WEB client's /player needs a PoToken it doesn't
+/// have either ("Video nicht verfügbar" for every video). Two profiles
+/// split the work around both restrictions:
+/// - WEB for /search and /browse (metadata only, no restriction there)
+/// - ANDROID_VR (Meta Quest's YouTube app) for /player - not yet gated
+///   behind PoToken/device-attestation, still returns direct, unciphered
+///   stream URLs. Verified against the live API while building this.
+fn web_context() -> Value {
     json!({
         "client": {
-            "clientName": "ANDROID",
-            "clientVersion": CLIENT_VERSION,
-            "androidSdkVersion": 34,
-            "userAgent": UA,
+            "clientName": "WEB",
+            "clientVersion": "2.20240101.00.00",
+            "hl": "de",
+            "gl": "DE",
+        }
+    })
+}
+fn player_context() -> Value {
+    json!({
+        "client": {
+            "clientName": "ANDROID_VR",
+            "clientVersion": "1.60.19",
+            "deviceMake": "Oculus",
+            "deviceModel": "Quest 3",
+            "androidSdkVersion": 32,
             "hl": "de",
             "gl": "DE",
         }
@@ -32,16 +51,13 @@ fn context() -> Value {
 }
 
 fn http() -> reqwest::Client {
-    reqwest::Client::builder()
-        .user_agent(UA)
-        .build()
-        .unwrap_or_default()
+    reqwest::Client::builder().build().unwrap_or_default()
 }
 
-async fn call(client: &reqwest::Client, endpoint: &str, mut body: Value) -> Result<Value, String> {
-    body["context"] = context();
+async fn call(client: &reqwest::Client, endpoint: &str, context: Value, mut body: Value) -> Result<Value, String> {
+    body["context"] = context;
     let resp = client
-        .post(format!("{YT_API}/{endpoint}?key={ANDROID_KEY}&prettyPrint=false"))
+        .post(format!("{YT_API}/{endpoint}?key={INNERTUBE_KEY}&prettyPrint=false"))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
@@ -139,7 +155,7 @@ const VIDEO_RENDERER_KEYS: &[&str] = &[
 
 pub async fn search(query: &str, limit: usize) -> Result<Vec<crate::discovery::OnlineTrack>, String> {
     let client = http();
-    let data = call(&client, "search", json!({ "query": query })).await?;
+    let data = call(&client, "search", web_context(), json!({ "query": query })).await?;
     let mut nodes = Vec::new();
     collect_renderers(&data, VIDEO_RENDERER_KEYS, &mut nodes);
     let mut out = Vec::new();
@@ -155,6 +171,74 @@ pub async fn search(query: &str, limit: usize) -> Result<Vec<crate::discovery::O
         }
     }
     Ok(out)
+}
+
+/// Like collect_renderers, but matches one exact object key anywhere in the
+/// tree - used for the newer "lockupViewModel" playlist-item shape.
+fn collect_by_key<'a>(v: &'a Value, key: &str, out: &mut Vec<&'a Value>) {
+    match v {
+        Value::Object(map) => {
+            for (k, val) in map {
+                if k == key {
+                    out.push(val);
+                }
+                collect_by_key(val, key, out);
+            }
+        }
+        Value::Array(arr) => {
+            for val in arr {
+                collect_by_key(val, key, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// First badge/overlay text that looks like a duration ("3:15", "1:02:03")
+/// - the field name/nesting under a lockupViewModel's thumbnail overlays
+///   shifts, so this scans generically instead of hardcoding a pointer path.
+fn find_duration_text(v: &Value) -> Option<f64> {
+    static DUR_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = DUR_RE.get_or_init(|| regex::Regex::new(r"^\d{1,2}(:\d{2}){1,2}$").unwrap());
+    match v {
+        Value::String(s) if re.is_match(s) => parse_length_text(s),
+        Value::Object(map) => map.values().find_map(find_duration_text),
+        Value::Array(arr) => arr.iter().find_map(find_duration_text),
+        _ => None,
+    }
+}
+
+fn lockup_to_track(lv: &Value) -> Option<crate::playlist::PlaylistTrack> {
+    if lv.get("contentType").and_then(|x| x.as_str()) != Some("LOCKUP_CONTENT_TYPE_VIDEO") {
+        return None;
+    }
+    let id = lv.get("contentId").and_then(|x| x.as_str())?.to_string();
+    let meta = lv.pointer("/metadata/lockupMetadataViewModel")?;
+    let title = meta.pointer("/title/content").and_then(|x| x.as_str())?.to_string();
+    let uploader = meta
+        .pointer("/metadata/contentMetadataViewModel/metadataRows/0/metadataParts/0/text/content")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let thumbnail = lv
+        .pointer("/contentImage/thumbnailViewModel/image/sources")
+        .and_then(|x| x.as_array())
+        .and_then(|a| a.last())
+        .and_then(|t| t.get("url"))
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| Some(format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg")));
+    let duration = lv
+        .pointer("/contentImage/thumbnailViewModel/overlays")
+        .and_then(find_duration_text);
+    Some(crate::playlist::PlaylistTrack {
+        url: format!("https://www.youtube.com/watch?v={id}"),
+        id,
+        title,
+        uploader,
+        duration,
+        thumbnail,
+    })
 }
 
 fn parse_yt_url(url: &str) -> (Option<String>, Option<String>) {
@@ -179,7 +263,7 @@ pub async fn extract(url: &str) -> Result<crate::playlist::PlaylistExtract, Stri
     let client = http();
 
     if let Some(list_id) = list_id {
-        let data = call(&client, "browse", json!({ "browseId": format!("VL{list_id}") })).await?;
+        let data = call(&client, "browse", web_context(), json!({ "browseId": format!("VL{list_id}") })).await?;
         let mut nodes = Vec::new();
         collect_renderers(&data, VIDEO_RENDERER_KEYS, &mut nodes);
         let mut entries = Vec::new();
@@ -198,6 +282,20 @@ pub async fn extract(url: &str) -> Result<crate::playlist::PlaylistExtract, Stri
                 }
             }
         }
+        // YouTube migrated playlist browse pages to a newer "lockupViewModel"
+        // layout that doesn't use the classic *Renderer keys above at all -
+        // fall back to that shape when the classic walk found nothing.
+        if entries.is_empty() {
+            let mut lockups = Vec::new();
+            collect_by_key(&data, "lockupViewModel", &mut lockups);
+            for lv in lockups {
+                if let Some(t) = lockup_to_track(lv) {
+                    if seen.insert(t.id.clone()) {
+                        entries.push(t);
+                    }
+                }
+            }
+        }
         let title = data
             .pointer("/metadata/playlistMetadataRenderer/title")
             .and_then(|x| x.as_str())
@@ -213,7 +311,7 @@ pub async fn extract(url: &str) -> Result<crate::playlist::PlaylistExtract, Stri
     }
 
     if let Some(video_id) = video_id {
-        let data = call(&client, "player", json!({
+        let data = call(&client, "player", player_context(), json!({
             "videoId": video_id, "contentCheckOk": true, "racyCheckOk": true,
         }))
         .await?;
@@ -254,7 +352,7 @@ struct StreamPick {
 /// Audio: highest-bitrate AAC (audio/mp4 -> .m4a). Video: YouTube's
 /// pre-muxed progressive MP4s (audio already included, no merging needed).
 async fn pick_stream(client: &reqwest::Client, video_id: &str, want_video: bool) -> Result<StreamPick, String> {
-    let data = call(client, "player", json!({
+    let data = call(client, "player", player_context(), json!({
         "videoId": video_id, "contentCheckOk": true, "racyCheckOk": true,
     }))
     .await?;
