@@ -63,8 +63,8 @@ async fn player_data(client: &reqwest::Client, video_id: &str) -> (Value, Option
         .await
         {
             Ok(data) => {
-                let status = data.pointer("/playabilityStatus/status").and_then(|x| x.as_str());
-                if status == Some("OK") {
+                let status = data.pointer("/playabilityStatus/status").and_then(|x| x.as_str()).map(str::to_string);
+                if status.as_deref() == Some("OK") {
                     return (data, None);
                 }
                 let reason = data
@@ -73,7 +73,7 @@ async fn player_data(client: &reqwest::Client, video_id: &str) -> (Value, Option
                     .unwrap_or("Video nicht abspielbar.")
                     .to_string();
                 last = data;
-                if status != Some("LOGIN_REQUIRED") {
+                if status.as_deref() != Some("LOGIN_REQUIRED") {
                     // A real "not available"/"age restricted" etc. - no
                     // other client profile is going to change that, stop
                     // burning requests on the rest of the cascade.
