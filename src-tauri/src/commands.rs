@@ -443,7 +443,7 @@ pub async fn download_track(
     // Android: kein yt-dlp-Binary - native Innertube-Implementierung.
     if cfg!(target_os = "android") {
         return crate::innertube::download_progress(
-            &app, &state.music_root, "simple", &video_id, &title, "mp3", &playlist_name,
+            &app, &state.music_root, "simple", &video_id, &title, "", "mp3", &playlist_name,
         )
         .await;
     }
@@ -618,11 +618,24 @@ pub async fn download_track_progress(
         return Err("Ungueltige Video-ID.".into());
     }
 
+    // "Original-Studio-Audio bevorzugen": swap to a plain/"Topic" audio
+    // upload of the same song when one exists, instead of ripping the
+    // audio out of a music video. No hit just means we keep the video.
+    // Also matters on Android: "Official Video" uploads are exactly the
+    // ones YouTube's bot-check gates hardest, so this doubles as a first
+    // line of defense against that (see innertube.rs for the rest).
+    let mut video_id = video_id;
+    if format == "mp3" && prefer_audio && !uploader.is_empty() {
+        if let Some(alt) = crate::discovery::find_audio_alternative(&app, &title, &uploader, &video_id).await {
+            video_id = alt;
+        }
+    }
+
     // Android: kein yt-dlp/ffmpeg - native Innertube-Downloads (m4a/mp4),
     // gleiche Progress-Events, gleiche Ordnerstruktur.
     if cfg!(target_os = "android") {
         return crate::innertube::download_progress(
-            &app, &state.music_root, &task_id, &video_id, &title, &format, &playlist_name,
+            &app, &state.music_root, &task_id, &video_id, &title, &uploader, &format, &playlist_name,
         )
         .await;
     }
@@ -634,16 +647,6 @@ pub async fn download_track_progress(
     let out_template = dest_dir.join(format!("{safe_title}.%(ext)s"));
 
     let event_name = format!("dl-progress-{task_id}");
-
-    // "Original-Studio-Audio bevorzugen": swap to a plain/"Topic" audio
-    // upload of the same song when one exists, instead of ripping the
-    // audio out of a music video. No hit just means we keep the video.
-    let mut video_id = video_id;
-    if format == "mp3" && prefer_audio && !uploader.is_empty() {
-        if let Some(alt) = crate::discovery::find_audio_alternative(&app, &title, &uploader, &video_id).await {
-            video_id = alt;
-        }
-    }
 
     let attempts = build_attempts(&format, &bitrate, &quality);
     let progress_re = regex::Regex::new(r"([\d.]+)%").unwrap();
