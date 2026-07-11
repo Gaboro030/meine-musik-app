@@ -101,6 +101,29 @@ fn player_client_cascade(po: Option<&PoTokenData>) -> Vec<Value> {
 /// (prefers a real-sounding reason over the generic fallback text).
 async fn player_data(client: &reqwest::Client, video_id: &str) -> (Value, Option<String>) {
     let po = current_po_token();
+    let (data, reason) = player_data_once(client, video_id, po.clone()).await;
+    if reason.is_some() && po.is_none() {
+        // First attempt ran before the webview's PoToken (BotGuard) flow had
+        // finished (it takes a couple seconds after the page opens) - it
+        // can still complete a moment later. Poll briefly instead of
+        // surfacing a bot-check error that a few seconds' patience would
+        // have avoided; only worth it when we truly had no token yet (a
+        // token that already failed once won't succeed on retry).
+        for _ in 0..8 {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            if let Some(po) = current_po_token() {
+                return player_data_once(client, video_id, Some(po)).await;
+            }
+        }
+    }
+    (data, reason)
+}
+
+async fn player_data_once(
+    client: &reqwest::Client,
+    video_id: &str,
+    po: Option<PoTokenData>,
+) -> (Value, Option<String>) {
     let mut best_fail: Option<(Value, String)> = None;
     for ctx in player_client_cascade(po.as_ref()) {
         let mut body = json!({ "videoId": video_id, "contentCheckOk": true, "racyCheckOk": true });
@@ -128,9 +151,15 @@ async fn player_data(client: &reqwest::Client, video_id: &str) -> (Value, Option
             best_fail = Some((data, reason));
         }
     }
+    // Tag whether a PoToken was actually attached to this attempt - the
+    // single most useful piece of missing information from real-device bug
+    // reports so far. Lets the next failure report distinguish "token
+    // pipeline never fired" from "token fired but YouTube rejected it
+    // anyway" without guessing blind.
+    let tag = if po.is_some() { "PoToken: ja" } else { "PoToken: nein" };
     match best_fail {
-        Some((data, reason)) => (data, Some(reason)),
-        None => (Value::Null, Some("Video nicht abspielbar.".to_string())),
+        Some((data, reason)) => (data, Some(format!("{reason} [{tag}]"))),
+        None => (Value::Null, Some(format!("Video nicht abspielbar. [{tag}]"))),
     }
 }
 

@@ -38,6 +38,17 @@ const gpTrackCount = document.getElementById("gpTrackCount");
 let currentTitle = "playlist";
 let currentFormat = "mp3";
 
+/* Android's PoToken (BotGuard) generation runs in the background from page
+   load (see potoken-init.js) and takes a couple seconds - awaiting it here
+   before the first Innertube-touching call avoids firing a request that
+   loses the bot-check race by a second, which is exactly what was
+   happening before this. No-op on desktop (already-resolved promise). */
+function awaitPoToken(timeoutMs = 6000) {
+  const ready = window.__poTokenReady;
+  if (!ready) return Promise.resolve();
+  return Promise.race([ready, new Promise((r) => setTimeout(r, timeoutMs))]);
+}
+
 /* Android lädt nativ über die Innertube-API (innertube.rs) - kein ffmpeg
    dort, also landet Audio als M4A statt MP3 (spielt identisch ab). Der
    Hinweis-Banner erklärt nur noch diesen Unterschied. */
@@ -134,6 +145,7 @@ loadForm.addEventListener("submit", async (e) => {
   trackList.innerHTML = "";
 
   try {
+    await awaitPoToken();
     const data = await invoke("resolve_playlist", { url });
     currentTitle = data.title || "playlist";
     plTitle.textContent = data.title;
@@ -268,6 +280,7 @@ async function downloadOne(id, btn, trackEl) {
   });
 
   try {
+    await awaitPoToken();
     await invoke("download_track_progress", {
       taskId,
       videoId: id,
@@ -338,6 +351,7 @@ zipBtn.addEventListener("click", async () => {
     const title = cb.dataset.title || cb.dataset.id;
     gpTrackName.textContent = `🎵 ${title}`;
     try {
+      await awaitPoToken();
       await invoke("download_track_progress", {
         taskId: `batch${i}`,
         videoId: cb.dataset.id,

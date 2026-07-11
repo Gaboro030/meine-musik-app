@@ -29,6 +29,17 @@
   const csv = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
   const seg = (p) => decodeURIComponent(p);
 
+  // Android's PoToken (BotGuard) generation runs in the background from
+  // page load (potoken-init.js) and takes a couple seconds - awaited here
+  // before any call that actually hits YouTube's Innertube API, so the
+  // very first search/discover/download of a session doesn't race it and
+  // lose. No-op on desktop / once ready (already-resolved promise).
+  function awaitPoToken(timeoutMs = 6000) {
+    const ready = window.__poTokenReady;
+    if (!ready) return Promise.resolve();
+    return Promise.race([ready, new Promise((r) => setTimeout(r, timeoutMs))]);
+  }
+
   async function route(url, init) {
     const u = new URL(url, "http://tauri.local");
     const parts = u.pathname.split("/").filter(Boolean); // ["api", ...]
@@ -50,15 +61,19 @@
         return jsonResponse({ recommendations });
       }
       if (parts[2] === "discover-rows") {
+        await awaitPoToken();
         return jsonResponse({ rows: await invoke("discover_rows", { excludeIds: csv(q.get("exclude")) }) });
       }
       if (parts[2] === "discover") {
+        await awaitPoToken();
         return jsonResponse({ recommendations: await invoke("discover_tracks", { excludeIds: csv(q.get("exclude")) }) });
       }
       if (parts[2] === "search-online") {
+        await awaitPoToken();
         return jsonResponse({ results: await invoke("search_online", { query: q.get("q") || "" }) });
       }
       if (parts[2] === "download" && method === "POST") {
+        await awaitPoToken();
         const b = jsonBody();
         const playlist = b.playlist || "Entdeckt";
         await invoke("download_track", { videoId: b.id, playlistName: playlist, title: b.title || "Song" });
@@ -135,6 +150,7 @@
     if (parts[1] === "playlists" && parts[2] === "add-track" && method === "POST") {
       const b = jsonBody();
       if (b.video_id) {
+        await awaitPoToken();
         await invoke("download_track", {
           videoId: b.video_id,
           playlistName: b.target_playlist,
