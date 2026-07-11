@@ -40,14 +40,32 @@ fn official_video_re() -> &'static Regex {
     CELL.get_or_init(|| Regex::new(r"(?i)\bofficial\s*(music\s*)?video\b|\bmv\b").unwrap())
 }
 
+/// Detects live-performance uploads ("(Live)", "Live at Wembley", "MTV
+/// Unplugged", ...) - user-requested: avoid these in favor of the normal
+/// studio version whenever one is available. Deliberately specific (not a
+/// bare `\blive\b`, which would also match a legitimately titled song like
+/// "Live and Let Die") so it only catches actual live-performance framing.
+fn live_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| {
+        Regex::new(
+            r"(?i)\(live\)|\[live\]|-\s*live\b|\blive\s+at\b|\blive\s+in\b|\blive\s+from\b|\blive\s+performance\b|\blive\s+session\b|\blive\s+version\b|\bunplugged\b",
+        )
+        .unwrap()
+    })
+}
+
 /// Lower is preferred. "- Topic" channels are YouTube Music's own
 /// auto-generated audio-only uploads (no video track at all) - the closest
-/// thing to a Spotify studio master. Explicit "Official Video"/"MV" titles
-/// are pushed to the back; everything else (plain uploads, "Official
-/// Audio") sits in between.
+/// thing to a Spotify studio master. Live performances are pushed to the
+/// very back (worse than an "Official Video", which at least has the
+/// studio mix); everything else (plain uploads, "Official Audio") sits in
+/// between.
 pub(crate) fn audio_preference_score(title: &str, uploader: &str) -> i32 {
     if uploader.to_lowercase().trim_end().ends_with("- topic") {
         0
+    } else if live_re().is_match(title) {
+        3
     } else if official_video_re().is_match(title) {
         2
     } else {

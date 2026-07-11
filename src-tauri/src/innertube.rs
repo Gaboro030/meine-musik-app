@@ -604,9 +604,15 @@ async fn find_playable_alternative(
     uploader: &str,
     exclude_id: &str,
 ) -> Option<StreamPick> {
+    // Two queries x two candidates instead of three x three - each
+    // candidate costs a full /player cascade (verified live, not a guess),
+    // so this was the single biggest contributor to how long a bot-gated
+    // track took to resolve (up to 18 sequential /player calls in the
+    // worst case, one after another). Combined with verifying the two
+    // candidates of a query concurrently below (instead of one after the
+    // other), the worst case drops from ~9 sequential round trips to ~2.
     let queries = [
         format!("{title} {uploader} Audio"),
-        format!("{title} {uploader} Lyrics"),
         format!("{title} {uploader}"),
     ];
     let mut tried = std::collections::HashSet::new();
@@ -618,11 +624,31 @@ async fn find_playable_alternative(
             .filter(|r| !tried.contains(&r.video_id) && !crate::discovery::is_bad_variant(&format!("{} {}", r.title, r.artist)))
             .collect();
         candidates.sort_by_key(|r| crate::discovery::audio_preference_score(&r.title, &r.artist));
-        for c in candidates.into_iter().take(3) {
+        let mut picked: Vec<_> = candidates.into_iter().take(2).collect();
+        for c in &picked {
             tried.insert(c.video_id.clone());
-            if let Ok(pick) = pick_stream(client, &c.video_id, false).await {
-                return Some(pick);
+        }
+        match picked.len() {
+            2 => {
+                let b = picked.remove(1);
+                let a = picked.remove(0);
+                let (ra, rb) = tokio::join!(
+                    pick_stream(client, &a.video_id, false),
+                    pick_stream(client, &b.video_id, false)
+                );
+                if let Ok(pick) = ra {
+                    return Some(pick);
+                }
+                if let Ok(pick) = rb {
+                    return Some(pick);
+                }
             }
+            1 => {
+                if let Ok(pick) = pick_stream(client, &picked[0].video_id, false).await {
+                    return Some(pick);
+                }
+            }
+            _ => {}
         }
     }
     None
