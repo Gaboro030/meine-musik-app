@@ -242,6 +242,55 @@
         refreshQr(); // LAN-IP kann sich ändern (WLAN-Wechsel) - frisch holen
       });
       refreshQr();
+
+      // Guest-Link zum Antippen kopieren.
+      if (qrHint) {
+        qrHint.style.cursor = "pointer";
+        qrHint.title = "Klicken zum Kopieren";
+        qrHint.addEventListener("click", () => {
+          const m = qrHint.textContent.match(/https?:\/\/\S+/);
+          if (m && navigator.clipboard) {
+            navigator.clipboard.writeText(m[0]).then(() => {
+              const prev = qrHint.textContent;
+              qrHint.textContent = "✓ Link kopiert!";
+              setTimeout(() => { qrHint.textContent = prev; }, 1200);
+            }).catch(() => {});
+          }
+        });
+      }
+
+      // Internet-Link: cloudflared quick tunnel - Freunde können auch OHNE
+      // gleiches WLAN beitreten. Button wird ins QR-Popover injiziert.
+      const qrPopover = document.getElementById("qrPopover");
+      if (qrPopover) {
+        const netBtn = document.createElement("button");
+        netBtn.type = "button";
+        netBtn.id = "internetLinkBtn";
+        netBtn.className = "party-toggle-switch internet-link-btn";
+        netBtn.textContent = "🌍 Internet-Link erstellen";
+        let internetOn = false;
+        let busy = false;
+        netBtn.addEventListener("click", async () => {
+          if (busy) return;
+          busy = true;
+          netBtn.disabled = true;
+          netBtn.textContent = internetOn ? "Wird beendet …" : "Wird erstellt … (ca. 5 Sek.)";
+          try {
+            const res = await invoke("party_internet", { enable: !internetOn });
+            internetOn = !!res.public_url;
+            netBtn.textContent = internetOn ? "🌍 Internet-Link beenden" : "🌍 Internet-Link erstellen";
+            netBtn.classList.toggle("active", internetOn);
+            refreshQr();
+          } catch (err) {
+            netBtn.textContent = "🌍 Internet-Link erstellen";
+            if (qrHint) qrHint.textContent = String(err);
+          } finally {
+            busy = false;
+            netBtn.disabled = false;
+          }
+        });
+        qrPopover.appendChild(netBtn);
+      }
     }
 
     // Live volume percentage (user-requested addition on top of the 1:1

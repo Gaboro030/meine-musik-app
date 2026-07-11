@@ -40,6 +40,11 @@ pub struct HubInner {
     tx: broadcast::Sender<(String, String)>,
     port: AtomicU16,
     app: OnceLock<tauri::AppHandle>,
+    // Internet mode: cloudflared quick tunnel (free, no account) exposing
+    // the LAN server at a public https://*.trycloudflare.com URL so guests
+    // outside the WiFi can join too.
+    public_url: Mutex<Option<String>>,
+    tunnel: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
 }
 
 fn default_party_state() -> serde_json::Value {
@@ -60,6 +65,8 @@ impl Hub {
             tx,
             port: AtomicU16::new(DEFAULT_PORT),
             app: OnceLock::new(),
+            public_url: Mutex::new(None),
+            tunnel: Mutex::new(None),
         }))
     }
 
@@ -185,20 +192,105 @@ fn lan_ip() -> String {
 
 // --- Tauri commands (host side, via tauri-shim.js) --------------------------
 
-/// Guest URL + SVG QR code (as data: URI) for the sidebar popover.
-#[tauri::command]
-pub fn party_info(hub: tauri::State<Hub>) -> Result<serde_json::Value, String> {
-    let url = format!("http://{}:{}/guest", lan_ip(), hub.0.port.load(Ordering::Relaxed));
+fn qr_data_uri(url: &str) -> Result<String, String> {
     let code = qrcode::QrCode::new(url.as_bytes()).map_err(|e| e.to_string())?;
     let svg = code
         .render::<qrcode::render::svg::Color>()
         .min_dimensions(200, 200)
         .build();
-    let data_uri = format!(
+    Ok(format!(
         "data:image/svg+xml;utf8,{}",
         percent_encoding::utf8_percent_encode(&svg, percent_encoding::NON_ALPHANUMERIC)
-    );
-    Ok(json!({ "url": url, "qr": data_uri }))
+    ))
+}
+
+/// Guest URL + SVG QR code (as data: URI) for the sidebar popover. When the
+/// internet tunnel is up, the QR points at the public URL instead of the
+/// LAN one - the LAN address keeps working either way.
+#[tauri::command]
+pub fn party_info(hub: tauri::State<Hub>) -> Result<serde_json::Value, String> {
+    let public = hub.0.public_url.lock().unwrap().clone();
+    let url = public.clone().unwrap_or_else(|| {
+        format!("http://{}:{}/guest", lan_ip(), hub.0.port.load(Ordering::Relaxed))
+    });
+    Ok(json!({ "url": url, "qr": qr_data_uri(&url)?, "internet": public.is_some() }))
+}
+
+/// Toggle the internet guest link: spawns a cloudflared "quick tunnel"
+/// (free, anonymous, no Cloudflare account needed) that forwards a public
+/// https://<random>.trycloudflare.com address to the embedded LAN server.
+/// Guests anywhere on the internet can then use the exact same guest page,
+/// SSE sync and audio streaming - the tunnel is outbound-only, so it works
+/// through NAT/firewalls without any port forwarding.
+#[tauri::command]
+pub async fn party_internet(
+    app: tauri::AppHandle,
+    hub: tauri::State<'_, Hub>,
+    enable: bool,
+) -> Result<serde_json::Value, String> {
+    use tauri_plugin_shell::process::CommandEvent;
+    use tauri_plugin_shell::ShellExt;
+
+    if !enable {
+        if let Some(child) = hub.0.tunnel.lock().unwrap().take() {
+            let _ = child.kill();
+        }
+        *hub.0.public_url.lock().unwrap() = None;
+        return Ok(json!({ "ok": true, "public_url": serde_json::Value::Null }));
+    }
+
+    if let Some(existing) = hub.0.public_url.lock().unwrap().clone() {
+        return Ok(json!({ "ok": true, "public_url": existing }));
+    }
+
+    let port = hub.0.port.load(Ordering::Relaxed);
+    let spawned = app
+        .shell()
+        .sidecar("cloudflared")
+        .map_err(|_| "Internet-Link ist nur in der Desktop-App verfügbar.".to_string())?
+        .args([
+            "tunnel",
+            "--no-autoupdate",
+            "--url",
+            &format!("http://127.0.0.1:{port}"),
+        ])
+        .spawn()
+        .map_err(|e| format!("cloudflared konnte nicht starten: {e}"))?;
+    let (rx, child) = spawned;
+    *hub.0.tunnel.lock().unwrap() = Some(child);
+
+    // cloudflared prints the assigned URL to stderr within a few seconds -
+    // scan its output until it shows up (or give up after 45s).
+    let url_re = regex::Regex::new(r"https://[a-z0-9-]+\.trycloudflare\.com").unwrap();
+    let mut rx_opt = Some(rx);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
+    while std::time::Instant::now() < deadline {
+        let rx_ref = rx_opt.as_mut().unwrap();
+        match tokio::time::timeout(std::time::Duration::from_secs(5), rx_ref.recv()).await {
+            Ok(Some(CommandEvent::Stdout(bytes))) | Ok(Some(CommandEvent::Stderr(bytes))) => {
+                let line = String::from_utf8_lossy(&bytes);
+                if let Some(m) = url_re.find(&line) {
+                    let url = format!("{}/guest", m.as_str());
+                    *hub.0.public_url.lock().unwrap() = Some(url.clone());
+                    // Keep draining cloudflared's output so its pipe never
+                    // fills up and blocks the tunnel process.
+                    let mut rx_bg = rx_opt.take().unwrap();
+                    tauri::async_runtime::spawn(async move {
+                        while rx_bg.recv().await.is_some() {}
+                    });
+                    return Ok(json!({ "ok": true, "public_url": url }));
+                }
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => break, // tunnel process exited
+            Err(_) => {}       // 5s poll tick, keep waiting
+        }
+    }
+
+    if let Some(child) = hub.0.tunnel.lock().unwrap().take() {
+        let _ = child.kill();
+    }
+    Err("Internet-Link konnte nicht erstellt werden (Internetverbindung prüfen).".into())
 }
 
 #[tauri::command]

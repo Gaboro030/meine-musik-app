@@ -1852,3 +1852,222 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 16px;
 }
+
+/* ========= THEME-SYSTEM 2.0 (themes.js) =========
+   Schriftart pro Theme: --app-font wird von themes.js gesetzt; dieser
+   spätere body-Selektor gewinnt gegen die Original-Regel oben. */
+body {
+  font-family: var(--app-font, 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+.theme-popover-hint {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  color: var(--sp-muted-2);
+  text-align: center;
+}
+.theme-option-custom { border-top: 1px solid var(--sp-border); margin-top: 6px; padding-top: 10px; }
+
+/* --- Rechtsklick-Menü: was darf das Theme ändern --- */
+.theme-ctx-menu {
+  position: fixed;
+  z-index: 900;
+  min-width: 230px;
+  background: var(--sp-elevated);
+  border: 1px solid var(--sp-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  padding: 10px;
+  animation: ctxIn 0.12s ease;
+}
+@keyframes ctxIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+.theme-ctx-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sp-muted);
+  margin-bottom: 8px;
+}
+.theme-ctx-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.theme-ctx-row:hover { background: var(--sp-surface); }
+.theme-ctx-row input[type="checkbox"] { accent-color: var(--sp-green); width: 16px; height: 16px; }
+.theme-ctx-edit {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px;
+  border-radius: 100px;
+  background: var(--sp-green);
+  color: #000;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.theme-ctx-edit:hover { background: var(--sp-green-hover); }
+
+/* --- Custom-Theme-Editor --- */
+.custom-theme-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.custom-theme-modal {
+  width: min(420px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: var(--sp-elevated);
+  border: 1px solid var(--sp-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.7);
+  animation: ctxIn 0.15s ease;
+}
+.custom-theme-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--sp-border);
+}
+.custom-theme-header h3 { font-size: 1.05rem; font-weight: 800; }
+.custom-theme-close {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  color: var(--sp-muted);
+  font-size: 1rem;
+}
+.custom-theme-close:hover { background: var(--sp-elevated-hover); color: var(--sp-text); }
+.custom-theme-body { padding: 14px 20px; display: flex; flex-direction: column; gap: 4px; }
+.ct-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  font-size: 0.9rem;
+}
+.ct-row input[type="color"] {
+  width: 46px; height: 30px;
+  border: 1px solid var(--sp-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 2px;
+  cursor: pointer;
+}
+.ct-row select {
+  background: var(--sp-elevated-hover);
+  color: var(--sp-text);
+  border: 1px solid var(--sp-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-family: inherit;
+}
+.ct-row input[type="range"] { flex: 1; max-width: 180px; accent-color: var(--sp-green); }
+.ct-row .ct-radius-val { color: var(--sp-green); margin-left: 4px; }
+.ct-check { justify-content: flex-start; }
+.ct-check input { accent-color: var(--sp-green); width: 16px; height: 16px; }
+.custom-theme-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--sp-border);
+}
+.ct-reset {
+  padding: 9px 18px;
+  border-radius: 100px;
+  color: var(--sp-muted);
+  border: 1px solid var(--sp-border);
+  font-size: 0.85rem;
+}
+.ct-reset:hover { color: var(--sp-text); border-color: var(--sp-muted); }
+.ct-save {
+  padding: 9px 22px;
+  border-radius: 100px;
+  background: var(--sp-green);
+  color: #000;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.ct-save:hover { background: var(--sp-green-hover); }
+
+/* --- Theme-Effekte --- */
+body.fx-scanlines::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.14) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+body.fx-vaporwave::before,
+body.fx-custom-anim::before,
+body.fx-sunsetbg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.22;
+  background: linear-gradient(120deg, var(--sp-green), var(--sp-gradient-top), var(--sp-bg), var(--sp-green-hover));
+  background-size: 300% 300%;
+  animation: fxGradientShift 14s ease-in-out infinite;
+}
+@keyframes fxGradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+body.fx-glowpulse .pb-play,
+body.fx-glowpulse .btn-play-circle,
+body.fx-glowpulse .card-play-btn,
+body.fx-glowpulse .card-download-btn {
+  box-shadow: 0 0 18px 2px var(--sp-green);
+  animation: fxGlowPulse 3s ease-in-out infinite;
+}
+@keyframes fxGlowPulse {
+  0%, 100% { box-shadow: 0 0 12px 1px var(--sp-green); }
+  50% { box-shadow: 0 0 24px 5px var(--sp-green); }
+}
+
+/* --- Internet-Link-Button im QR-Popover --- */
+.internet-link-btn { margin-top: 10px; width: 100%; }
+.internet-link-btn.active { background: var(--sp-green); color: #000; }
+
+/* ========= UI-POLITUR (überall etwas cleaner) ========= */
+.card {
+  transition: background 0.2s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+}
+.sidebar-tool-popover, .add-to-playlist-menu {
+  backdrop-filter: blur(14px);
+  animation: ctxIn 0.14s ease;
+}
+.player-bar { backdrop-filter: blur(10px); }
+button { transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease; }
+button:active { transform: scale(0.97); }
+.nav-item, .playlist-list-item { transition: background 0.15s ease, color 0.15s ease; }
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-thumb { background: var(--sp-scrollbar); border-radius: 100px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--sp-muted-2); }
+:focus-visible { outline: 2px solid var(--sp-green); outline-offset: 2px; border-radius: var(--radius-sm); }
+.track-row { transition: background 0.14s ease; }
+body, .sidebar, .main-view, .player-bar, .card, .track-row {
+  transition-property: background-color, color, border-color;
+  transition-duration: 0.25s;
+}

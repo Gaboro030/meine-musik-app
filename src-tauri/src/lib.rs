@@ -78,6 +78,7 @@ pub fn run() {
             discovery::recommend_for_playlist,
             discovery::search_online,
             party::party_info,
+            party::party_internet,
             party::party_get_state,
             party::party_set_state,
             party::queue_list,
