@@ -109,6 +109,26 @@ npm run build                          # Release -> dist-app/
 ergibt genau eine Datei: `dist-app/android-MeineMusik.apk`, Debug-signiert,
 direkt installierbar (kein `.aab`, kein Play-Store-Umweg).
 
+## Android-Downloads & PoToken
+yt-dlp gibt's nicht für Android, also läuft der Download-Pfad dort nativ
+über YouTubes Innertube-API (`src-tauri/src/innertube.rs`) statt über den
+Sidecar. Seit 2025 verlangt YouTube dafür meist einen **PoToken** (eine
+kryptografische Bestätigung, dass eine echte Google-JS-Umgebung die
+Anfrage stellt) - reines Client-Spoofing reicht nicht mehr aus.
+
+Da die Tauri-WebView selbst eine echte Chromium/WebView2/WKWebView-
+Engine ist, generiert die App den PoToken clientseitig: `src/bgutils.js`
+(unverändert von [bgutils-js](https://github.com/LuanRT/BgUtils), MIT)
+orchestriert Googles eigenes BotGuard-Attestierungsskript (live pro
+Sitzung geladen, nie gespeichert), `src/potoken.js`/`potoken-init.js`
+starten das beim Laden von `index.html`/`downloader.html` auf Android im
+Hintergrund und übergeben das Ergebnis per `set_po_token` an Rust.
+`innertube.rs` hängt den Token an jeden `/player`-Call
+(`serviceIntegrityDimensions`) und an die eigentliche Stream-URL (`&pot=`)
+an. Ohne WebView-JS-Ausführung (`script-src 'unsafe-eval'` in der CSP)
+geht das nicht - das ist eine echte, unvermeidbare Voraussetzung von
+BotGuard, kein Sicherheitsloch, das wir aus Bequemlichkeit geöffnet haben.
+
 <details>
 <summary>📁 Projekt-Layout</summary>
 

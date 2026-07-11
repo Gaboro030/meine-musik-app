@@ -84,6 +84,7 @@ pub fn run() {
             party::party_set_state,
             party::queue_list,
             party::queue_remove,
+            innertube::set_po_token,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: https: http://stream.localhost; media-src 'self' stream: http://stream.localhost; connect-src 'self' ipc: http://ipc.localhost stream: http://stream.localhost; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
+      "csp": "default-src 'self'; img-src 'self' data: https: http://stream.localhost; media-src 'self' stream: http://stream.localhost; connect-src 'self' ipc: http://ipc.localhost stream: http://stream.localhost https://www.youtube.com https://jnn-pa.googleapis.com; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
     }
   },
   "bundle": {
