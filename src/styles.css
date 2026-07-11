@@ -2071,3 +2071,140 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   transition-property: background-color, color, border-color;
   transition-duration: 0.25s;
 }
+
+/* ========= REDESIGN 2.0 (user request: complete visual overhaul) =========
+   Structural HTML/JS stayed untouched (same IDs/classes player.js relies
+   on) - this is a full re-skin: floating glass sidebar + player bar,
+   gradient-scrim hover cards, pill-shaped active states, bigger spacing.
+   Appended last so it wins over the original rules above by source order. */
+
+.app-shell { gap: 14px; padding: 14px 14px 0; }
+
+/* --- Sidebar: floating glass panel --- */
+.sidebar {
+  background: linear-gradient(180deg, var(--sp-elevated) 0%, var(--sp-black) 100%);
+  border: 1px solid var(--sp-border);
+  border-radius: 18px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+  padding: 22px 14px;
+}
+.brand { padding: 0 10px 24px; font-size: 1.3rem; }
+.brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: var(--sp-green);
+  color: #000;
+  font-size: 1.1rem;
+}
+.nav-item {
+  border-radius: 100px;
+  padding: 11px 16px;
+  margin-bottom: 1px;
+}
+.nav-item:hover { background: var(--sp-surface); }
+.nav-item.active {
+  background: var(--sp-green);
+  color: #000;
+  font-weight: 800;
+}
+.playlist-item { border-radius: 12px; }
+.playlist-item.active {
+  background: var(--sp-surface);
+  box-shadow: inset 3px 0 0 var(--sp-green);
+}
+.sidebar-tools { gap: 6px; }
+.sidebar-tool-btn {
+  border-radius: 12px;
+  transition: background 0.15s ease, transform 0.12s ease;
+}
+.sidebar-tool-btn:hover { background: var(--sp-surface); transform: translateY(-1px); }
+
+/* --- Main view: a touch more breathing room --- */
+.main-view { padding: 22px 28px 28px; }
+.library-heading {
+  font-size: 2.2rem;
+  padding: 8px 0 28px;
+  background: linear-gradient(90deg, var(--sp-text), var(--sp-muted));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.home-section-title {
+  position: relative;
+  padding-left: 14px;
+}
+.home-section-title::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 4px; bottom: 4px;
+  width: 4px;
+  border-radius: 100px;
+  background: var(--sp-green);
+}
+
+/* --- Cards: gradient scrim + lift on hover instead of flat elevation --- */
+.card {
+  background: var(--sp-elevated);
+  border: 1px solid transparent;
+  padding: 12px;
+  border-radius: 16px;
+}
+.card:hover {
+  border-color: var(--sp-border);
+  background: var(--sp-elevated-hover);
+}
+.card-cover-wrap { border-radius: 12px; overflow: hidden; }
+.card-cover { border-radius: 0; transition: transform 0.35s ease; }
+.card:hover .card-cover { transform: scale(1.06); }
+.card-cover-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.55) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.card:hover .card-cover-wrap::after { opacity: 1; }
+.card-play-btn, .card-download-btn {
+  box-shadow: 0 10px 24px rgba(0,0,0,0.5), 0 0 0 4px var(--sp-elevated);
+}
+
+/* --- Player bar: floating pill instead of a flush black strip --- */
+.player-bar {
+  height: auto;
+  min-height: 86px;
+  margin: 0 14px 14px;
+  background: linear-gradient(180deg, var(--sp-elevated) 0%, var(--sp-black) 100%);
+  border: 1px solid var(--sp-border);
+  border-radius: 18px;
+  box-shadow: 0 -12px 40px rgba(0,0,0,0.3);
+  padding: 12px 20px;
+}
+.pb-cover {
+  width: 62px; height: 62px;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+}
+.pb-title { font-weight: 700; font-size: 0.9rem; }
+.pb-play {
+  width: 40px; height: 40px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+.pb-controls { gap: 22px; }
+.pb-progress-track { height: 5px; background: var(--sp-surface); }
+.pb-volume-track { background: var(--sp-surface); }
+
+/* --- Empty-state (leere Bibliothek) --- */
+.playlist-list-empty,
+.library-empty-state {
+  text-align: center;
+  padding: 20px 12px;
+}
+
+@media (max-width: 900px) {
+  .app-shell { padding: 8px 8px 0; gap: 8px; }
+  .player-bar { margin: 0 8px 8px; border-radius: 14px; }
+}
