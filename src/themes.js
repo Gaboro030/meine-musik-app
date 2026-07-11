@@ -320,13 +320,14 @@
   /* ===== Custom-Theme-Editor ===== */
   const customBtn = document.querySelector('.theme-option[data-theme="custom"]');
   if (customBtn) {
-    // Doppelklick oder Klick bei bereits aktivem Custom-Theme öffnet den Editor
+    // Klick aktiviert das Custom-Theme; war es schon aktiv, öffnet der
+    // Klick den Editor. Doppelklick öffnet ihn immer.
     customBtn.addEventListener("dblclick", openCustomEditor);
-    customBtn.addEventListener("click", () => {
-      if (customBtn.dataset.wasActive === "1") openCustomEditor();
-      customBtn.dataset.wasActive = "1";
-      document.querySelectorAll('.theme-option:not([data-theme="custom"])').forEach((b) => {
-        b.addEventListener("click", () => { customBtn.dataset.wasActive = ""; }, { once: true });
+    let customWasActive = false;
+    document.querySelectorAll(".theme-option").forEach((b) => {
+      b.addEventListener("click", () => {
+        if (b === customBtn && customWasActive) openCustomEditor();
+        customWasActive = b === customBtn;
       });
     });
   }

@@ -446,6 +446,13 @@ function renderLibraryGrid() {
 
 /* Play a track that lives in a specific playlist, keeping next/prev in that playlist's context. */
 function playTrackIn(plIdx, trackIdx) {
+  // Gleicher Track wie der gerade geladene: pausieren/fortsetzen statt
+  // neu starten (Karten auf Home/Suche + Suchergebnisse laufen hierüber).
+  const target = library[plIdx] && library[plIdx].tracks[trackIdx];
+  if (target && nowPlayingMeta && nowPlayingMeta.stream_url === target.stream_url) {
+    togglePlayPause();
+    return;
+  }
   currentPlaylist = library[plIdx];
   playlistList.querySelectorAll(".playlist-item").forEach((el, i) => {
     el.classList.toggle("active", i === plIdx);
@@ -779,7 +786,15 @@ function renderTrackTable() {
     tdRemove.appendChild(removeBtn);
 
     tr.append(tdIndex, tdTitle, tdAlbum, tdDuration, tdAdd, tdRemove);
-    tr.addEventListener("click", () => playTrack(i));
+    tr.addEventListener("click", () => {
+      // Klick auf den bereits laufenden Track: pausieren bzw. fortsetzen
+      // statt von vorne zu starten.
+      if (i === currentTrackIndex && nowPlayingMeta && nowPlayingMeta.stream_url === t.stream_url) {
+        togglePlayPause();
+      } else {
+        playTrack(i);
+      }
+    });
     trackTableBody.appendChild(tr);
   });
   highlightPlayingRow();

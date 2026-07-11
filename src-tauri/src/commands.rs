@@ -515,6 +515,12 @@ fn build_ytdlp_args(out_template: &Path, video_id: &str, format: &str, a: &DlAtt
         args.push(if a.fallback { "best".into() } else { format!("bv*{cap}+ba/b{cap}") });
         args.push("--merge-output-format".into());
         args.push("mp4".into());
+        // --merge-output-format greift nur beim Muxen zweier Streams - ein
+        // Single-File-"best" kann als .webm landen und der .mp4-Check am
+        // Ende schlüge fehl. Remux erzwingt mp4 in jedem Fall (kein
+        // Re-Encode, nur Container-Wechsel via gebundeltem ffmpeg).
+        args.push("--remux-video".into());
+        args.push("mp4".into());
     } else {
         args.push("-f".into());
         args.push("bestaudio/best".into());

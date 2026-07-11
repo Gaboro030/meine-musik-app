@@ -74,6 +74,15 @@ impl Hub {
         let _ = self.0.app.set(app);
     }
 
+    /// Kills the cloudflared tunnel child, if any - called on app exit so
+    /// the sidecar process can't outlive the app.
+    pub fn shutdown(&self) {
+        if let Some(child) = self.0.tunnel.lock().unwrap().take() {
+            let _ = child.kill();
+        }
+        *self.0.public_url.lock().unwrap() = None;
+    }
+
     /// Fan-out: SSE to every guest phone AND the Tauri event bus for the
     /// host UI (tauri-shim.js maps EventSource("/api/events") listeners
     /// onto `party-<name>` Tauri events).

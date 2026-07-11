@@ -84,6 +84,15 @@ pub fn run() {
             party::queue_list,
             party::queue_remove,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            // cloudflared läuft als eigener Prozess - ohne expliziten Kill
+            // würde der Tunnel das App-Ende überleben.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(hub) = app_handle.try_state::<party::Hub>() {
+                    hub.shutdown();
+                }
+            }
+        });
 }
