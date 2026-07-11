@@ -133,6 +133,14 @@ pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
             meta.cover = Some(format!("data:{};base64,{}", pic.mime_type, encoded));
         }
     }
+    // m4a-Dateien (Android-Downloads) haben keine ID3-Frames fürs Cover -
+    // der Downloader legt stattdessen ein "<name>.jpg" daneben.
+    if meta.cover.is_none() {
+        let sidecar = path.with_extension("jpg");
+        if let Ok(bytes) = std::fs::read(&sidecar) {
+            meta.cover = Some(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)));
+        }
+    }
     // id3 only reads tags, not audio structure - mp3-duration walks the
     // actual MP3 frames for the real playing time (what mutagen's
     // audio.info.length did in the Flask backend).
@@ -157,7 +165,9 @@ fn scan_playlist_dir(dir: &Path, name: &str) -> Option<PlaylistOut> {
         .filter(|p| {
             p.extension()
                 .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("mp3"))
+                // .m4a: Android-Downloads (Innertube, kein ffmpeg zum
+                // MP3-Konvertieren) - WebView spielt AAC nativ.
+                .map(|e| e.eq_ignore_ascii_case("mp3") || e.eq_ignore_ascii_case("m4a"))
                 .unwrap_or(false)
         })
         .map(|p| {
@@ -423,12 +433,19 @@ pub async fn download_track(
 ) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
 
-    require_ytdlp()?;
     if !video_id.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
         || video_id.len() < 6
         || video_id.len() > 20
     {
         return Err("Ungueltige Video-ID.".into());
+    }
+
+    // Android: kein yt-dlp-Binary - native Innertube-Implementierung.
+    if cfg!(target_os = "android") {
+        return crate::innertube::download_progress(
+            &app, &state.music_root, "simple", &video_id, &title, "mp3", &playlist_name,
+        )
+        .await;
     }
 
     let clean_playlist = safe_filename(&playlist_name);
@@ -551,21 +568,6 @@ fn speed_re() -> &'static regex::Regex {
     CELL.get_or_init(|| regex::Regex::new(r"at\s+([\d.]+\w+/s)").unwrap())
 }
 
-/// yt-dlp/ffmpeg ship no official Android/ARM builds, so the sidecar
-/// binary simply isn't in the APK there - spawning it fails with a raw
-/// "No such file or directory (os error 2)" that means nothing to a user.
-/// Every download/search/playlist-resolve entry point checks this first so
-/// Android gets one clear German explanation instead of that OS error.
-pub(crate) fn require_ytdlp() -> Result<(), String> {
-    if cfg!(target_os = "android") {
-        Err("Downloads/Suche funktionieren auf Android noch nicht (yt-dlp gibt es nicht für Android). \
-             Lade Musik am PC (Windows/Linux) herunter - sie taucht dann über Party-Modus/Sync auf dem Handy auf."
-            .into())
-    } else {
-        Ok(())
-    }
-}
-
 fn friendly_download_error(stderr: &str) -> String {
     if stderr.contains("Sign in to confirm") || stderr.contains("not a bot") {
         return "YouTube blockiert die Anfrage (Bot-Schutz). Später erneut versuchen.".into();
@@ -609,12 +611,20 @@ pub async fn download_track_progress(
     use tauri_plugin_shell::process::CommandEvent;
     use tauri_plugin_shell::ShellExt;
 
-    require_ytdlp()?;
     if !video_id.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
         || video_id.len() < 6
         || video_id.len() > 20
     {
         return Err("Ungueltige Video-ID.".into());
+    }
+
+    // Android: kein yt-dlp/ffmpeg - native Innertube-Downloads (m4a/mp4),
+    // gleiche Progress-Events, gleiche Ordnerstruktur.
+    if cfg!(target_os = "android") {
+        return crate::innertube::download_progress(
+            &app, &state.music_root, &task_id, &video_id, &title, &format, &playlist_name,
+        )
+        .await;
     }
 
     let clean_playlist = safe_filename(&playlist_name);

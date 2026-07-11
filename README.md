@@ -1,88 +1,149 @@
-# Meine Musik — Tauri v2 rewrite
+<div align="center">
 
-Status: Windows + Linux builds are green in CI (GitHub Actions). Android
-builds too, but see the gaps below - background playback control isn't
-wired up yet. Verified via `.github/workflows/build.yml`, not locally
-(this dev machine has no Rust toolchain installed).
+<img src="icons-source.png" width="120" alt="Meine Musik" />
 
-## What's here
-- `src-tauri/` — Rust core: `commands.rs` (playlist CRUD, real ID3 tag/cover
-  reading via the `id3` crate, path-traversal-safe streaming, SSRF-checked
-  thumbnail fetch, yt-dlp sidecar download), `lib.rs`/`main.rs` (window
-  setup, `stream://` protocol registration - the library has no separate
-  JSON index, `music_root/<playlist>/*.mp3` on disk IS the library, same
-  model the old Flask `scan_library()` used).
-- `src/` — full 1:1 visual port of the Flask player's UI (`styles.css` is
-  the same Spotify-style CSS incl. all 13 color themes, `index.html`/
-  `app.js` are a trimmed port - same playback engine, shuffle, equalizer,
-  soft crossfade, drag-and-drop playlist import, add-to-playlist menu,
-  configurable hotkeys, Dynamic Glow, settings modal).
-- `android-extra/` — `PlaybackService.kt` + manifest additions for Android
-  background/lockscreen playback. Not merged into `gen/android` yet because
-  that folder only exists after `tauri android init` runs.
-- `scripts/collect-dist.mjs` — copies build output into `dist-app/`
-  (Tauri/cargo always write to `src-tauri/target/.../bundle/` or
-  `gen/android/.../outputs/`; there's no config to redirect that directly).
+# 🎵 Meine Musik
 
-## To actually build this, in order
-1. Install Rust: https://rustup.rs
-2. `npm install` in this folder.
-3. `cargo install tauri-cli --version "^2"` (or use `npm run tauri` once
-   `@tauri-apps/cli` is installed via npm — either works).
-4. Generate real app icons: `npx tauri icon path/to/source-1024.png`
-   (writes into `src-tauri/icons/`, referenced by `tauri.conf.json`).
-5. **yt-dlp sidecar**: download the `yt-dlp` binary for each target platform,
-   name it per Tauri's sidecar convention (`yt-dlp-x86_64-pc-windows-msvc.exe`,
-   `yt-dlp-x86_64-unknown-linux-gnu`, ...) into `src-tauri/binaries/`, and add
-   `"externalBin": ["binaries/yt-dlp"]` to `tauri.conf.json`'s `bundle`
-   section. `download_track` in `commands.rs` calls it via
-   `tauri-plugin-shell`'s sidecar API.
-6. `npm run dev` — desktop dev build, opens a native window.
-7. `npm run build` — Windows/Linux release build, then copies installers
-   into `dist-app/`.
-8. Android: `npm run android:init` (needs Android SDK + NDK installed and
-   `ANDROID_HOME`/`NDK_HOME` set), then copy `android-extra/PlaybackService.kt`
-   into the generated `gen/android/app/src/main/java/com/meinemusik/app/`,
-   merge `AndroidManifest.additions.xml` into the generated manifest, then
-   `npm run build:android` - produces exactly one file, `dist-app/android-MeineMusik.apk`,
-   debug-keystore-signed so it installs straight from the phone by tapping
-   it (no `.aab`, no Play Store detour, no separate signing step needed).
+### Dein eigener Spotify-Klon — Windows · Linux · Android
 
-## Party mode (ported)
-Party mode/LAN sync + QR guest page now live in `party.rs`: an embedded
-axum server on port 8765 (falls back to a random free port) serves the
-`/guest` page, `/api/party/state`, `/api/queue`, `/stream/...` and an SSE
-`/api/events` bus to every device on the same WiFi. The host app talks to
-the same shared Hub through Tauri commands (`party_info`, `party_set_state`,
-`queue_list`, ...) and receives guest events over Tauri's event bus
-(`party-queue_update`, `party-party_sync`) via the fake EventSource in
-`tauri-shim.js`. First launch on Windows triggers a firewall prompt -
-"Allow" is required for guests to connect.
+**Playlists · YouTube/Spotify-Import · Party-Modus · Themes · 100 % lokal, keine Cloud**
 
-## Known gaps vs. the old Flask app (not yet ported)
-- Discover/recommendations, search-online, and lyrics are now implemented
-  in Rust (`discovery.rs`, `lyrics.rs`) - but discovery uses yt-dlp's own
-  `ytsearchN:` search instead of ytmusicapi (no Rust equivalent exists),
-  so result quality/ranking won't be identical to the old YT-Music-backed
-  version. Trash/recycle-bin is implemented (`trash.rs`) - deleting a track
-  moves it to a trash folder + JSON index, restorable from the Papierkorb
-  view, same as before.
-- No home-screen "Mehr von <Artist>" per-artist rows (just the one generic
-  "Andere Songs entdecken" shelf) - straightforward to add on top of
-  `discover_tracks`, just trimmed for scope in this pass.
-- Track duration shows "—" always - `id3` only reads tags, not audio frame
-  structure, so getting exact duration needs an MP3-decoding crate
-  (`symphonia` or similar), not done yet.
-- `upload_track` sends file bytes as a JSON number array over the Tauri IPC
-  bridge - correct but not the fastest way to move large files; fine for
-  a personal library, would want a real binary transfer for very large
-  bulk imports.
-- **YouTube downloads are desktop-only.** yt-dlp doesn't publish official
-  Android/ARM binaries, so there's no real sidecar to bundle for Android -
-  `download_track` will fail there until a proper on-device downloader
-  exists (either a statically-linked ARM yt-dlp build you compile yourself,
-  or reimplementing extraction natively). `tauri.android.conf.json` clears
-  `bundle.externalBin` for the Android build so it doesn't fail looking for
-  sidecar files that were never going to work anyway. Streaming/playing
-  already-downloaded tracks is unaffected - only fetching *new* ones from
-  YouTube is desktop-only for now.
+[![Download](https://img.shields.io/badge/⬇_Download-Neueste_Version-1db954?style=for-the-badge)](../../actions/workflows/build.yml)
+&nbsp;
+[![Build](https://img.shields.io/github/actions/workflow/status/Gaboro030/meine-musik-app/build.yml?style=for-the-badge&label=Build)](../../actions)
+
+![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux&logoColor=black)
+![Android](https://img.shields.io/badge/Android-3DDC84?style=flat-square&logo=android&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-000000?style=flat-square&logo=rust&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri_v2-24C8DB?style=flat-square&logo=tauri&logoColor=white)
+
+</div>
+
+---
+
+## 🌍 Was ist das?
+
+**Meine Musik** ist ein nativer Musik-Player mit eingebautem Downloader:
+Spotify-, YouTube- oder YouTube-Music-Link reinwerfen, Titel auswählen,
+fertig — alles landet als MP3 (oder MP4) in deiner lokalen Bibliothek.
+Keine Cloud, kein Konto, keine Werbung. Deine Musik gehört dir.
+
+---
+
+## ✨ Features
+
+| | |
+|---|---|
+| 🎧 **Player** | Shuffle, Repeat, Crossfade, Equalizer, Lyrics, Dynamic Glow |
+| 📥 **Downloader** | Spotify-/YouTube-/YT-Music-Playlists, MP3 128–320 kbps oder MP4 bis 1080p, Live-Fortschritt mit Speed + ETA, automatische Qualitäts-Fallbacks |
+| 🎉 **Party-Modus** | Alle Geräte im WLAN hören synchron mit — Gäste scannen einfach den QR-Code |
+| 🌍 **Internet-Link** | Freunde können auch **ohne gleiches WLAN** beitreten (Gratis-Tunnel, kein Konto nötig) |
+| 👥 **Warteschlange** | Gäste wünschen sich Songs direkt vom Handy in deine Queue |
+| 🎨 **19 Themes + Editor** | Von AMOLED-Schwarz bis Vaporwave — Rechtsklick entscheidet, was ein Theme ändern darf; eigenes Theme komplett frei gestaltbar |
+| 🗑️ **Papierkorb** | Gelöschte Songs sind wiederherstellbar, nichts ist sofort weg |
+| 🔎 **Entdecken** | Empfehlungen passend zu deiner Bibliothek + Online-Suche |
+| ⌨️ **Hotkeys** | Jede Tastenkombination frei belegbar |
+
+---
+
+## ⬇️ Download & Installation
+
+1. Auf **[Actions](../../actions)** klicken → obersten grünen Lauf öffnen
+2. Unten bei **Artifacts** dein System herunterladen:
+
+| Plattform | Artifact | Installation |
+|---|---|---|
+| 🪟 Windows | `dist-app-windows` | ZIP entpacken → `.exe`-Installer starten |
+| 🐧 Linux | `dist-app-linux` | `.deb` installieren oder `.AppImage` ausführbar machen |
+| 🤖 Android | `dist-app-android` | ZIP entpacken → `MeineMusik.apk` aufs Handy → antippen → installieren |
+
+> **Android:** Beim ersten Mal fragt das Handy nach „Unbekannte Apps installieren" — einmal erlauben, fertig.
+
+> **Spotify-Import** braucht einmalig kostenlose API-Zugangsdaten von
+> [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard):
+> `SPOTIFY_CLIENT_ID` und `SPOTIFY_CLIENT_SECRET` als Umgebungsvariablen
+> setzen. YouTube/YT-Music-Links funktionieren ohne jedes Setup.
+
+---
+
+## 📸 Party-Modus in 3 Schritten
+
+```
+   ┌─────────────┐      ┌──────────────┐      ┌───────────────────┐
+   │ 👥 anklicken │ ───▶ │ QR scannen   │ ───▶ │ 🎉 Alle hören mit  │
+   │  (Sidebar)   │      │ (Handy-Kam.) │      │  & wünschen Songs │
+   └─────────────┘      └──────────────┘      └───────────────────┘
+```
+
+Mit **🌍 Internet-Link** klappt das sogar über mobile Daten — der Link
+läuft über einen kostenlosen Cloudflare-Tunnel, ohne Portfreigabe.
+
+---
+
+## 🛠️ Tech-Stack
+
+| Schicht | Technologie | Warum |
+|---|---|---|
+| Core | Rust + Tauri v2 | Nativ, klein, schnell — ein Codebase für 3 Plattformen |
+| Downloads | yt-dlp + ffmpeg (Sidecar) | Das bewährteste Extraktions-Duo überhaupt |
+| Party-Server | axum (eingebettet) | LAN-/Internet-Gäste ohne externe Infrastruktur |
+| UI | Vanilla JS + CSS | Kein Framework-Ballast, startet sofort |
+
+---
+
+## 🧑‍💻 Selbst bauen
+
+```bash
+# Voraussetzungen: Rust (rustup.rs), Node 20+
+npm install
+npx tauri icon icons-source.png       # App-Icons generieren
+# yt-dlp + cloudflared nach src-tauri/binaries/ legen (Sidecar-Namensschema,
+# siehe .github/workflows/build.yml - CI macht genau das automatisch)
+npm run dev                            # Desktop-Dev-Fenster
+npm run build                          # Release -> dist-app/
+```
+
+**Android:** `npm run android:init` (Android SDK + NDK nötig), dann
+`node scripts/merge-android-extras.mjs`, dann `npm run build:android` —
+ergibt genau eine Datei: `dist-app/android-MeineMusik.apk`, Debug-signiert,
+direkt installierbar (kein `.aab`, kein Play-Store-Umweg).
+
+<details>
+<summary>📁 Projekt-Layout</summary>
+
+```
+tauri-app/
+├── src/                  # Frontend (Player, Downloader, Themes, Shim)
+│   ├── index.html        # Player-UI
+│   ├── player.js         # Playback-Engine (1:1 vom Flask-Original)
+│   ├── themes.js         # Theme-System 2.0 + Custom-Editor
+│   ├── tauri-shim.js     # fetch() -> Tauri-invoke()-Übersetzung
+│   └── downloader.*      # Downloader-Seite
+├── src-tauri/
+│   ├── src/commands.rs   # Bibliothek, Streaming, Downloads
+│   ├── src/party.rs      # Eingebetteter LAN-/Internet-Server + QR
+│   ├── src/playlist.rs   # Spotify/YouTube/YT-Music-Auflösung
+│   ├── src/discovery.rs  # Empfehlungen + Online-Suche
+│   ├── src/trash.rs      # Papierkorb
+│   └── src/lyrics.rs     # Songtexte
+├── android-extra/        # Hintergrund-Playback-Service (Android)
+└── .github/workflows/    # CI: baut Windows + Linux + Android parallel
+```
+</details>
+
+---
+
+## ⚠️ Hinweise
+
+- Nur für Inhalte verwenden, an denen du die **Rechte besitzt**.
+- Beim ersten Party-Modus-Start fragt die **Windows-Firewall** — „Zulassen" klicken, sonst kommen Gäste nicht rein.
+- Track-Dauer bei manchen Formaten noch „—" (kein vollständiger Decoder eingebaut).
+
+---
+
+<div align="center">
+
+**Gebaut mit 🦀 Rust, ☕ und viel zu vielen CI-Läufen.**
+
+</div>

@@ -58,7 +58,10 @@ fn is_spotify_url(url: &str) -> bool {
 /// domains and a lone video URL natively (a single video just comes back
 /// as one JSON entry, no special-casing needed).
 async fn extract_youtube(app: &tauri::AppHandle, url: &str) -> Result<PlaylistExtract, String> {
-    crate::commands::require_ytdlp()?;
+    // Android: kein yt-dlp-Binary - Playlist-Auflösung nativ über Innertube.
+    if cfg!(target_os = "android") {
+        return crate::innertube::extract(url).await;
+    }
     let shell = app.shell();
     let output = shell
         .sidecar("yt-dlp")

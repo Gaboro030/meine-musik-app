@@ -38,15 +38,14 @@ const gpTrackCount = document.getElementById("gpTrackCount");
 let currentTitle = "playlist";
 let currentFormat = "mp3";
 
-/* yt-dlp ships no Android/ARM binary, so downloads/playlist-resolve always
-   fail there (see require_ytdlp() in commands.rs). Rather than let people
-   hit a raw "No such file or directory" error, show the reason up front
-   and disable the load button entirely on Android. */
+/* Android lädt nativ über die Innertube-API (innertube.rs) - kein ffmpeg
+   dort, also landet Audio als M4A statt MP3 (spielt identisch ab). Der
+   Hinweis-Banner erklärt nur noch diesen Unterschied. */
 const androidNotice = document.getElementById("androidDownloadNotice");
-if (/android/i.test(navigator.userAgent)) {
-  if (androidNotice) androidNotice.classList.remove("hidden");
-  loadBtn.disabled = true;
-  loadBtn.title = "Auf Android nicht verfügbar";
+if (/android/i.test(navigator.userAgent) && androidNotice) {
+  androidNotice.textContent =
+    "ℹ️ Auf Android wird Audio als M4A gespeichert (statt MP3) und Videos in Standard-Qualität - Abspielen funktioniert ganz normal.";
+  androidNotice.classList.remove("hidden");
 }
 
 /* ===== Helpers ===== */

@@ -2208,3 +2208,148 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .app-shell { padding: 8px 8px 0; gap: 8px; }
   .player-bar { margin: 0 8px 8px; border-radius: 14px; }
 }
+
+/* ========= MOBILE LAYOUT 2.0 (user request) =========
+   Handy-Ansicht komplett umgebaut: Reiter (Home/Bibliothek/Papierkorb)
+   als Tab-Leiste GANZ OBEN, Werkzeuge (Freunde/Party/Design/Einstellungen
+   + Musik hinzufügen) als feste Leiste GANZ UNTEN über der Player-Bar,
+   Playlists als horizontale Chips, 2-Spalten-Kartenraster - nichts mehr
+   gequetscht. Nur CSS, gleiche DOM-Struktur. */
+@media (max-width: 900px) {
+  body { overflow: auto; }
+  .app-shell {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    padding: 10px 10px 0;
+    gap: 10px;
+  }
+
+  /* --- Sidebar wird zur Top-Leiste (sticky) --- */
+  .sidebar {
+    position: sticky;
+    top: 10px;
+    z-index: 350;
+    width: auto;
+    padding: 12px 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  }
+  .brand { padding: 0 2px 10px; font-size: 1.05rem; }
+  .brand-icon { width: 28px; height: 28px; font-size: 0.95rem; }
+  .nav-main { flex-direction: row; gap: 8px; }
+  .nav-item {
+    flex: 1;
+    justify-content: center;
+    padding: 11px 4px;
+    font-size: 0.88rem;
+    background: var(--sp-surface);
+  }
+  .nav-item.active { background: var(--sp-green); }
+  .sidebar-divider, .sidebar-section-title { display: none; }
+  .playlist-list {
+    flex: none;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 8px;
+    padding: 10px 0 2px;
+  }
+  .playlist-list:empty { display: none; }
+  .playlist-list-empty { padding: 4px 8px; white-space: nowrap; }
+  .playlist-item {
+    flex: 0 0 auto;
+    max-width: 180px;
+    background: var(--sp-surface);
+    border-radius: 100px;
+    padding: 6px 12px 6px 6px;
+  }
+
+  /* --- Werkzeug-Leiste GANZ UNTEN (über der Player-Bar) --- */
+  .sidebar-tools {
+    position: fixed;
+    left: 10px;
+    right: 74px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 170px);
+    z-index: 380;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    background: var(--sp-elevated);
+    border: 1px solid var(--sp-border);
+    border-radius: 100px;
+    padding: 6px 8px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  }
+  .sidebar-tool-btn { font-size: 1.25rem; padding: 8px 10px; }
+  /* Popovers: auf dem Handy als zentrierte, feste Karte über der
+     Werkzeug-Leiste - absolut im schmalen Leisten-Container würden sie
+     rechts aus dem Bildschirm laufen. */
+  .sidebar-tool-popover {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 236px);
+    top: auto;
+    min-width: 0;
+    max-height: 55vh;
+    overflow-y: auto;
+  }
+  .sidebar-footer {
+    position: fixed;
+    right: 10px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 170px);
+    z-index: 380;
+    width: 56px;
+    background: var(--sp-green);
+    border-radius: 100px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  }
+  .sidebar-footer .nav-external {
+    justify-content: center;
+    padding: 12px 0;
+    color: #000;
+    font-size: 0; /* Text weg, nur Icon */
+  }
+  .sidebar-footer .nav-icon { font-size: 1.25rem; width: auto; }
+
+  /* --- Player-Bar fest am unteren Rand, kompakt --- */
+  .player-bar {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    z-index: 400;
+    margin: 0;
+    min-height: 0;
+    padding: 10px 14px;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .pb-cover { width: 44px; height: 44px; }
+  .pb-controls { gap: 26px; }
+  .pb-scrubber { max-width: none; }
+
+  /* Inhalt braucht Platz für die zwei festen Leisten unten */
+  .main-view {
+    padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 260px);
+  }
+
+  /* --- Home entzerrt: 2 Spalten, mehr Luft --- */
+  .library-heading { font-size: 1.55rem; padding: 4px 0 18px; }
+  .card-grid,
+  #searchOnlineGrid.card-grid,
+  #discoverGrid.card-grid,
+  #discoverArtistRows .card-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .card { padding: 10px; }
+  .card:hover { transform: none; } /* kein Hover-Lift auf Touch */
+  .home-section-title { font-size: 1.05rem; }
+  .search-bar { margin: 0; }
+}
+
+@media (max-width: 400px) {
+  .sidebar-tools { bottom: calc(env(safe-area-inset-bottom, 0px) + 178px); }
+  .sidebar-footer { bottom: calc(env(safe-area-inset-bottom, 0px) + 178px); }
+}

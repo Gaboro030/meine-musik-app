@@ -112,7 +112,10 @@ fn normalize_title(text: &str) -> String {
 /// title/uploader/duration/thumbnail/id. Desktop only, same sidecar
 /// limitation as download_track (see README).
 pub(crate) async fn yt_search(app: &tauri::AppHandle, query: &str, limit: u32) -> Result<Vec<OnlineTrack>, String> {
-    crate::commands::require_ytdlp()?;
+    // Android: kein yt-dlp-Binary - Suche läuft nativ über Innertube.
+    if cfg!(target_os = "android") {
+        return crate::innertube::search(query, limit as usize).await;
+    }
     let shell = app.shell();
     let output = shell
         .sidecar("yt-dlp")

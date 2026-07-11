@@ -1,5 +1,6 @@
 mod commands;
 mod discovery;
+mod innertube;
 mod lyrics;
 mod party;
 mod playlist;
