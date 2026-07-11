@@ -46,48 +46,54 @@ fn player_client_cascade() -> Vec<Value> {
     vec![
         json!({"client": {"clientName": "ANDROID_VR", "clientVersion": "1.60.19", "deviceMake": "Oculus", "deviceModel": "Quest 3", "androidSdkVersion": 32, "hl": "de", "gl": "DE"}}),
         json!({"client": {"clientName": "ANDROID_MUSIC", "clientVersion": "7.27.52", "androidSdkVersion": 30, "hl": "de", "gl": "DE"}}),
-        json!({"client": {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "androidSdkVersion": 30, "hl": "de", "gl": "DE"}}),
+        // ANDROID_TESTSUITE deliberately excluded: verified against the
+        // live API that it reports "video unavailable" for ordinary public
+        // content (it's Google's internal QA client, not meant for real
+        // playback) - it was poisoning the cascade with a false negative
+        // instead of ever being a genuine fallback.
     ]
 }
 
-/// Runs /player through the cascade above, returning the first response
-/// whose playabilityStatus is OK. If none succeed, returns the last
-/// response anyway (still useful for videoDetails-only metadata lookups)
-/// alongside the failure reason so the caller can decide how to react.
+/// Runs /player through the cascade above and always tries every entry -
+/// a single client reporting a non-OK status is NOT proof the video is
+/// really unavailable (different clients report different, sometimes
+/// flatly wrong, reasons for the exact same playable video - verified
+/// live), so bailing out after the first failure was actively hiding
+/// working alternatives. Returns the first OK response, or - if none
+/// succeed - the response/reason combination that looks most informative
+/// (prefers a real-sounding reason over the generic fallback text).
 async fn player_data(client: &reqwest::Client, video_id: &str) -> (Value, Option<String>) {
-    let mut last = Value::Null;
+    let mut best_fail: Option<(Value, String)> = None;
     for ctx in player_client_cascade() {
-        match call(client, "player", ctx, json!({
+        let Ok(data) = call(client, "player", ctx, json!({
             "videoId": video_id, "contentCheckOk": true, "racyCheckOk": true,
         }))
         .await
-        {
-            Ok(data) => {
-                let status = data.pointer("/playabilityStatus/status").and_then(|x| x.as_str()).map(str::to_string);
-                if status.as_deref() == Some("OK") {
-                    return (data, None);
-                }
-                let reason = data
-                    .pointer("/playabilityStatus/reason")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("Video nicht abspielbar.")
-                    .to_string();
-                last = data;
-                if status.as_deref() != Some("LOGIN_REQUIRED") {
-                    // A real "not available"/"age restricted" etc. - no
-                    // other client profile is going to change that, stop
-                    // burning requests on the rest of the cascade.
-                    return (last, Some(reason));
-                }
-            }
-            Err(_) => continue,
+        else {
+            continue;
+        };
+        let status = data.pointer("/playabilityStatus/status").and_then(|x| x.as_str());
+        if status == Some("OK") {
+            return (data, None);
+        }
+        let reason = data
+            .pointer("/playabilityStatus/reason")
+            .and_then(|x| x.as_str())
+            .unwrap_or("Video nicht abspielbar.")
+            .to_string();
+        // LOGIN_REQUIRED (the bot-check) is worth surfacing over a vaguer
+        // "unavailable" if that's all any client returned - it's the one
+        // actionable-sounding failure ("try again later") vs. a blanket
+        // status that may just be that particular client lying.
+        let is_login_required = status == Some("LOGIN_REQUIRED");
+        if best_fail.is_none() || is_login_required {
+            best_fail = Some((data, reason));
         }
     }
-    let reason = last
-        .pointer("/playabilityStatus/reason")
-        .and_then(|x| x.as_str())
-        .map(|s| s.to_string());
-    (last, reason.or_else(|| Some("Video nicht abspielbar.".to_string())))
+    match best_fail {
+        Some((data, reason)) => (data, Some(reason)),
+        None => (Value::Null, Some("Video nicht abspielbar.".to_string())),
+    }
 }
 
 /// Turns YouTube's bot-check reason text into something a user can act on.
