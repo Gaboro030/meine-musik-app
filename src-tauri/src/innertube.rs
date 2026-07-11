@@ -685,6 +685,7 @@ pub async fn download_progress(
     let event = format!("dl-progress-{task_id}");
     let mut done: u64 = 0;
     let mut last_pct: i64 = -1;
+    let start = std::time::Instant::now();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| {
             let _ = std::fs::remove_file(&path);
@@ -696,11 +697,37 @@ pub async fn download_progress(
             let pct = (done as f64 / total as f64 * 100.0) as i64;
             if pct != last_pct {
                 last_pct = pct;
-                let _ = app.emit(&event, serde_json::json!({ "percent": pct, "phase": "downloading" }));
+                // yt-dlp's own progress line gives the desktop path speed/eta
+                // for free (parsed from its stdout, see commands.rs) - this
+                // path has no such process to parse, so it's computed here
+                // from the same byte counter driving the percentage. Without
+                // this the downloader UI showed a percent but never a speed
+                // or ETA for Android downloads.
+                let elapsed = start.elapsed().as_secs_f64().max(0.05);
+                let bps = done as f64 / elapsed;
+                let eta_secs = if bps > 0.0 { (total.saturating_sub(done) as f64 / bps).max(0.0) } else { 0.0 };
+                let _ = app.emit(
+                    &event,
+                    serde_json::json!({
+                        "percent": pct,
+                        "phase": "downloading",
+                        "speed": format_speed(bps),
+                        "eta": format_eta(eta_secs),
+                    }),
+                );
             }
         }
     }
     file.flush().await.map_err(|e| e.to_string())?;
+
+    // m4a has no ID3/MP4 tag written (no ffmpeg on Android to embed one) -
+    // same problem as the cover art below, same fix: a sidecar file next to
+    // it. Without this every Android download showed "Unbekannter
+    // Interpret" in the player no matter what - read_track_meta() picks it
+    // up as a fallback when the audio file itself has no artist tag.
+    if pick.ext == "m4a" && !uploader.is_empty() {
+        let _ = std::fs::write(dir.join(format!("{stem}.artist.txt")), uploader);
+    }
 
     // Best effort - a missing cover is cosmetic, never a failed download.
     if pick.ext == "m4a" {
@@ -713,4 +740,19 @@ pub async fn download_progress(
         }
     }
     Ok(())
+}
+
+fn format_speed(bytes_per_sec: f64) -> String {
+    if bytes_per_sec >= 1_000_000.0 {
+        format!("{:.1} MB/s", bytes_per_sec / 1_000_000.0)
+    } else if bytes_per_sec >= 1_000.0 {
+        format!("{:.0} KB/s", bytes_per_sec / 1_000.0)
+    } else {
+        format!("{bytes_per_sec:.0} B/s")
+    }
+}
+
+fn format_eta(secs: f64) -> String {
+    let secs = secs.max(0.0) as u64;
+    format!("{}:{:02}", secs / 60, secs % 60)
 }

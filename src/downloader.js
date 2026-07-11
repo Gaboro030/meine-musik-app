@@ -346,34 +346,60 @@ zipBtn.addEventListener("click", async () => {
   gpTrackCount.textContent = `0 / ${checked.length}`;
   gpTitle.textContent = "Sammel-Download";
 
-  for (let i = 0; i < checked.length; i++) {
-    const cb = checked[i];
-    const title = cb.dataset.title || cb.dataset.id;
-    gpTrackName.textContent = `🎵 ${title}`;
-    try {
-      await awaitPoToken();
-      await invoke("download_track_progress", {
-        taskId: `batch${i}`,
-        videoId: cb.dataset.id,
-        title,
-        uploader: cb.dataset.uploader || "",
-        duration: cb.dataset.duration ? Number(cb.dataset.duration) : null,
-        thumbnail: cb.dataset.thumbnail || null,
-        bitrate: currentBitrate(),
-        format: currentFormat,
-        quality: currentVideoQuality(),
-        preferAudio: preferCleanAudio(),
-        playlistName: currentTitle,
-      });
-    } catch (err) {
-      skippedList.push({ title, reason: String(err) || "Unbekannter Fehler." });
-      showToast(`Übersprungen: ${title}`, "error");
-    }
-    const pct = ((i + 1) / checked.length) * 100;
+  await awaitPoToken();
+
+  // Mehrere Titel gleichzeitig statt strikt nacheinander - bei größeren
+  // Playlists war die reine Wartezeit (jeder Titel wartet auf den vorigen,
+  // obwohl das Netzwerk das gar nicht braucht) der Hauptgrund, warum ein
+  // Sammel-Download "ewig" dauerte. Bewusst auf 3 gleichzeitige begrenzt
+  // statt alles auf einmal loszuschicken - deutlich schneller, aber nicht
+  // so viele parallele Anfragen an YouTube, dass es wie Bot-Verhalten
+  // aussieht.
+  const CONCURRENCY = 3;
+  let nextIndex = 0;
+  let completed = 0;
+  const active = new Set();
+
+  function renderProgress() {
+    const pct = (completed / checked.length) * 100;
     gpBar.style.width = `${pct}%`;
     gpPercent.textContent = `${Math.round(pct)}%`;
-    gpTrackCount.textContent = `${i + 1} / ${checked.length}`;
+    gpTrackCount.textContent = `${completed} / ${checked.length}`;
+    gpTrackName.textContent = active.size ? `🎵 ${[...active].join(" · ")}` : "Vorbereitung …";
   }
+
+  async function worker() {
+    while (nextIndex < checked.length) {
+      const i = nextIndex++;
+      const cb = checked[i];
+      const title = cb.dataset.title || cb.dataset.id;
+      active.add(title);
+      renderProgress();
+      try {
+        await invoke("download_track_progress", {
+          taskId: `batch${i}`,
+          videoId: cb.dataset.id,
+          title,
+          uploader: cb.dataset.uploader || "",
+          duration: cb.dataset.duration ? Number(cb.dataset.duration) : null,
+          thumbnail: cb.dataset.thumbnail || null,
+          bitrate: currentBitrate(),
+          format: currentFormat,
+          quality: currentVideoQuality(),
+          preferAudio: preferCleanAudio(),
+          playlistName: currentTitle,
+        });
+      } catch (err) {
+        skippedList.push({ title, reason: String(err) || "Unbekannter Fehler." });
+        showToast(`Übersprungen: ${title}`, "error");
+      }
+      active.delete(title);
+      completed++;
+      renderProgress();
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, checked.length) }, worker));
 
   gpTrackName.textContent = "✅ Fertig!";
   const ok = checked.length - skippedList.length;

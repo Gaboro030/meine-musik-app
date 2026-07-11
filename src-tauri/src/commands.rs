@@ -141,6 +141,17 @@ pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
             meta.cover = Some(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)));
         }
     }
+    // Same story for the artist - m4a downloads (Android) have no ID3 frame
+    // to read one from, so the downloader wrote a plain-text sidecar.
+    if meta.artist.is_empty() {
+        let sidecar = path.with_extension("artist.txt");
+        if let Ok(text) = std::fs::read_to_string(&sidecar) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                meta.artist = trimmed.to_string();
+            }
+        }
+    }
     // id3 only reads tags, not audio structure - mp3-duration walks the
     // actual MP3 frames for the real playing time (what mutagen's
     // audio.info.length did in the Flask backend).
@@ -430,6 +441,7 @@ pub async fn download_track(
     video_id: String,
     playlist_name: String,
     title: String,
+    uploader: Option<String>,
 ) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
 
@@ -443,7 +455,14 @@ pub async fn download_track(
     // Android: kein yt-dlp-Binary - native Innertube-Implementierung.
     if cfg!(target_os = "android") {
         return crate::innertube::download_progress(
-            &app, &state.music_root, "simple", &video_id, &title, "", "mp3", &playlist_name,
+            &app,
+            &state.music_root,
+            "simple",
+            &video_id,
+            &title,
+            uploader.as_deref().unwrap_or(""),
+            "mp3",
+            &playlist_name,
         )
         .await;
     }

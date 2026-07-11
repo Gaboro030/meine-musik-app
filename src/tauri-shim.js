@@ -76,7 +76,7 @@
         await awaitPoToken();
         const b = jsonBody();
         const playlist = b.playlist || "Entdeckt";
-        await invoke("download_track", { videoId: b.id, playlistName: playlist, title: b.title || "Song" });
+        await invoke("download_track", { videoId: b.id, playlistName: playlist, title: b.title || "Song", uploader: b.uploader || "" });
         return jsonResponse({ ok: true, playlist });
       }
       if (parts[2] === "upload" && method === "POST" && body instanceof FormData) {
@@ -155,6 +155,7 @@
           videoId: b.video_id,
           playlistName: b.target_playlist,
           title: b.title || "Song",
+          uploader: b.uploader || "",
         });
       } else {
         await invoke("add_track_to_playlist", {
