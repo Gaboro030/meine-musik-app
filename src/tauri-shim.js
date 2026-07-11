@@ -150,15 +150,23 @@
       return jsonResponse({ ok: true, playlist: b.target_playlist });
     }
 
-    // --- party / queue / hotkey: stubs until the embedded LAN server exists ---
+    // --- party / queue: shared Hub in Rust, mirrored to guests over the
+    // embedded LAN server (see party.rs) --------------------------------------
     if (parts[1] === "queue") {
-      if (parts.length === 2 && method === "GET") return jsonResponse({ queue: [] });
-      if (method === "DELETE") return jsonResponse({ ok: true });
-      return jsonResponse({ error: "Party-Modus folgt in einem späteren Update." }, 501);
+      if (parts.length === 2 && method === "GET") {
+        return jsonResponse({ queue: await invoke("queue_list") });
+      }
+      if (method === "DELETE") {
+        return jsonResponse({ ok: await invoke("queue_remove", { entryId: seg(parts[2] || "") }) });
+      }
+      return jsonResponse({ error: "Nicht verfügbar." }, 404);
     }
     if (parts[1] === "party") {
-      if (method === "GET") return jsonResponse({ active: false, playing: false, position: 0 });
-      return jsonResponse({ ok: true });
+      if (method === "POST") {
+        await invoke("party_set_state", { state: jsonBody() });
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse(await invoke("party_get_state"));
     }
     if (parts[1] === "hotkey") return jsonResponse({ ok: true });
 
@@ -172,23 +180,44 @@
   };
 
   // player.js opens EventSource("/api/events") for the realtime bus (guest
-  // queue + party sync). No server behind it here - hand back an inert
-  // object instead of letting a real EventSource retry-loop 404s forever.
+  // queue adds + party sync). Here the bus is Tauri's own event system:
+  // party.rs re-emits everything it broadcasts to guests as `party-<name>`
+  // events, so this fake EventSource just maps listener names onto those.
   const RealEventSource = window.EventSource;
   window.EventSource = function (url, opts) {
     if (String(url).includes("/api/events")) {
-      return { addEventListener() {}, removeEventListener() {}, close() {}, readyState: 2 };
+      const unlisteners = [];
+      let closed = false;
+      return {
+        addEventListener(name, cb) {
+          window.__TAURI__.event
+            .listen(`party-${name}`, (e) => cb({ data: JSON.stringify(e.payload) }))
+            .then((un) => {
+              if (closed) un();
+              else unlisteners.push(un);
+            });
+        },
+        removeEventListener() {},
+        close() {
+          closed = true;
+          unlisteners.forEach((un) => un());
+          unlisteners.length = 0;
+        },
+        readyState: 1,
+      };
     }
     return new RealEventSource(url, opts);
   };
 
   document.addEventListener("DOMContentLoaded", () => {
-    // QR code needs the LAN guest server (not ported yet) - placeholder
-    // instead of a broken-image icon.
+    // QR code: party.rs runs an embedded LAN server; party_info returns the
+    // guest URL plus a ready-made SVG QR code as data: URI. player.js
+    // re-sets src to /api/qr every time the popover opens - that path 404s
+    // in the webview, so the error handler swaps the real QR back in.
     const qrImage = document.getElementById("qrImage");
     const qrHint = document.getElementById("qrHint");
     if (qrImage) {
-      const placeholder =
+      let qrDataUri =
         "data:image/svg+xml;utf8," +
         encodeURIComponent(
           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">' +
@@ -196,14 +225,24 @@
             '<text x="50%" y="54%" font-size="60" text-anchor="middle" dominant-baseline="middle">🎉</text>' +
             "</svg>"
         );
-      qrImage.src = placeholder;
-      // player.js re-sets src to /api/qr every time the popover opens -
-      // that 404s here, so swap the placeholder back in on load failure.
+      const refreshQr = () => {
+        invoke("party_info")
+          .then((info) => {
+            qrDataUri = info.qr;
+            qrImage.src = info.qr;
+            if (qrHint) {
+              qrHint.textContent = `Mit dem Handy scannen oder ${info.url} öffnen – gleiches WLAN nötig.`;
+            }
+          })
+          .catch(() => {});
+      };
+      qrImage.src = qrDataUri;
       qrImage.addEventListener("error", () => {
-        qrImage.src = placeholder;
+        qrImage.src = qrDataUri;
+        refreshQr(); // LAN-IP kann sich ändern (WLAN-Wechsel) - frisch holen
       });
+      refreshQr();
     }
-    if (qrHint) qrHint.textContent = "Party-Modus & QR folgen in einem späteren Update.";
 
     // Live volume percentage (user-requested addition on top of the 1:1
     // port): audioEl fires "volumechange" whenever player.js sets .volume.

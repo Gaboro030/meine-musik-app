@@ -46,13 +46,18 @@ wired up yet. Verified via `.github/workflows/build.yml`, not locally
    merge `AndroidManifest.additions.xml` into the generated manifest, then
    `npm run build:android`.
 
+## Party mode (ported)
+Party mode/LAN sync + QR guest page now live in `party.rs`: an embedded
+axum server on port 8765 (falls back to a random free port) serves the
+`/guest` page, `/api/party/state`, `/api/queue`, `/stream/...` and an SSE
+`/api/events` bus to every device on the same WiFi. The host app talks to
+the same shared Hub through Tauri commands (`party_info`, `party_set_state`,
+`queue_list`, ...) and receives guest events over Tauri's event bus
+(`party-queue_update`, `party-party_sync`) via the fake EventSource in
+`tauri-shim.js`. First launch on Windows triggers a firewall prompt -
+"Allow" is required for guests to connect.
+
 ## Known gaps vs. the old Flask app (not yet ported)
-- **Party-mode/LAN-sync + QR guest page still missing.** This is the one
-  remaining piece from the original app - it needs an embedded HTTP+SSE
-  server running inside the Rust process so other devices on the LAN can
-  connect (`/guest` page, `/api/party/state`, `/api/queue`, SSE broadcast),
-  which is a bigger architectural addition than the rest of this rewrite.
-  Planned next, not started yet.
 - Discover/recommendations, search-online, and lyrics are now implemented
   in Rust (`discovery.rs`, `lyrics.rs`) - but discovery uses yt-dlp's own
   `ytsearchN:` search instead of ytmusicapi (no Rust equivalent exists),

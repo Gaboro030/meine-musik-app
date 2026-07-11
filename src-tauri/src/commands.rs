@@ -38,7 +38,7 @@ pub struct TrackMeta {
 /// macOS/Linux but as `http://<scheme>.localhost/` on Windows and Android
 /// (WebView2/Android WebView don't allow arbitrary schemes in http
 /// contexts) - hardcoding one form breaks playback on the other platforms.
-fn stream_url_for(playlist: &str, file: &str) -> String {
+pub(crate) fn stream_url_for(playlist: &str, file: &str) -> String {
     let enc =
         |s: &str| percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string();
     if cfg!(any(windows, target_os = "android")) {
@@ -100,7 +100,7 @@ pub(crate) fn safe_filename(name: &str) -> String {
     }
 }
 
-fn read_track_meta(path: &Path) -> TrackMeta {
+pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
     let file_name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())

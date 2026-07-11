@@ -35,6 +35,15 @@ rand = "0.8"
 # Real MP3 playing time by walking the audio frames - id3 alone can't (it
 # only reads tags). Same job mutagen's audio.info.length did in Flask.
 mp3-duration = "0.1"
+# Embedded LAN server for party mode / guest page / collaborative queue -
+# replaces the Flask server the original guest.html talked to. axum rides
+# on the tokio runtime Tauri already uses.
+axum = "0.7"
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
+# SVG QR code for the guest URL, no image/PNG dependency needed (same
+# pure-vector approach as the Flask app's qrcode SvgImage factory).
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

@@ -1,6 +1,7 @@
 mod commands;
 mod discovery;
 mod lyrics;
+mod party;
 mod playlist;
 mod trash;
 
@@ -29,10 +30,17 @@ pub fn run() {
             fs::create_dir_all(&trash_dir).ok();
 
             app.manage(commands::AppState {
-                music_root: root,
+                music_root: root.clone(),
                 trash_dir,
                 trash_index_file: data_dir.join("trash_index.json"),
             });
+
+            // Party mode: shared hub (queue + party state + event bus) and
+            // the embedded LAN server guests connect to via the QR code.
+            let hub = party::Hub::new(root);
+            hub.set_app(handle.clone());
+            app.manage(hub.clone());
+            tauri::async_runtime::spawn(party::run_server(hub));
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("stream", |ctx, request, responder| {
@@ -69,6 +77,11 @@ pub fn run() {
             discovery::discover_rows,
             discovery::recommend_for_playlist,
             discovery::search_online,
+            party::party_info,
+            party::party_get_state,
+            party::party_set_state,
+            party::queue_list,
+            party::queue_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
