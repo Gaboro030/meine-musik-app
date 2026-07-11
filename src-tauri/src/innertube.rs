@@ -43,6 +43,49 @@ fn current_po_token() -> Option<PoTokenData> {
 #[tauri::command]
 pub fn set_po_token(po_token: String, visitor_data: String) {
     *po_token_cell().lock().unwrap() = Some(PoTokenData { po_token, visitor_data });
+    *po_error_cell().lock().unwrap() = None;
+}
+
+/// Last reason PoToken generation failed in the WebView (potoken.js), if
+/// any - surfaced alongside "PoToken: nein" in playability errors so a bug
+/// report shows WHY the token is missing (network unreachable, malformed
+/// challenge response, etc.) instead of just that it is.
+fn po_error_cell() -> &'static std::sync::Mutex<Option<String>> {
+    static CELL: std::sync::OnceLock<std::sync::Mutex<Option<String>>> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+#[tauri::command]
+pub fn set_po_token_error(message: String) {
+    *po_error_cell().lock().unwrap() = Some(message);
+}
+
+/// Network proxy for the PoToken flow (potoken.js/bgutils.js): every fetch()
+/// that flow needs (visitorData search, BotGuard Challenge/Create,
+/// GenerateIT) is routed through here via `invoke` instead of the WebView's
+/// own fetch(). Reason: those are cross-origin calls from whatever origin
+/// the WebView runs as (not youtube.com/googleapis.com), which browser CORS
+/// enforcement can silently kill even though the exact same request over
+/// reqwest (no CORS - it's not a browser) works fine, as proven by every
+/// other Innertube call in this file. The actual BotGuard VM eval still has
+/// to happen in the WebView (needs real JS+DOM) - only the network legs
+/// move here.
+#[tauri::command]
+pub async fn bg_fetch(url: String, content_type: String, body: String) -> Result<Value, String> {
+    let mut req = http().post(&url).header("Content-Type", content_type).body(body);
+    if url.contains("jnn-pa.googleapis.com") {
+        req = req
+            .header("x-goog-api-key", "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw")
+            .header("x-user-agent", "grpc-web-javascript/0.1");
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("BotGuard-Netzwerkfehler: {e}"))?;
+    let status = resp.status().as_u16();
+    let ok = resp.status().is_success();
+    let body = resp.text().await.map_err(|e| e.to_string())?;
+    Ok(json!({ "ok": ok, "status": status, "body": body }))
 }
 
 /// Google tightened the ANDROID client in 2024/2025: server-side (non-real-
@@ -155,8 +198,16 @@ async fn player_data_once(
     // single most useful piece of missing information from real-device bug
     // reports so far. Lets the next failure report distinguish "token
     // pipeline never fired" from "token fired but YouTube rejected it
-    // anyway" without guessing blind.
-    let tag = if po.is_some() { "PoToken: ja" } else { "PoToken: nein" };
+    // anyway" without guessing blind. If it never fired, ride along the
+    // real JS-side reason too (see set_po_token_error).
+    let tag = if po.is_some() {
+        "PoToken: ja".to_string()
+    } else {
+        match po_error_cell().lock().unwrap().clone() {
+            Some(e) => format!("PoToken: nein - {e}"),
+            None => "PoToken: nein".to_string(),
+        }
+    };
     match best_fail {
         Some((data, reason)) => (data, Some(format!("{reason} [{tag}]"))),
         None => (Value::Null, Some(format!("Video nicht abspielbar. [{tag}]"))),
