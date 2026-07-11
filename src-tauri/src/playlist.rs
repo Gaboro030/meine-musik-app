@@ -58,6 +58,7 @@ fn is_spotify_url(url: &str) -> bool {
 /// domains and a lone video URL natively (a single video just comes back
 /// as one JSON entry, no special-casing needed).
 async fn extract_youtube(app: &tauri::AppHandle, url: &str) -> Result<PlaylistExtract, String> {
+    crate::commands::require_ytdlp()?;
     let shell = app.shell();
     let output = shell
         .sidecar("yt-dlp")

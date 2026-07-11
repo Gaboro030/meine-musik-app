@@ -423,6 +423,7 @@ pub async fn download_track(
 ) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
 
+    require_ytdlp()?;
     if !video_id.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
         || video_id.len() < 6
         || video_id.len() > 20
@@ -550,6 +551,21 @@ fn speed_re() -> &'static regex::Regex {
     CELL.get_or_init(|| regex::Regex::new(r"at\s+([\d.]+\w+/s)").unwrap())
 }
 
+/// yt-dlp/ffmpeg ship no official Android/ARM builds, so the sidecar
+/// binary simply isn't in the APK there - spawning it fails with a raw
+/// "No such file or directory (os error 2)" that means nothing to a user.
+/// Every download/search/playlist-resolve entry point checks this first so
+/// Android gets one clear German explanation instead of that OS error.
+pub(crate) fn require_ytdlp() -> Result<(), String> {
+    if cfg!(target_os = "android") {
+        Err("Downloads/Suche funktionieren auf Android noch nicht (yt-dlp gibt es nicht für Android). \
+             Lade Musik am PC (Windows/Linux) herunter - sie taucht dann über Party-Modus/Sync auf dem Handy auf."
+            .into())
+    } else {
+        Ok(())
+    }
+}
+
 fn friendly_download_error(stderr: &str) -> String {
     if stderr.contains("Sign in to confirm") || stderr.contains("not a bot") {
         return "YouTube blockiert die Anfrage (Bot-Schutz). Später erneut versuchen.".into();
@@ -593,6 +609,7 @@ pub async fn download_track_progress(
     use tauri_plugin_shell::process::CommandEvent;
     use tauri_plugin_shell::ShellExt;
 
+    require_ytdlp()?;
     if !video_id.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
         || video_id.len() < 6
         || video_id.len() > 20
