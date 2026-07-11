@@ -2306,11 +2306,17 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   }
   .sidebar-footer .nav-external {
     justify-content: center;
-    padding: 12px 0;
+    align-items: center;
+    /* .nav-item's flex `gap` still reserves space for the now-invisible
+       text node even at font-size:0 - that's what was pushing the icon
+       off-center in the round button. */
+    gap: 0;
+    padding: 0;
+    height: 56px;
     color: #000;
     font-size: 0; /* Text weg, nur Icon */
   }
-  .sidebar-footer .nav-icon { font-size: 1.25rem; width: auto; }
+  .sidebar-footer .nav-icon { font-size: 1.25rem; width: auto; line-height: 1; }
 
   /* --- Player-Bar fest am unteren Rand, kompakt --- */
   .player-bar {

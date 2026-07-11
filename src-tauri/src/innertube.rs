@@ -96,13 +96,18 @@ async fn player_data(client: &reqwest::Client, video_id: &str) -> (Value, Option
     }
 }
 
-/// Turns YouTube's bot-check reason text into something a user can act on.
+/// Turns YouTube's bot-check reason text into something a user can act on,
+/// while keeping the raw reason attached (in parentheses) so it's clear
+/// exactly which of YouTube's own playabilityStatus.reason strings this
+/// was - useful for telling a bot-check apart from a geoblock or a
+/// genuinely deleted/private video, which need different responses.
 fn friendly_playability_error(reason: &str) -> String {
     if reason.contains("Bot") || reason.contains("anmelden") || reason.contains("melde dich an") || reason.to_lowercase().contains("sign in") {
-        "YouTube blockiert dieses Video gerade (Bot-Schutz) - passiert oft bei großen \
-         offiziellen Musikvideos. Später nochmal versuchen, oder falls verfügbar auf \
-         die Original-Studio-Audio-Version ausweichen (Schalter oben)."
-            .to_string()
+        format!(
+            "YouTube blockiert dieses Video gerade (Bot-Schutz) - kommt öfter vor, wenn \
+             die Downloader-Seite kurz hintereinander viele Videos abfragt. Etwas warten \
+             und nochmal versuchen. ({reason})"
+        )
     } else {
         reason.to_string()
     }
@@ -453,6 +458,43 @@ async fn pick_stream(client: &reqwest::Client, video_id: &str, want_video: bool)
     })
 }
 
+/// When the requested video itself is bot-gated, search for a different
+/// upload of the same song and VERIFY it actually resolves before using
+/// it - "Audio"/"Lyrics" fan uploads first (usually less aggressively
+/// monitored than the official channel's own upload), then a plain
+/// search. Unlike a single best-guess swap, this tries several
+/// candidates in turn until one genuinely plays, since any individual
+/// candidate can turn out to be gated too.
+async fn find_playable_alternative(
+    client: &reqwest::Client,
+    title: &str,
+    uploader: &str,
+    exclude_id: &str,
+) -> Option<StreamPick> {
+    let queries = [
+        format!("{title} {uploader} Audio"),
+        format!("{title} {uploader} Lyrics"),
+        format!("{title} {uploader}"),
+    ];
+    let mut tried = std::collections::HashSet::new();
+    tried.insert(exclude_id.to_string());
+    for q in &queries {
+        let Ok(results) = search(q, 8).await else { continue };
+        let mut candidates: Vec<_> = results
+            .into_iter()
+            .filter(|r| !tried.contains(&r.video_id) && !crate::discovery::is_bad_variant(&format!("{} {}", r.title, r.artist)))
+            .collect();
+        candidates.sort_by_key(|r| crate::discovery::audio_preference_score(&r.title, &r.artist));
+        for c in candidates.into_iter().take(3) {
+            tried.insert(c.video_id.clone());
+            if let Ok(pick) = pick_stream(client, &c.video_id, false).await {
+                return Some(pick);
+            }
+        }
+    }
+    None
+}
+
 /// Download with the same progress events the yt-dlp desktop path emits
 /// (`dl-progress-<task_id>` with percent), so the downloader UI needs no
 /// platform-specific handling. Also stores the video thumbnail as a
@@ -473,19 +515,23 @@ pub async fn download_progress(
     use tokio::io::AsyncWriteExt;
 
     let client = http();
-    let mut pick_result = pick_stream(&client, video_id, format == "mp4").await;
+    let pick_result = pick_stream(&client, video_id, format == "mp4").await;
     // The client cascade already tries several profiles - if every one of
-    // them still got bot-gated, this specific upload (usually an "Official
-    // Video") is the problem, not the client. One more angle: look for a
-    // different upload of the same song (audio-only "Topic" channel
-    // versions in particular are far less aggressively gated) and retry
-    // with that instead of just giving up.
-    if pick_result.is_err() && format == "mp3" && !title.is_empty() {
-        if let Some(alt_id) = crate::discovery::find_audio_alternative(app, title, uploader, video_id).await {
-            pick_result = pick_stream(&client, &alt_id, false).await;
+    // them still got bot-gated, this specific upload is the problem, not
+    // the client. Search for other uploads of the same song ("Audio"/
+    // "Lyrics" fan uploads first, then a plain search) and verify each
+    // candidate actually resolves before using it - a single best-guess
+    // swap isn't enough since any individual candidate can be gated too.
+    let pick = match pick_result {
+        Ok(pick) => pick,
+        Err(original_err) if format == "mp3" && !title.is_empty() => {
+            match find_playable_alternative(&client, title, uploader, video_id).await {
+                Some(pick) => pick,
+                None => return Err(original_err),
+            }
         }
-    }
-    let pick = pick_result?;
+        Err(e) => return Err(e),
+    };
 
     let dir = music_root.join(crate::commands::safe_filename(playlist_name));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
