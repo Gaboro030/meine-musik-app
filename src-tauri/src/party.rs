@@ -344,7 +344,15 @@ pub async fn run_server(hub: Hub) {
         .route("/stream/:playlist/:file", get(api_stream))
         // Handy-Sync (sync.rs): peer devices POST files straight into this
         // server's music_root - same always-on server, one extra route.
-        .route("/sync/receive", post(crate::sync::api_sync_receive))
+        // axum's default body-size limit is 2MB (meant for JSON APIs) -
+        // every single audio file blew straight through that as a uniform
+        // 413 on every transfer. 1GB comfortably covers even an mp4 video
+        // download, the largest file this route ever sees.
+        .route(
+            "/sync/receive",
+            post(crate::sync::api_sync_receive)
+                .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 1024)),
+        )
         .with_state(hub.clone());
 
     let listener = match tokio::net::TcpListener::bind(("0.0.0.0", DEFAULT_PORT)).await {
