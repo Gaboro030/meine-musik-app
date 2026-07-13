@@ -183,7 +183,10 @@
         playlistNames: names,
       });
       if (result.failed && result.failed.length) {
-        showToast(`${result.sent} Dateien gesendet, ${result.failed.length} fehlgeschlagen.`);
+        // Show the actual reason (e.g. "Nicht erreichbar: ..." vs "HTTP
+        // 400") instead of just a count - if every file fails the same
+        // way, this is the one piece of information that tells us why.
+        showToast(`${result.sent} gesendet, ${result.failed.length} fehlgeschlagen: ${result.failed[0]}`);
       } else {
         showToast(`${result.sent} Dateien an ${currentPeer.name} gesendet!`);
       }

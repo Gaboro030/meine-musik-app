@@ -134,7 +134,13 @@ pub async fn sync_send_playlists(
     let event = format!("sync-progress-{task_id}");
     let done = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let failed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let client = reqwest::Client::new();
+    // A stuck connection (peer unreachable, firewall silently dropping the
+    // packets) would otherwise hang - a real error surfaces much faster and
+    // actually tells the user something instead of just spinning.
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
 
     // Three at a time, same reasoning as the batch downloader: noticeably
     // faster than one file after another, without piling up so many
