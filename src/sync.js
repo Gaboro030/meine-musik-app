@@ -202,4 +202,16 @@
   });
 
   listen("sync-peers-changed", refreshPeers);
+
+  // A received file lands straight on disk (sync.rs writes it directly) -
+  // nothing else would ever tell this app's own library view to re-fetch.
+  // Debounced: a playlist transfer fires this once per file, no need to
+  // re-render on every single one of possibly 100+.
+  let libraryRefreshTimer = null;
+  listen("library-changed", () => {
+    clearTimeout(libraryRefreshTimer);
+    libraryRefreshTimer = setTimeout(() => {
+      if (typeof refreshLibrary === "function") refreshLibrary();
+    }, 600);
+  });
 })();

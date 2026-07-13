@@ -270,7 +270,14 @@ pub async fn api_sync_receive(
         Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
     };
     match tokio::fs::write(&path, &body).await {
-        Ok(_) => (StatusCode::OK, "ok").into_response(),
+        Ok(_) => {
+            // The write lands straight on disk - nothing tells this
+            // device's own UI a file just appeared unless we say so. Was
+            // the actual bug behind "gesendet, aber nichts auf dem Handy":
+            // transfer worked, the library view just never re-fetched.
+            hub.notify_app("library-changed");
+            (StatusCode::OK, "ok").into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

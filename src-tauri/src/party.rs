@@ -80,6 +80,18 @@ impl Hub {
         self.0.port.load(Ordering::Relaxed)
     }
 
+    /// Plain one-off Tauri event to this device's own UI - used by sync.rs
+    /// after writing a received file, so the player notices new library
+    /// content without a manual restart. Deliberately not routed through
+    /// `broadcast()` above: that also fans out to guest phones over SSE,
+    /// which makes no sense for a local library-changed notification.
+    pub fn notify_app(&self, event: &str) {
+        if let Some(app) = self.0.app.get() {
+            use tauri::Emitter;
+            let _ = app.emit(event, ());
+        }
+    }
+
     /// Kills the cloudflared tunnel child, if any - called on app exit so
     /// the sidecar process can't outlive the app.
     pub fn shutdown(&self) {
