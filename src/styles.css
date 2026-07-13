@@ -2398,6 +2398,25 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .card:hover { transform: none; } /* kein Hover-Lift auf Touch */
   .home-section-title { font-size: 1.05rem; }
   .search-bar { margin: 0; }
+
+  /* --- Bottom-UI beim Scrollen ausblenden (mobile-ui.js) ---
+     Alle drei fix positionierten Leisten gleichzeitig ausblenden, per
+     transform statt display - bleibt smooth animierbar und behält Layout. */
+  .sidebar-tools,
+  .sidebar-footer,
+  .player-bar {
+    transition: transform 0.28s ease, opacity 0.28s ease;
+  }
+  body.mobile-bars-hidden .sidebar-tools,
+  body.mobile-bars-hidden .sidebar-footer {
+    transform: translateY(140%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  body.mobile-bars-hidden .player-bar {
+    transform: translateY(140%);
+    pointer-events: none;
+  }
 }
 
 @media (max-width: 400px) {

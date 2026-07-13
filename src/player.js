@@ -118,6 +118,7 @@ let currentTrackIndex = -1;
 let isShuffle = false;
 let repeatMode = "off"; // off -> all -> one -> off
 let shuffleOrder = [];
+let lastShuffleOrder = []; // so a reshuffle never lands on the exact same order twice in a row
 let isLiked = false;
 let currentView = "home"; // home | library | playlist
 let previousView = "home"; // where the back arrow returns to from playlist view
@@ -808,11 +809,27 @@ function highlightPlayingRow() {
 
 /* ===== Playback ===== */
 function buildShuffleOrder(keepCurrentFirst = true) {
-  const order = currentPlaylist.tracks.map((_, i) => i);
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [order[i], order[j]] = [order[j], order[i]];
-  }
+  let order;
+  let attempts = 0;
+  // Real Fisher-Yates is already unbiased, but for small playlists it can
+  // land on the same order (or even the identity order) often enough that
+  // a reshuffle reads as "nothing happened". Regenerate until it differs
+  // from the last shuffle - capped so this can never loop forever.
+  do {
+    order = currentPlaylist.tracks.map((_, i) => i);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    attempts++;
+  } while (
+    attempts < 8 &&
+    order.length > 2 &&
+    order.length === lastShuffleOrder.length &&
+    order.every((v, i) => v === lastShuffleOrder[i])
+  );
+  lastShuffleOrder = order.slice();
+
   // keepCurrentFirst: move the currently playing track to the front so
   // toggling shuffle mid-song (bar button) never interrupts or repeats
   // it - nextTrack() walks on from position 0. The big "shuffle-play"
@@ -979,6 +996,7 @@ playAllBtn.addEventListener("click", () => {
    playback. The small bar toggle (pbShuffle) stays a pure mode switch
    that never interrupts the running song. */
 shuffleAllBtn.addEventListener("click", () => {
+  if (suppressShuffleClick) return;
   if (!currentPlaylist || !currentPlaylist.tracks.length) return;
   if (!isShuffle) {
     isShuffle = true;
@@ -998,6 +1016,7 @@ pbNext.addEventListener("click", nextTrack);
 pbPrev.addEventListener("click", prevTrack);
 
 function toggleShuffle() {
+  if (suppressShuffleClick) return;
   isShuffle = !isShuffle;
   pbShuffle.classList.toggle("active", isShuffle);
   shuffleAllBtn.classList.toggle("active", isShuffle);
@@ -1028,6 +1047,37 @@ function reshuffleNow(btn) {
     e.preventDefault();
     reshuffleNow(btn);
   });
+});
+
+/* Touch has no right-click - long-press is the mobile equivalent for
+   Shuffle+. Sets suppressShuffleClick briefly so the synthetic "click"
+   every touchend fires afterward doesn't immediately undo the reshuffle
+   by also running toggleShuffle()/the shuffleAllBtn handler. */
+let suppressShuffleClick = false;
+[pbShuffle, shuffleAllBtn].forEach((btn) => {
+  let pressTimer = null;
+  let longPressed = false;
+  btn.addEventListener(
+    "touchstart",
+    () => {
+      longPressed = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        longPressed = true;
+        reshuffleNow(btn);
+      }, 450);
+    },
+    { passive: true }
+  );
+  const endPress = () => {
+    clearTimeout(pressTimer);
+    if (longPressed) {
+      suppressShuffleClick = true;
+      setTimeout(() => { suppressShuffleClick = false; }, 500);
+    }
+  };
+  btn.addEventListener("touchend", endPress);
+  btn.addEventListener("touchcancel", endPress);
 });
 
 /* ===== Toast ===== */
