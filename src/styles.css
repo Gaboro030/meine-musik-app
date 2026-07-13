@@ -226,13 +226,13 @@
   100% { filter: drop-shadow(0 0 4px #ff004c) drop-shadow(0 0 12px #ff004c); }
 }
 @keyframes rgbTextShadowCycle {
-  0%   { text-shadow: 0 0 16px #ff004c, 0 0 40px rgba(255, 0, 76, 0.5); }
-  16%  { text-shadow: 0 0 16px #ff9900, 0 0 40px rgba(255, 153, 0, 0.5); }
-  33%  { text-shadow: 0 0 16px #fffb00, 0 0 40px rgba(255, 251, 0, 0.5); }
-  50%  { text-shadow: 0 0 16px #00ff66, 0 0 40px rgba(0, 255, 102, 0.5); }
-  66%  { text-shadow: 0 0 16px #00c3ff, 0 0 40px rgba(0, 195, 255, 0.5); }
-  83%  { text-shadow: 0 0 16px #7b2fff, 0 0 40px rgba(123, 47, 255, 0.5); }
-  100% { text-shadow: 0 0 16px #ff004c, 0 0 40px rgba(255, 0, 76, 0.5); }
+  0%   { text-shadow: 0 0 5px #ff004c; }
+  16%  { text-shadow: 0 0 5px #ff9900; }
+  33%  { text-shadow: 0 0 5px #fffb00; }
+  50%  { text-shadow: 0 0 5px #00ff66; }
+  66%  { text-shadow: 0 0 5px #00c3ff; }
+  83%  { text-shadow: 0 0 5px #7b2fff; }
+  100% { text-shadow: 0 0 5px #ff004c; }
 }
 :root[data-theme="rgb-wave"] #pbShuffle.active,
 :root[data-theme="rgb-wave"] #pbRepeat.active,
@@ -1630,7 +1630,12 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   position: absolute;
   inset: 0;
   color: var(--sp-text);
-  text-shadow: 0 0 16px var(--sp-green), 0 0 40px color-mix(in srgb, var(--sp-green) 50%, transparent);
+  /* Was a double shadow (16px + 40px blur) - on real devices the big 40px
+     blur smeared across the whole line height into a glowing rectangle
+     behind the words instead of a glow following the letters ("billig
+     aussehender Leuchtbalken"). One tight shadow reads as the text itself
+     glowing, not a bar behind it. */
+  text-shadow: 0 0 5px var(--sp-green);
   clip-path: inset(0 calc(100% - var(--wipe, 0%)) 0 0);
   pointer-events: none;
 }
@@ -2309,12 +2314,19 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     padding: 6px 12px 6px 6px;
   }
 
-  /* --- Werkzeug-Leiste GANZ UNTEN (über der Player-Bar) --- */
+  /* --- Werkzeug-Leiste GANZ UNTEN (über der Player-Bar) ---
+     Was vorher chaotisch aussah: drei fix positionierte Leisten mit drei
+     unabhängig geratenen Pixel-Offsets, die bei abweichender Player-Bar-
+     Höhe (anderer Schriftgrad, Umbruch, etc.) leicht auseinanderdriften
+     und sich überlappen konnten. Jetzt EINE Formel: alles hängt von
+     --mobile-player-bar-h ab, Werkzeug-Leiste/Footer/Popover sitzen darauf
+     mit garantiertem Abstand statt geratenen Absolutwerten. */
+  :root { --mobile-player-bar-h: 82px; --mobile-bottom-gap: 14px; }
   .sidebar-tools {
     position: fixed;
     left: 10px;
     right: 74px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 170px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + var(--mobile-bottom-gap));
     z-index: 380;
     display: flex;
     justify-content: space-around;
@@ -2333,7 +2345,7 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 236px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + var(--mobile-bottom-gap) + 66px);
     top: auto;
     min-width: 0;
     max-height: 55vh;
@@ -2342,7 +2354,7 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .sidebar-footer {
     position: fixed;
     right: 10px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 170px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + var(--mobile-bottom-gap));
     z-index: 380;
     width: 56px;
     background: var(--sp-green);
@@ -2371,7 +2383,7 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
     z-index: 400;
     margin: 0;
-    min-height: 0;
+    min-height: var(--mobile-player-bar-h);
     padding: 10px 14px;
     grid-template-columns: 1fr;
     gap: 6px;
@@ -2380,9 +2392,15 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .pb-controls { gap: 26px; }
   .pb-scrubber { max-width: none; }
 
-  /* Inhalt braucht Platz für die zwei festen Leisten unten */
-  .main-view {
-    padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 260px);
+  /* Inhalt braucht Platz für die festen Leisten unten - war vorher auf
+     .main-view gesetzt, einer Klasse, die auf keinem einzigen Element im
+     HTML existiert (der echte Scroll-Container ist .content-scroll) - die
+     Reservierung griff also nie, weshalb sich der letzte Song einer langen
+     Playlist nie ganz über die Player-Bar hinausscrollen ließ. Großzügig
+     bemessen (deutlich mehr als die Leisten-Formel oben ergibt), damit da
+     immer Luft bleibt, auch wenn ein Popover mal offen ist. */
+  .content-scroll {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + var(--mobile-bottom-gap) + 66px + 20px);
   }
 
   /* --- Home entzerrt: 2 Spalten, mehr Luft --- */
@@ -2398,6 +2416,16 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .card:hover { transform: none; } /* kein Hover-Lift auf Touch */
   .home-section-title { font-size: 1.05rem; }
   .search-bar { margin: 0; }
+
+  /* --- Playlist-Kopf ("Meins"-Karte) überlappte den ersten Song ---
+     Auf schmalen Screens wächst die Zeile aus Cover+Titel schnell in der
+     Höhe (Zeilenumbruch), aber die Klick-Kreise darunter hatten kaum
+     Puffer zur Song-Tabelle direkt danach. */
+  .playlist-hero { padding: 20px 0 16px; gap: 16px; }
+  .playlist-cover { width: 96px; height: 96px; }
+  .playlist-meta h1 { font-size: 1.5rem; }
+  .playlist-actions { margin-bottom: 18px; }
+  .track-table { margin-top: 6px; }
 
   /* --- Bottom-UI beim Scrollen ausblenden (mobile-ui.js) ---
      Alle drei fix positionierten Leisten gleichzeitig ausblenden, per
@@ -2420,6 +2448,9 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
 }
 
 @media (max-width: 400px) {
-  .sidebar-tools { bottom: calc(env(safe-area-inset-bottom, 0px) + 178px); }
-  .sidebar-footer { bottom: calc(env(safe-area-inset-bottom, 0px) + 178px); }
+  /* Narrow phones need more clearance (labels/scrubber more likely to
+     wrap, making the player bar taller) - bump the ONE shared variable
+     instead of re-guessing each bar's bottom offset independently again,
+     which is exactly the drift that caused the stacking mess before. */
+  :root { --mobile-player-bar-h: 96px; }
 }

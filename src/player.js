@@ -119,6 +119,7 @@ let isShuffle = false;
 let repeatMode = "off"; // off -> all -> one -> off
 let shuffleOrder = [];
 let lastShuffleOrder = []; // so a reshuffle never lands on the exact same order twice in a row
+let prefetchedNextForTrack = -1; // guards the 80%-progress re-check below from firing more than once per track
 let isLiked = false;
 let currentView = "home"; // home | library | playlist
 let previousView = "home"; // where the back arrow returns to from playlist view
@@ -875,6 +876,10 @@ function playTrack(index) {
     cover: track.cover,
     stream_url: track.stream_url,
   };
+
+  prefetchLyrics(track);
+  prefetchLyrics(peekNextTrack());
+  prefetchedNextForTrack = -1;
 }
 
 /* Plays a track handed over from the collaborative queue (guest phones).
@@ -2066,6 +2071,83 @@ async function downloadPlaylistOffline() {
 
 offlineDownloadBtn.addEventListener("click", downloadPlaylistOffline);
 
+/* ===== Lyrics cache & prefetch =====
+   /api/lyrics can take a couple seconds (external lrclib lookup) - caching
+   the raw response per title+artist in localStorage means a song you've
+   viewed lyrics for before opens instantly next time, and prefetching the
+   current + upcoming track's lyrics in the background as soon as playback
+   starts (plus again once a track is 80% through, in case shuffle/queue
+   changed what's actually next) means even a first-time view is usually
+   already sitting in cache by the time someone taps the lyrics button. */
+function lyricsCacheKey(title, artist) {
+  return `lyrics:${(title || "").toLowerCase()}::${(artist || "").toLowerCase()}`;
+}
+
+function getCachedLyrics(title, artist) {
+  try {
+    const raw = localStorage.getItem(lyricsCacheKey(title, artist));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function setCachedLyrics(title, artist, data) {
+  try {
+    localStorage.setItem(lyricsCacheKey(title, artist), JSON.stringify(data));
+  } catch (_) {
+    // Storage full/disabled - lyrics still work, just uncached this time.
+  }
+}
+
+async function fetchLyricsData(title, artist, duration) {
+  const cached = getCachedLyrics(title, artist);
+  if (cached) return cached;
+  const params = new URLSearchParams({ title: title || "", artist: artist || "" });
+  if (duration && isFinite(duration) && duration > 0) params.set("duration", Math.round(duration));
+  const res = await fetch(`/api/lyrics?${params.toString()}`);
+  const data = await res.json();
+  setCachedLyrics(title, artist, data);
+  return data;
+}
+
+function prefetchLyrics(track) {
+  if (!track || !track.title || getCachedLyrics(track.title, track.artist)) return;
+  fetchLyricsData(track.title, track.artist, track.duration).catch(() => {});
+}
+
+/* Mirrors nextTrack()'s index selection (shuffle order / repeat mode)
+   without touching playback - used purely to figure out which track to
+   prefetch lyrics for. Guest-queue entries aren't playlist tracks with
+   stable metadata to prefetch against, so those are skipped. */
+function peekNextTrack() {
+  if (liveQueue.length || !currentPlaylist || !currentPlaylist.tracks.length) return null;
+  if (isShuffle && shuffleOrder.length) {
+    const pos = shuffleOrder.indexOf(currentTrackIndex);
+    const nextPos = (pos + 1) % shuffleOrder.length;
+    if (nextPos === 0 && repeatMode !== "all") return null;
+    return currentPlaylist.tracks[shuffleOrder[nextPos]] || null;
+  }
+  let next = currentTrackIndex + 1;
+  if (next >= currentPlaylist.tracks.length) {
+    if (repeatMode !== "all") return null;
+    next = 0;
+  }
+  return currentPlaylist.tracks[next] || null;
+}
+
+// Re-check once a track is most of the way through - covers shuffle/repeat
+// getting toggled mid-song, which changes what peekNextTrack() returns
+// compared to when playTrack() first fired its prefetch.
+audioEl.addEventListener("timeupdate", () => {
+  if (!audioEl.duration || !isFinite(audioEl.duration)) return;
+  if (currentTrackIndex === prefetchedNextForTrack) return;
+  if (audioEl.currentTime / audioEl.duration >= 0.8) {
+    prefetchedNextForTrack = currentTrackIndex;
+    prefetchLyrics(peekNextTrack());
+  }
+});
+
 /* ===== Lyrics Overlay (karaoke-style synced highlighting) =====
    /api/lyrics returns `synced` (an LRC string with [mm:ss.xx] timestamps
    per line) when lrclib has the song, else just plain text. With synced
@@ -2187,14 +2269,11 @@ async function openLyrics() {
   startLyricsLoop();
   lyricsTitle.textContent = meta.title;
   lyricsArtist.textContent = meta.artist || "Unbekannter Interpret";
-  renderStaticLyrics("Lade Songtext …");
+  // Cache hit (prefetched or previously viewed) resolves synchronously-ish,
+  // so skip the "Lade Songtext …" flash for the common case.
+  if (!getCachedLyrics(meta.title, meta.artist)) renderStaticLyrics("Lade Songtext …");
   try {
-    const params = new URLSearchParams({ title: meta.title, artist: meta.artist || "" });
-    if (isFinite(audioEl.duration) && audioEl.duration > 0) {
-      params.set("duration", Math.round(audioEl.duration));
-    }
-    const res = await fetch(`/api/lyrics?${params.toString()}`);
-    const data = await res.json();
+    const data = await fetchLyricsData(meta.title, meta.artist, audioEl.duration);
     if (token !== lyricsRequestToken) return; // a newer track's request superseded this one
     if (data.synced) {
       const lines = parseLrc(data.synced);
