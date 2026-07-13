@@ -74,6 +74,12 @@ impl Hub {
         let _ = self.0.app.set(app);
     }
 
+    /// The LAN port this server actually bound to (sync.rs's discovery
+    /// beacon advertises it so peers know where to POST files).
+    pub fn port(&self) -> u16 {
+        self.0.port.load(Ordering::Relaxed)
+    }
+
     /// Kills the cloudflared tunnel child, if any - called on app exit so
     /// the sidecar process can't outlive the app.
     pub fn shutdown(&self) {
@@ -336,6 +342,9 @@ pub async fn run_server(hub: Hub) {
         .route("/api/party/state", get(api_party_get).post(api_party_post))
         .route("/api/events", get(api_events))
         .route("/stream/:playlist/:file", get(api_stream))
+        // Handy-Sync (sync.rs): peer devices POST files straight into this
+        // server's music_root - same always-on server, one extra route.
+        .route("/sync/receive", post(crate::sync::api_sync_receive))
         .with_state(hub.clone());
 
     let listener = match tokio::net::TcpListener::bind(("0.0.0.0", DEFAULT_PORT)).await {

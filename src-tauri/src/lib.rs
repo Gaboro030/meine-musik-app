@@ -4,6 +4,7 @@ mod innertube;
 mod lyrics;
 mod party;
 mod playlist;
+mod sync;
 mod trash;
 
 use std::fs;
@@ -42,6 +43,10 @@ pub fn run() {
             hub.set_app(handle.clone());
             app.manage(hub.clone());
             tauri::async_runtime::spawn(party::run_server(hub));
+
+            // Handy-Sync: discovery/transfer state, off until the user opens
+            // the Sync panel and starts it.
+            app.manage(sync::SyncState::new());
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("stream", |ctx, request, responder| {
@@ -87,6 +92,10 @@ pub fn run() {
             innertube::set_po_token,
             innertube::set_po_token_error,
             innertube::bg_fetch,
+            sync::sync_start,
+            sync::sync_stop,
+            sync::sync_list_peers,
+            sync::sync_send_playlists,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

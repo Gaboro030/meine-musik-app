@@ -59,6 +59,17 @@
           </div>
         </div>
         <div class="sidebar-tool-wrap">
+          <button type="button" id="syncToggleBtn" class="sidebar-tool-btn" title="Handy-Sync">📱</button>
+          <div id="syncPopover" class="sidebar-tool-popover hidden">
+            <div class="sidebar-tool-popover-title">Handy-Sync</div>
+            <div id="syncStatusText" class="party-popover-status">
+              Findet andere Geräte im selben WLAN, auf denen der Sync-Modus offen ist.
+            </div>
+            <button type="button" id="syncModeBtn" class="party-toggle-switch">Sync-Modus starten</button>
+            <div id="syncPeerList" class="sync-peer-list"></div>
+          </div>
+        </div>
+        <div class="sidebar-tool-wrap">
           <button type="button" id="themeToggleBtn" class="sidebar-tool-btn" title="Design">🎨</button>
           <div id="themePopover" class="sidebar-tool-popover hidden">
             <div class="sidebar-tool-popover-title">Design</div>
@@ -335,6 +346,27 @@
     </div>
   </div>
 
+  <div id="syncModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>An <span id="syncTargetName">Gerät</span> senden</h3>
+        <button type="button" id="syncModalClose" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="sync-select-all"><input type="checkbox" id="syncSelectAll" checked /> Alle Playlists</label>
+        <div id="syncPlaylistList" class="sync-playlist-list"></div>
+        <div id="syncProgressWrap" class="sync-progress-wrap hidden">
+          <div class="sync-progress-bar-track"><div id="syncProgressBar" class="sync-progress-bar-fill"></div></div>
+          <div id="syncProgressLabel" class="sync-progress-label">0 / 0</div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="syncModalCancel" class="btn-secondary">Abbrechen</button>
+          <button type="button" id="syncSendBtn" class="btn-primary-sm">Senden</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="uploadToast" class="player-toast upload-toast hidden"></div>
 
   <div id="lyricsOverlay" class="lyrics-overlay hidden">
@@ -418,6 +450,7 @@
   <script src="tauri-shim.js"></script>
   <script src="player.js"></script>
   <script src="themes.js"></script>
+  <script src="sync.js"></script>
   <script type="module" src="potoken-init.js"></script>
 </body>
 </html>
