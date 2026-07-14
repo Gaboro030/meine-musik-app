@@ -136,9 +136,16 @@
     }
 
     // --- lyrics --------------------------------------------------------------
+    // get_lyrics_cached reads a <file>.lyrics.json sidecar next to the
+    // track first (playlist/file identify it) - zero network once a
+    // song's lyrics have ever been looked up (playback prefetch or a
+    // previous open), only falling back to the live lrclib/lyrics.ovh
+    // lookup fetch_lyrics does on a genuine cache miss.
     if (parts[1] === "lyrics") {
       const durRaw = q.get("duration");
-      const data = await invoke("fetch_lyrics", {
+      const data = await invoke("get_lyrics_cached", {
+        playlist: q.get("playlist") || "",
+        file: q.get("file") || "",
         title: q.get("title") || "",
         artist: q.get("artist") || "",
         duration: durRaw ? Number(durRaw) : null,

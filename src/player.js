@@ -2072,48 +2072,30 @@ async function downloadPlaylistOffline() {
 offlineDownloadBtn.addEventListener("click", downloadPlaylistOffline);
 
 /* ===== Lyrics cache & prefetch =====
-   /api/lyrics can take a couple seconds (external lrclib lookup) - caching
-   the raw response per title+artist in localStorage means a song you've
-   viewed lyrics for before opens instantly next time, and prefetching the
-   current + upcoming track's lyrics in the background as soon as playback
-   starts (plus again once a track is 80% through, in case shuffle/queue
-   changed what's actually next) means even a first-time view is usually
-   already sitting in cache by the time someone taps the lyrics button. */
-function lyricsCacheKey(title, artist) {
-  return `lyrics:${(title || "").toLowerCase()}::${(artist || "").toLowerCase()}`;
-}
-
-function getCachedLyrics(title, artist) {
-  try {
-    const raw = localStorage.getItem(lyricsCacheKey(title, artist));
-    return raw ? JSON.parse(raw) : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function setCachedLyrics(title, artist, data) {
-  try {
-    localStorage.setItem(lyricsCacheKey(title, artist), JSON.stringify(data));
-  } catch (_) {
-    // Storage full/disabled - lyrics still work, just uncached this time.
-  }
-}
-
-async function fetchLyricsData(title, artist, duration) {
-  const cached = getCachedLyrics(title, artist);
-  if (cached) return cached;
-  const params = new URLSearchParams({ title: title || "", artist: artist || "" });
+   get_lyrics_cached (Rust, via /api/lyrics in tauri-shim.js) reads a
+   <file>.lyrics.json sidecar next to the actual track first - a song
+   whose lyrics were ever looked up before opens with zero network
+   requests, on any device, even after a reinstall (it's a real file next
+   to the track, not browser storage). Prefetching the current + upcoming
+   track's lyrics in the background as soon as playback starts (plus again
+   once a track is 80% through, in case shuffle/queue changed what's
+   actually next) means even a first-time view is usually already cached
+   by the time someone taps the lyrics button. */
+async function fetchLyricsData(playlist, file, title, artist, duration) {
+  const params = new URLSearchParams({
+    playlist: playlist || "",
+    file: file || "",
+    title: title || "",
+    artist: artist || "",
+  });
   if (duration && isFinite(duration) && duration > 0) params.set("duration", Math.round(duration));
   const res = await fetch(`/api/lyrics?${params.toString()}`);
-  const data = await res.json();
-  setCachedLyrics(title, artist, data);
-  return data;
+  return res.json();
 }
 
 function prefetchLyrics(track) {
-  if (!track || !track.title || getCachedLyrics(track.title, track.artist)) return;
-  fetchLyricsData(track.title, track.artist, track.duration).catch(() => {});
+  if (!track || !track.title || !currentPlaylist) return;
+  fetchLyricsData(currentPlaylist.name, track.file, track.title, track.artist, track.duration).catch(() => {});
 }
 
 /* Mirrors nextTrack()'s index selection (shuffle order / repeat mode)
@@ -2269,11 +2251,9 @@ async function openLyrics() {
   startLyricsLoop();
   lyricsTitle.textContent = meta.title;
   lyricsArtist.textContent = meta.artist || "Unbekannter Interpret";
-  // Cache hit (prefetched or previously viewed) resolves synchronously-ish,
-  // so skip the "Lade Songtext …" flash for the common case.
-  if (!getCachedLyrics(meta.title, meta.artist)) renderStaticLyrics("Lade Songtext …");
+  renderStaticLyrics("Lade Songtext …");
   try {
-    const data = await fetchLyricsData(meta.title, meta.artist, audioEl.duration);
+    const data = await fetchLyricsData(meta.playlist, meta.file, meta.title, meta.artist, audioEl.duration);
     if (token !== lyricsRequestToken) return; // a newer track's request superseded this one
     if (data.synced) {
       const lines = parseLrc(data.synced);

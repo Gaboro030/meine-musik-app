@@ -79,6 +79,7 @@ pub fn run() {
             trash::restore_trash,
             trash::delete_trash_forever,
             lyrics::fetch_lyrics,
+            lyrics::get_lyrics_cached,
             discovery::discover_tracks,
             discovery::discover_rows,
             discovery::recommend_for_playlist,

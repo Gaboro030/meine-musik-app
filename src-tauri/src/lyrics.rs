@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct LyricsResult {
     pub title: String,
     pub artist: String,
@@ -123,4 +123,50 @@ pub async fn fetch_lyrics(
             found: false,
         })
     }
+}
+
+/// `<file>.lyrics.json` next to the track itself - same sidecar convention
+/// innertube.rs already uses for cover art (.jpg) and artist (.artist.txt)
+/// on Android downloads. Ties the cache to the actual file on disk instead
+/// of a browser-storage key, so it survives reinstalls and travels with
+/// the track if it's ever moved via Handy-Sync.
+fn lyrics_sidecar_path(music_root: &std::path::Path, playlist: &str, file: &str) -> Option<std::path::PathBuf> {
+    if file.is_empty() {
+        return None;
+    }
+    let rel = format!("{}/{}", crate::commands::safe_filename(playlist), file);
+    crate::commands::safe_join(music_root, &rel)
+        .ok()
+        .map(|p| p.with_extension("lyrics.json"))
+}
+
+/// Same lookup as fetch_lyrics, but file-cached: a track whose lyrics were
+/// ever looked up before (on THIS device or prefetched right after a
+/// download) resolves straight from disk with zero network requests.
+/// `playlist`/`file` are optional (empty when playing a not-yet-downloaded
+/// guest-queue entry) - lookups still work then, just without caching.
+#[tauri::command]
+pub async fn get_lyrics_cached(
+    state: tauri::State<'_, crate::commands::AppState>,
+    playlist: String,
+    file: String,
+    title: String,
+    artist: String,
+    duration: Option<f64>,
+) -> Result<LyricsResult, String> {
+    let sidecar = lyrics_sidecar_path(&state.music_root, &playlist, &file);
+    if let Some(path) = &sidecar {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if let Ok(cached) = serde_json::from_str::<LyricsResult>(&text) {
+                return Ok(cached);
+            }
+        }
+    }
+    let result = fetch_lyrics(title, artist, duration).await?;
+    if let Some(path) = &sidecar {
+        if let Ok(json) = serde_json::to_string(&result) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+    Ok(result)
 }

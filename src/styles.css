@@ -418,6 +418,10 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 /* ========= SIDEBAR TOOLS (Freunde / Party / Design popovers) ========= */
 .sidebar-tools { display: flex; gap: 8px; padding: 0 4px 10px; }
 .sidebar-tool-wrap { position: relative; flex: 1; }
+/* Nur auf dem Handy sichtbar (Mobile-Dock ersetzt den runden "Musik
+   hinzufügen"-Button dort mit diesem Icon-Link) - auf dem Desktop bleibt
+   "Musik hinzufügen" der normale Sidebar-Footer-Eintrag. */
+.dock-downloader-link { display: none; }
 .sidebar-tool-btn {
   width: 100%;
   padding: 9px 0;
@@ -1686,14 +1690,23 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .eq-slider-label { font-size: 0.72rem; color: var(--sp-muted); }
 
 /* ========= SHUFFLE NEON GLOW ========= */
-/* Persistent soft glow while shuffle is on - drop-shadow (not just
+/* Persistent soft glow while repeat is on - drop-shadow (not just
    text-shadow) so the glow follows the emoji glyph shape, and it picks up
    --sp-green so each theme glows in its own accent color. */
-#pbShuffle.active,
-#pbRepeat.active,
-.btn-shuffle-circle.active {
+#pbRepeat.active {
   color: var(--sp-green);
   filter: drop-shadow(0 0 4px var(--sp-green)) drop-shadow(0 0 12px var(--sp-green));
+}
+
+/* Shuffle's glow is deliberately fixed cyan, NOT theme-tied - under a
+   theme like Sunset-Orange, var(--sp-green) resolves to orange, turning
+   this into a jarring orange box that read as broken rather than "on".
+   Same treatment on every platform (was previously only overridden on
+   mobile), applies everywhere this class shows up. */
+#pbShuffle.active,
+.btn-shuffle-circle.active {
+  color: #00f2fe;
+  filter: drop-shadow(0 0 4px #00f2fe) drop-shadow(0 0 12px #00f2fe);
 }
 
 /* Repeat additionally gets a small dot under the icon while active - the
@@ -2323,36 +2336,46 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
      --mobile-player-bar-h ab, Werkzeug-Leiste/Footer/Popover sitzen darauf
      mit garantiertem Abstand statt geratenen Absolutwerten. */
   :root { --mobile-player-bar-h: 82px; --mobile-bottom-gap: 14px; }
-  /* Windows-Stil: eine einzige flache dunkle Pille statt der grün-
-     umrandeten Themen-Karte, die vorher hier saß. */
+  /* Schwebt zentriert über der Player-Bar (nie mehr davon verdeckt - der
+     Abstand hängt an derselben --mobile-player-bar-h-Formel wie die
+     Player-Bar selbst, kein unabhängig geratener Wert). Icon-Farben sind
+     bewusst NICHT mehr überschrieben - .sidebar-tool-btn weiter unten
+     (allgemeine Regel, gilt auf jeder Breite) liefert dieselben grauen
+     Buttons/grünen Aktiv-Zustand wie auf dem Desktop. */
   .mobile-action-dock {
     position: fixed;
-    left: 10px;
-    right: 74px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + var(--mobile-bottom-gap));
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 420px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + 12px);
     z-index: 380;
     display: flex;
     justify-content: space-around;
     align-items: center;
-    background: rgba(20, 20, 20, 0.9);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 20px;
+    background: rgba(15, 15, 15, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 30px;
     padding: 10px 18px;
-    margin-bottom: 10px;
   }
   .mobile-action-dock .sidebar-tool-wrap { flex: none; }
-  .mobile-action-dock .sidebar-tool-btn {
-    background: transparent;
-    border: none;
-    color: var(--sp-muted);
+  /* "Musik hinzufügen" zog vom schwebenden runden Button (jetzt komplett
+     ausgeblendet, siehe .sidebar-footer unten) hierher ins Dock, damit der
+     Downloader auf dem Handy trotzdem erreichbar bleibt. */
+  .mobile-action-dock .dock-downloader-link {
+    flex: none;
     font-size: 1.25rem;
-    padding: 6px 10px;
-    transition: color 0.15s ease, background 0.15s ease;
+    color: var(--sp-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 9px 0;
+    border-radius: var(--radius-sm);
   }
-  .mobile-action-dock .sidebar-tool-btn:hover { background: rgba(255,255,255,0.08); }
-  .mobile-action-dock .sidebar-tool-btn.active { background: transparent; color: var(--sp-green); }
   /* Popovers: auf dem Handy als zentrierte, feste Karte über der
      Werkzeug-Leiste - absolut im schmalen Leisten-Container würden sie
      rechts aus dem Bildschirm laufen. */
@@ -2366,29 +2389,12 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     max-height: 55vh;
     overflow-y: auto;
   }
-  .sidebar-footer {
-    position: fixed;
-    right: 10px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + var(--mobile-bottom-gap));
-    z-index: 380;
-    width: 56px;
-    background: var(--sp-green);
-    border-radius: 100px;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
-  }
-  .sidebar-footer .nav-external {
-    justify-content: center;
-    align-items: center;
-    /* .nav-item's flex `gap` still reserves space for the now-invisible
-       text node even at font-size:0 - that's what was pushing the icon
-       off-center in the round button. */
-    gap: 0;
-    padding: 0;
-    height: 56px;
-    color: #000;
-    font-size: 0; /* Text weg, nur Icon */
-  }
-  .sidebar-footer .nav-icon { font-size: 1.25rem; width: auto; line-height: 1; }
+  /* Der schwebende grüne Rund-Button störte das symmetrische UI - komplett
+     weg, "Musik hinzufügen" ist jetzt der Downloader-Icon-Link im Dock
+     oben (.dock-downloader-link). Der grüne Playlist-Play-Button in der
+     "Meins"-Ansicht ist ein ANDERES Element (.btn-play-circle) und bleibt
+     unangetastet. */
+  .sidebar-footer { display: none; }
 
   /* --- Player-Bar fest am unteren Rand, kompakt --- */
   .player-bar {
@@ -2458,26 +2464,17 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     pointer-events: none;
   }
 
-  /* --- Suchleiste/Navigation wanderte beim Scrollen mit nach oben weg ---
-     .main-header ist ein Kind von .main-content, und .main-content hat
-     (aus der Desktop-Regel weiter oben) `overflow: hidden` - das macht
-     .main-content selbst zum Referenz-Scrollcontainer für die sticky-
-     Berechnung seiner Kinder. Da .main-content auf dem Handy aber gar
-     nicht selbst scrollt (die ganze Seite/body tut das), hatte "sticky"
-     dort nichts, wogegen es sich verankern konnte, und main-header lief
-     einfach mit durch. .sidebar (ein Geschwister-Element, nicht in
-     .main-content drin) war davon nie betroffen - genau deshalb blieb nur
-     die Tab-Leiste oben stehen, Suchleiste/Downloader-Link aber nicht. */
-  .main-content { overflow: visible; }
-  .main-header {
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-    background: #111;
-  }
+  /* --- Sticky-Header zurückgerollt ---
+     Kollidierte sichtbar mit der bereits sticky sitzenden Tab-Leiste
+     (.sidebar) direkt darüber - zwei unabhängig fixierte Elemente ohne
+     abgestimmten Stapel-Abstand. Zurück zu normalem Fluss: Header scrollt
+     mit der Playlist ganz normal aus dem Bild, wie vor dem letzten Versuch.
+     .main-content bleibt bei overflow:hidden (Desktop-Regel), da hier
+     nichts mehr dagegen verankert werden muss. */
+  .main-header { position: static; }
 
   /* --- Downloader-Button oben rechts hat auf dem Handy nichts zu suchen -
-     der Downloader ist über "Musik hinzufügen" unten längst erreichbar. */
+     der Downloader ist jetzt als Icon im Dock erreichbar (siehe unten). */
   .header-downloader-btn { display: none; }
 
   /* --- Shuffle: keine Emoji-in-farbigem-Kasten-Optik mehr, sondern ein

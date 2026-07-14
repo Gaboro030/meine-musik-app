@@ -152,6 +152,31 @@
       pal: derivePalette({ bg: "#0e1410", elevated: "#152018", elevatedHover: "#1e2f22", muted: "#a3bda9", muted2: "#68806e", accent: "#4c9a5f", accentHover: "#63b877", gradTop: "#1b3a24", scrollbar: "#2a4531", black: "#070b08" }),
       font: "serif", radius: [10, 8, 5],
     },
+    /* ===== Noch mehr neue Themes ===== */
+    "amoled-deep-black": {
+      pal: derivePalette({ bg: "#000000", elevated: "#080808", elevatedHover: "#151515", muted: "#9e9e9e", muted2: "#585858", accent: "#ffffff", accentHover: "#d0d0d0", gradTop: "#0d0d0d", text: "#ffffff", border: "rgba(255,255,255,0.10)", surface: "rgba(255,255,255,0.05)", scrollbar: "#272727", black: "#000000" }),
+      font: "system", radius: [6, 4, 2],
+    },
+    "tokyo-night": {
+      pal: derivePalette({ bg: "#0d0e1a", elevated: "#14162a", elevatedHover: "#1e2140", muted: "#a0a8d0", muted2: "#6b7299", accent: "#ff3cac", accentHover: "#ff6bc1", gradTop: "#1a1b3a", scrollbar: "#2a2d52", black: "#05050a" }),
+      font: "inter", radius: [12, 8, 5], fx: "fx-glowpulse",
+    },
+    "forest-emerald": {
+      pal: derivePalette({ bg: "#05140b", elevated: "#0a1f13", elevatedHover: "#102e1c", muted: "#b8cdb9", muted2: "#7a9280", accent: "#d4af37", accentHover: "#e6c34f", gradTop: "#123320", scrollbar: "#1f4a2e", black: "#020a05" }),
+      font: "serif", radius: [10, 8, 5],
+    },
+    "dracula-classic": {
+      pal: derivePalette({ bg: "#282a36", elevated: "#343746", elevatedHover: "#414458", muted: "#b9bbd3", muted2: "#7b7d99", accent: "#bd93f9", accentHover: "#d0aefc", gradTop: "#3a3d52", scrollbar: "#4a4d68", black: "#191a21" }),
+      font: "mono", radius: [8, 6, 4],
+    },
+    "sunset-crimson": {
+      pal: derivePalette({ bg: "#170a14", elevated: "#241222", elevatedHover: "#351b30", muted: "#d8a8b0", muted2: "#966b73", accent: "#ff5733", accentHover: "#ff7a5c", gradTop: "#401a30", scrollbar: "#52233f", black: "#0a0308" }),
+      font: "inter", radius: [14, 10, 6], fx: "fx-sunsetbg",
+    },
+    "nordic-frost": {
+      pal: derivePalette({ bg: "#161b22", elevated: "#202730", elevatedHover: "#2b333e", muted: "#a3b3bf", muted2: "#6b7d89", accent: "#88c0d0", accentHover: "#a3d3e0", gradTop: "#263340", scrollbar: "#34424f", black: "#0d1117" }),
+      font: "system", radius: [10, 8, 5],
+    },
     custom: { pal: null, font: "inter", radius: [12, 8, 4] }, // aus localStorage
   };
 
