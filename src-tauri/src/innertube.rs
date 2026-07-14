@@ -116,6 +116,12 @@ fn web_context() -> Value {
 fn player_client_cascade(po: Option<&PoTokenData>) -> Vec<Value> {
     let mut ctxs = vec![
         json!({"client": {"clientName": "ANDROID_VR", "clientVersion": "1.60.19", "deviceMake": "Oculus", "deviceModel": "Quest 3", "androidSdkVersion": 32, "hl": "de", "gl": "DE"}}),
+        // IOS: der iOS-App-Client bekommt Stream-URLs ohne PoToken-Zwang
+        // ausgeliefert (Stand 2025/2026 einer der wenigen, bei denen die
+        // googlevideo-Edge kein `pot` verlangt) - genau der Fall, der auf
+        // Geräten ohne funktionierenden BotGuard-Flow sonst als "Video
+        // nicht verfügbar [PoToken: nein]" endet.
+        json!({"client": {"clientName": "IOS", "clientVersion": "20.10.4", "deviceMake": "Apple", "deviceModel": "iPhone16,2", "osName": "iPhone", "osVersion": "18.3.2.22D82", "hl": "de", "gl": "DE"}}),
         json!({"client": {"clientName": "ANDROID_MUSIC", "clientVersion": "7.27.52", "androidSdkVersion": 30, "hl": "de", "gl": "DE"}}),
         // ANDROID_TESTSUITE deliberately excluded: verified against the
         // live API that it reports "video unavailable" for ordinary public
@@ -173,11 +179,17 @@ async fn player_data_once(
         if let Some(po) = &po {
             body["serviceIntegrityDimensions"] = json!({ "poToken": po.po_token });
         }
-        let Ok(data) = call(client, "player", ctx, body).await else {
+        let ua = client_user_agent(&ctx);
+        let Ok(mut data) = call(client, "player", ctx, body).await else {
             continue;
         };
         let status = data.pointer("/playabilityStatus/status").and_then(|x| x.as_str());
         if status == Some("OK") {
+            // Merken, WELCHER Client gewonnen hat: die googlevideo-Edge
+            // prüft beim eigentlichen Media-GET teils, ob der User-Agent
+            // zum Client passt, der die URL ausgestellt hat - der Download
+            // unten schickt deshalb denselben UA mit.
+            data["winningClientUa"] = json!(ua);
             return (data, None);
         }
         let reason = data
@@ -235,11 +247,26 @@ fn http() -> reqwest::Client {
     reqwest::Client::builder().build().unwrap_or_default()
 }
 
+/// YouTube prüft bei App-Clients (IOS, ANDROID_*), ob der User-Agent zum
+/// behaupteten Client passt - reqwests Default-UA fällt da durch bzw.
+/// verschlechtert die Bot-Einstufung. Für WEB & Unbekanntes ein normaler
+/// Browser-UA.
+fn client_user_agent(ctx: &Value) -> &'static str {
+    match ctx.pointer("/client/clientName").and_then(|x| x.as_str()) {
+        Some("IOS") => "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+        Some("ANDROID_VR") => "com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+        Some("ANDROID_MUSIC") => "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 11) gzip",
+        _ => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    }
+}
+
 async fn call(client: &reqwest::Client, endpoint: &str, context: Value, mut body: Value) -> Result<Value, String> {
+    let ua = client_user_agent(&context);
     body["context"] = context;
     let resp = client
         .post(format!("{YT_API}/{endpoint}?key={INNERTUBE_KEY}&prettyPrint=false"))
         .header("Content-Type", "application/json")
+        .header("User-Agent", ua)
         .json(&body)
         .send()
         .await
@@ -527,6 +554,9 @@ struct StreamPick {
     url: String,
     ext: &'static str,
     thumbnail: Option<String>,
+    /// User-Agent des Clients, der die URL ausgestellt hat - muss beim
+    /// Media-GET mitgeschickt werden (siehe player_data_once).
+    ua: String,
 }
 
 /// The googlevideo.com CDN edge also checks the PoToken on the actual
@@ -553,6 +583,11 @@ async fn pick_stream(client: &reqwest::Client, video_id: &str, want_video: bool)
     }
     let thumbnail = best_thumbnail(&data["videoDetails"]);
     let po = current_po_token();
+    let ua = data
+        .get("winningClientUa")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
 
     if want_video {
         let formats = data.pointer("/streamingData/formats").and_then(|x| x.as_array());
@@ -566,6 +601,7 @@ async fn pick_stream(client: &reqwest::Client, video_id: &str, want_video: bool)
             url: append_pot(f["url"].as_str().unwrap(), po.as_ref()),
             ext: "mp4",
             thumbnail,
+            ua,
         });
     }
 
@@ -588,6 +624,7 @@ async fn pick_stream(client: &reqwest::Client, video_id: &str, want_video: bool)
         url: append_pot(f["url"].as_str().unwrap(), po.as_ref()),
         ext: "m4a",
         thumbnail,
+        ua,
     })
 }
 
@@ -697,8 +734,11 @@ pub async fn download_progress(
     let stem = crate::commands::safe_filename(title);
     let path = dir.join(format!("{stem}.{}", pick.ext));
 
-    let resp = client
-        .get(&pick.url)
+    let mut media_req = client.get(&pick.url);
+    if !pick.ua.is_empty() {
+        media_req = media_req.header("User-Agent", &pick.ua);
+    }
+    let resp = media_req
         .send()
         .await
         .map_err(|e| format!("Download-Start fehlgeschlagen: {e}"))?;

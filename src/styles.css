@@ -2289,11 +2289,12 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     gap: 10px;
   }
 
-  /* --- Sidebar wird zur Top-Leiste (sticky) --- */
+  /* --- Sidebar wird zur Top-Leiste (NICHT sticky - der komplette
+     Kopfbereich inkl. Tabs, Dock-Icons und Playlist-Chips scrollt beim
+     Runterscrollen ganz natürlich nach oben aus dem Bild, damit die
+     Songliste den vollen Platz bekommt). --- */
   .sidebar {
-    position: sticky;
-    top: 10px;
-    z-index: 350;
+    position: static;
     width: auto;
     padding: 12px 14px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.45);
@@ -2317,6 +2318,11 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     overflow-y: hidden;
     gap: 8px;
     padding: 10px 0 2px;
+    /* Nach den Dock-Icons einsortieren: Reihenfolge im Top-Bereich ist
+       Tabs -> 5 Werkzeug-Icons -> Playlist-Chips (DOM-Reihenfolge wäre
+       Chips vor Icons; die Icons sollen aber direkt unter den Tabs
+       sitzen). */
+    order: 5;
   }
   .playlist-list:empty { display: none; }
   .playlist-list-empty { padding: 4px 8px; white-space: nowrap; }
@@ -2328,66 +2334,64 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     padding: 6px 12px 6px 6px;
   }
 
-  /* --- Werkzeug-Leiste GANZ UNTEN (über der Player-Bar) ---
-     Was vorher chaotisch aussah: drei fix positionierte Leisten mit drei
-     unabhängig geratenen Pixel-Offsets, die bei abweichender Player-Bar-
-     Höhe (anderer Schriftgrad, Umbruch, etc.) leicht auseinanderdriften
-     und sich überlappen konnten. Jetzt EINE Formel: alles hängt von
-     --mobile-player-bar-h ab, Werkzeug-Leiste/Footer/Popover sitzen darauf
-     mit garantiertem Abstand statt geratenen Absolutwerten. */
   :root { --mobile-player-bar-h: 82px; --mobile-bottom-gap: 14px; }
-  /* Schwebt zentriert über der Player-Bar (nie mehr davon verdeckt - der
-     Abstand hängt an derselben --mobile-player-bar-h-Formel wie die
-     Player-Bar selbst, kein unabhängig geratener Wert). Icon-Farben sind
-     bewusst NICHT mehr überschrieben - .sidebar-tool-btn weiter unten
-     (allgemeine Regel, gilt auf jeder Breite) liefert dieselben grauen
-     Buttons/grünen Aktiv-Zustand wie auf dem Desktop. */
+  /* --- Werkzeug-Icons GANZ OBEN im Header-Block (finale Layout-Runde) ---
+     Das schwebende Bottom-Dock ist weg: die 5 Icons sitzen jetzt als
+     normale Zeile in der Top-Leiste, direkt unter den Tabs (Home/
+     Bibliothek/Papierkorb) und über den Playlist-Chips - und scrollen mit
+     dem gesamten Header-Block natürlich aus dem Bild. Icon-Farben sind
+     bewusst NICHT überschrieben - .sidebar-tool-btn (allgemeine Regel)
+     liefert dieselbe Optik wie auf dem Desktop. Tap-Ziele mind. 48px hoch. */
   .mobile-action-dock {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 90%;
-    max-width: 420px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + 12px);
-    z-index: 380;
+    position: static;
+    transform: none;
+    width: auto;
+    max-width: none;
     display: flex;
     justify-content: space-around;
-    align-items: center;
-    background: rgba(15, 15, 15, 0.75);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 30px;
-    padding: 10px 18px;
+    align-items: stretch;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
-  .mobile-action-dock .sidebar-tool-wrap { flex: none; }
-  /* "Musik hinzufügen" zog vom schwebenden runden Button (jetzt komplett
-     ausgeblendet, siehe .sidebar-footer unten) hierher ins Dock, damit der
-     Downloader auf dem Handy trotzdem erreichbar bleibt. */
+  .mobile-action-dock .sidebar-tool-wrap { flex: 1; }
+  .mobile-action-dock .sidebar-tool-btn {
+    font-size: 1.35rem;
+    padding: 0;
+    min-height: 48px;
+  }
+  /* "Musik hinzufügen" bleibt als Downloader-Icon in der Icon-Zeile, damit
+     der Downloader auf dem Handy erreichbar bleibt (Header-Button oben
+     rechts ist auf Mobile ausgeblendet). */
   .mobile-action-dock .dock-downloader-link {
-    flex: none;
-    font-size: 1.25rem;
+    flex: 1;
+    font-size: 1.35rem;
     color: var(--sp-muted);
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100%;
-    height: 100%;
-    padding: 9px 0;
+    min-height: 48px;
+    background: var(--sp-surface);
     border-radius: var(--radius-sm);
   }
-  /* Popovers: auf dem Handy als zentrierte, feste Karte über der
-     Werkzeug-Leiste - absolut im schmalen Leisten-Container würden sie
-     rechts aus dem Bildschirm laufen. */
+  /* Popovers: auf dem Handy als zentrierte, feste Karte im oberen
+     Bildschirmbereich (die Icons sind jetzt oben) - absolut im schmalen
+     Leisten-Container würden sie rechts aus dem Bildschirm laufen. */
   .sidebar-tool-popover {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + var(--mobile-player-bar-h) + var(--mobile-bottom-gap) + 66px);
-    top: auto;
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    bottom: auto;
     min-width: 0;
-    max-height: 55vh;
+    max-height: 70vh;
     overflow-y: auto;
+    z-index: 500;
   }
   /* Der schwebende grüne Rund-Button störte das symmetrische UI - komplett
      weg, "Musik hinzufügen" ist jetzt der Downloader-Icon-Link im Dock
@@ -2421,8 +2425,16 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
      bemessen (deutlich mehr als die Leisten-Formel oben ergibt), damit da
      immer Luft bleibt, auch wenn ein Popover mal offen ist. */
   .content-scroll {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 220px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 160px);
   }
+
+  /* --- EIN Scroll-Container für den ganzen Viewport ---
+     Auf Mobile scrollt ausschließlich das Dokument (body). Die Desktop-
+     Regeln .main-content{overflow:hidden} + .content-scroll{overflow-y:
+     auto} würden sonst einen zweiten, inneren Scroller erzeugen, an dem
+     der Header hängen bleibt statt mit rauszuscrollen. */
+  .main-content { overflow: visible; }
+  .content-scroll { overflow: visible; }
 
   /* --- Home entzerrt: 2 Spalten, mehr Luft --- */
   .library-heading { font-size: 1.55rem; padding: 4px 0 18px; }
@@ -2449,15 +2461,12 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .track-table { margin-top: 6px; }
 
   /* --- Bottom-UI beim Scrollen ausblenden (mobile-ui.js) ---
-     Alle drei fix positionierten Elemente gleichzeitig ausblenden, per
-     transform statt display - bleibt smooth animierbar und behält Layout. */
-  .mobile-action-dock,
-  .sidebar-footer,
+     Nur noch die Player-Bar ist fix am unteren Rand (das Dock ist in den
+     Header gewandert und scrollt normal mit) - per transform statt
+     display, bleibt smooth animierbar und behält Layout. */
   .player-bar {
     transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  body.mobile-bars-hidden .mobile-action-dock,
-  body.mobile-bars-hidden .sidebar-footer,
   body.mobile-bars-hidden .player-bar {
     transform: translateY(150px);
     opacity: 0;

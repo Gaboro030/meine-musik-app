@@ -160,6 +160,31 @@ async function refreshLibrary() {
 async function loadLibrary() {
   await refreshLibrary();
   showView("home");
+  // Songtexte der GESAMTEN Bibliothek im Hintergrund vorladen (Rust-Datei-
+  // Cache macht das ab dem zweiten App-Start netzwerkfrei und praktisch
+  // kostenlos) - Lyrics sind dann überall sofort da, nicht erst nach dem
+  // Öffnen der jeweiligen Playlist. Ein späteres selectPlaylist() bricht
+  // diesen Durchlauf ab und priorisiert die geöffnete Playlist.
+  const all = { name: "", tracks: [] };
+  for (const pl of library) {
+    for (const t of pl.tracks || []) {
+      all.tracks.push({ ...t, __pl: pl.name });
+    }
+  }
+  if (all.tracks.length) {
+    const token = ++playlistPrefetchToken;
+    const queue = all.tracks;
+    const worker = async () => {
+      while (queue.length && token === playlistPrefetchToken) {
+        const t = queue.shift();
+        if (!t || !t.title) continue;
+        try {
+          await fetchLyricsData(t.__pl, t.file, t.title, t.artist, t.duration);
+        } catch (_) { /* einzelner Fehlschlag stoppt den Rest nicht */ }
+      }
+    };
+    for (let i = 0; i < 2; i++) worker();
+  }
 }
 
 /* ===== View Switching ===== */
@@ -522,6 +547,9 @@ function selectPlaylist(idx) {
   if (isShuffle) buildShuffleOrder();
   renderTrackTable();
   loadRecommendations();
+  // Alle Songtexte dieser Playlist sofort im Hintergrund vorladen - beim
+  // Mikro-Klick kommen sie dann verzögerungsfrei aus dem Memory-Cache.
+  prefetchPlaylistLyrics(currentPlaylist);
 }
 
 /* ===== Confirm / Rename Modals ===== */
@@ -2081,21 +2109,67 @@ offlineDownloadBtn.addEventListener("click", downloadPlaylistOffline);
    once a track is 80% through, in case shuffle/queue changed what's
    actually next) means even a first-time view is usually already cached
    by the time someone taps the lyrics button. */
+/* In-Memory-Cache vor dem Rust-Datei-Cache: der Datei-Cache macht das
+   zweite Öffnen netzwerkfrei, aber immer noch einen IPC-Roundtrip + Datei-
+   Lesen. Diese Map hält das fertige Ergebnis (als Promise, damit parallele
+   Anfragen für denselben Song dedupliziert werden) direkt im JS-Heap -
+   Mikro-Klick zeigt dann ohne jede messbare Verzögerung an. Gefüllt wird
+   sie vom Playlist-weiten Prefetch unten, sobald eine Playlist geöffnet
+   oder die Bibliothek geladen wird. */
+const lyricsMemCache = new Map();
+function lyricsCacheKey(playlist, file, title, artist) {
+  return file ? `${playlist}\u0000${file}` : `${title}\u0000${artist}`;
+}
+
 async function fetchLyricsData(playlist, file, title, artist, duration) {
-  const params = new URLSearchParams({
-    playlist: playlist || "",
-    file: file || "",
-    title: title || "",
-    artist: artist || "",
-  });
-  if (duration && isFinite(duration) && duration > 0) params.set("duration", Math.round(duration));
-  const res = await fetch(`/api/lyrics?${params.toString()}`);
-  return res.json();
+  const key = lyricsCacheKey(playlist, file, title, artist);
+  if (lyricsMemCache.has(key)) return lyricsMemCache.get(key);
+  const promise = (async () => {
+    const params = new URLSearchParams({
+      playlist: playlist || "",
+      file: file || "",
+      title: title || "",
+      artist: artist || "",
+    });
+    if (duration && isFinite(duration) && duration > 0) params.set("duration", Math.round(duration));
+    const res = await fetch(`/api/lyrics?${params.toString()}`);
+    return res.json();
+  })();
+  lyricsMemCache.set(key, promise);
+  try {
+    return await promise;
+  } catch (err) {
+    lyricsMemCache.delete(key); // Fehlschläge nicht einfrieren - nächster Versuch darf neu laden
+    throw err;
+  }
 }
 
 function prefetchLyrics(track) {
   if (!track || !track.title || !currentPlaylist) return;
   fetchLyricsData(currentPlaylist.name, track.file, track.title, track.artist, track.duration).catch(() => {});
+}
+
+/* Playlist-weiter Hintergrund-Prefetch: sobald eine Playlist geöffnet (oder
+   die Bibliothek geladen) wird, werden ALLE Songtexte vorgeladen - erst in
+   den Rust-Datei-Cache (einmalig übers Netz, danach nie wieder), dann in
+   die Memory-Map oben. 3 Worker parallel, damit weder lrclib gehämmert
+   noch der Main-Thread blockiert wird. Ein neuer Aufruf bricht den alten
+   Durchlauf über das Token ab (Playlist-Wechsel). */
+let playlistPrefetchToken = 0;
+function prefetchPlaylistLyrics(pl) {
+  if (!pl || !Array.isArray(pl.tracks) || !pl.tracks.length) return;
+  const token = ++playlistPrefetchToken;
+  const queue = pl.tracks.slice();
+  const worker = async () => {
+    while (queue.length && token === playlistPrefetchToken) {
+      const t = queue.shift();
+      if (!t || !t.title) continue;
+      try {
+        await fetchLyricsData(pl.name, t.file, t.title, t.artist, t.duration);
+      } catch (_) { /* einzelner Fehlschlag stoppt den Rest nicht */ }
+    }
+  };
+  for (let i = 0; i < 3; i++) worker();
 }
 
 /* Mirrors nextTrack()'s index selection (shuffle order / repeat mode)
