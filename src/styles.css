@@ -2457,6 +2457,76 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     opacity: 0;
     pointer-events: none;
   }
+
+  /* --- Suchleiste/Navigation wanderte beim Scrollen mit nach oben weg ---
+     .main-header ist ein Kind von .main-content, und .main-content hat
+     (aus der Desktop-Regel weiter oben) `overflow: hidden` - das macht
+     .main-content selbst zum Referenz-Scrollcontainer für die sticky-
+     Berechnung seiner Kinder. Da .main-content auf dem Handy aber gar
+     nicht selbst scrollt (die ganze Seite/body tut das), hatte "sticky"
+     dort nichts, wogegen es sich verankern konnte, und main-header lief
+     einfach mit durch. .sidebar (ein Geschwister-Element, nicht in
+     .main-content drin) war davon nie betroffen - genau deshalb blieb nur
+     die Tab-Leiste oben stehen, Suchleiste/Downloader-Link aber nicht. */
+  .main-content { overflow: visible; }
+  .main-header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: #111;
+  }
+
+  /* --- Downloader-Button oben rechts hat auf dem Handy nichts zu suchen -
+     der Downloader ist über "Musik hinzufügen" unten längst erreichbar. */
+  .header-downloader-btn { display: none; }
+
+  /* --- Shuffle: keine Emoji-in-farbigem-Kasten-Optik mehr, sondern ein
+     flaches weißes Pfeile-SVG (per CSS-Mask, damit sich Farbe/Glow einfach
+     per background-color umschalten lassen) auf transparentem Hintergrund
+     - mit festem Cyan-Glow im aktiven Zustand statt der Theme-Akzentfarbe
+     (die z.B. bei "Sunset-Orange" den knalligen orangenen Kasten ergab). */
+  #pbShuffle,
+  .btn-shuffle-circle {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+  }
+  #pbShuffle::before,
+  .btn-shuffle-circle::before {
+    content: "";
+    display: block;
+    width: 18px;
+    height: 18px;
+    margin: 0 auto;
+    background-color: var(--sp-muted);
+    -webkit-mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMTYgMyAyMSAzIDIxIDgiPjwvcG9seWxpbmU+PGxpbmUgeDE9IjQiIHkxPSIyMCIgeDI9IjIxIiB5Mj0iMyI+PC9saW5lPjxwb2x5bGluZSBwb2ludHM9IjIxIDE2IDIxIDIxIDE2IDIxIj48L3BvbHlsaW5lPjxsaW5lIHgxPSIxNSIgeTE9IjE1IiB4Mj0iMjEiIHkyPSIyMSI+PC9saW5lPjxsaW5lIHgxPSI0IiB5MT0iNCIgeDI9IjkiIHkyPSI5Ij48L2xpbmU+PC9zdmc+")
+      center / 60% no-repeat;
+    mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMTYgMyAyMSAzIDIxIDgiPjwvcG9seWxpbmU+PGxpbmUgeDE9IjQiIHkxPSIyMCIgeDI9IjIxIiB5Mj0iMyI+PC9saW5lPjxwb2x5bGluZSBwb2ludHM9IjIxIDE2IDIxIDIxIDE2IDIxIj48L3BvbHlsaW5lPjxsaW5lIHgxPSIxNSIgeTE9IjE1IiB4Mj0iMjEiIHkyPSIyMSI+PC9saW5lPjxsaW5lIHgxPSI0IiB5MT0iNCIgeDI9IjkiIHkyPSI5Ij48L2xpbmU+PC9zdmc+")
+      center / 60% no-repeat;
+  }
+  /* Overrides the theme-tied NEON GLOW rule further up (color: var(--sp-
+     green) + drop-shadow in that same color) - without this, an orange or
+     other themes' accent would still leak through as the emoji/filter
+     color even with the mask giving it a new shape. Same selector
+     specificity (#id.class), later in the file, so it wins. */
+  #pbShuffle.active,
+  .btn-shuffle-circle.active {
+    color: transparent;
+    filter: none;
+    background: rgba(0, 242, 254, 0.1);
+    border-color: #00f2fe;
+    box-shadow: 0 0 12px #00f2fe;
+  }
+  #pbShuffle.active::before,
+  .btn-shuffle-circle.active::before {
+    background-color: #00f2fe;
+  }
 }
 
 @media (max-width: 400px) {
