@@ -259,6 +259,13 @@
 
 html, body {
   height: 100%;
+  /* Pinch-/Doppeltipp-Zoom brach auf Android die Fixed-Positionierung
+     (Player-Bar, Header) - Layout- und Visual-Viewport laufen dann
+     auseinander und der ambiente Hintergrund wird rechts sichtbar. Die
+     App ist keine Webseite, die gezoomt werden muss - Zoom-Geste komplett
+     unterbinden statt das Layout ans Zoomen anzupassen. maximum-scale in
+     der viewport-Meta reicht auf manchen Android-WebViews allein nicht. */
+  touch-action: pan-x pan-y;
 }
 
 body {
