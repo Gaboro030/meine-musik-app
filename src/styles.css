@@ -23,6 +23,8 @@
   --icon-shuffle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMTYgMyAyMSAzIDIxIDgiPjwvcG9seWxpbmU+PGxpbmUgeDE9IjQiIHkxPSIyMCIgeDI9IjIxIiB5Mj0iMyI+PC9saW5lPjxwb2x5bGluZSBwb2ludHM9IjIxIDE2IDIxIDIxIDE2IDIxIj48L3BvbHlsaW5lPjxsaW5lIHgxPSIxNSIgeTE9IjE1IiB4Mj0iMjEiIHkyPSIyMSI+PC9saW5lPjxsaW5lIHgxPSI0IiB5MT0iNCIgeDI9IjkiIHkyPSI5Ij48L2xpbmU+PC9zdmc+");
   --icon-repeat: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTE3IDJsNCA0LTQgNCIvPjxwYXRoIGQ9Ik0zIDExVjlhNCA0IDAgMCAxIDQtNGgxNCIvPjxwYXRoIGQ9Ik03IDIybC00LTQgNC00Ii8+PHBhdGggZD0iTTIxIDEzdjJhNCA0IDAgMCAxLTQgNEgzIi8+PC9zdmc+");
   --icon-repeat-one: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTE3IDJsNCA0LTQgNCIvPjxwYXRoIGQ9Ik0zIDExVjlhNCA0IDAgMCAxIDQtNGgxNCIvPjxwYXRoIGQ9Ik03IDIybC00LTQgNC00Ii8+PHBhdGggZD0iTTIxIDEzdjJhNCA0IDAgMCAxLTQgNEgzIi8+PHBhdGggZD0iTTExIDhoMXY2Ii8+PC9zdmc+");
+  --icon-play: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzAwMCI+PHBvbHlnb24gcG9pbnRzPSI1IDMgMjAgMTIgNSAyMSA1IDMiLz48L3N2Zz4=");
+  --icon-pause: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzAwMCI+PHJlY3QgeD0iNSIgeT0iMyIgd2lkdGg9IjUiIGhlaWdodD0iMTgiIHJ4PSIxIi8+PHJlY3QgeD0iMTQiIHk9IjMiIHdpZHRoPSI1IiBoZWlnaHQ9IjE4IiByeD0iMSIvPjwvc3ZnPg==");
 }
 
 /* ========= THEMES =========
@@ -1752,6 +1754,31 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   mask-image: var(--icon-repeat-one);
 }
 #pbShuffle:hover::before, #pbRepeat:hover::before, .btn-shuffle-circle:hover::before { background-color: var(--sp-text); }
+
+/* Same problem, same fix, for the big play/pause button: ⏸ (U+23F8) in
+   particular renders as a colored emoji glyph on Android by default
+   ("immer noch dieser Emoji Stop [-Button]"), clashing with the flat
+   white circle around it. updatePlayButton() in player.js now only sets
+   data-state - the real glyph is gone from the DOM entirely (not just
+   hidden), see index.html/player.js. Icon is drawn in black (--sp-black)
+   since .pb-play's circle background is solid white/var(--sp-text). */
+#pbPlay {
+  position: relative;
+}
+#pbPlay::before {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0 auto;
+  background-color: var(--sp-black);
+  -webkit-mask: var(--icon-play) center / 100% no-repeat;
+  mask: var(--icon-play) center / 100% no-repeat;
+}
+#pbPlay[data-state="pause"]::before {
+  -webkit-mask-image: var(--icon-pause);
+  mask-image: var(--icon-pause);
+}
 
 /* Persistent soft glow while repeat is on, tied to the theme accent. */
 #pbRepeat.active::before {

@@ -984,7 +984,12 @@ function playQueuedEntry(entry) {
 }
 
 function updatePlayButton(playing) {
-  pbPlay.textContent = playing ? "⏸" : "▶";
+  // Kein Emoji-Text mehr - ⏸ rendert auf Android als bunte Emoji-Grafik
+  // ("immer noch dieser Emoji Stop"), die neben dem flachen Design aus dem
+  // Rahmen fiel. Das flache Mask-Icon in styles.css (SHUFFLE / REPEAT
+  // ICONS-Abschnitt) schaltet anhand dieses Attributs zwischen Play-
+  // Dreieck und Pause-Balken um.
+  pbPlay.dataset.state = playing ? "pause" : "play";
   pbPlay.title = playing ? "Pause" : "Abspielen";
 }
 
@@ -1170,10 +1175,9 @@ function showToast(message) {
 pbRepeat.addEventListener("click", () => {
   repeatMode = repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
   pbRepeat.classList.toggle("active", repeatMode !== "off");
-  pbRepeat.textContent = repeatMode === "one" ? "🔂" : "🔁";
-  // Treibt das flache Mask-Icon in styles.css (SHUFFLE / REPEAT ICONS) -
-  // der echte Emoji-Text bleibt unsichtbar (color:transparent), das CSS
-  // schaltet anhand dieses Attributs zwischen Loop- und Loop+1-Icon um.
+  // Kein Emoji-Text mehr (siehe pbShuffle/pbPlay) - das flache Mask-Icon
+  // in styles.css (SHUFFLE / REPEAT ICONS) schaltet anhand dieses
+  // Attributs zwischen Loop- und Loop+1-Icon um.
   pbRepeat.dataset.mode = repeatMode;
 });
 

@@ -244,7 +244,7 @@
 
           <div class="playlist-actions">
             <button id="playAllBtn" class="btn-play-circle" title="Alle abspielen">▶</button>
-            <button id="shuffleAllBtn" class="btn-shuffle-circle" title="Zufallswiedergabe">🔀</button>
+            <button id="shuffleAllBtn" class="btn-shuffle-circle" title="Zufallswiedergabe"></button>
             <button id="offlineDownloadBtn" class="btn-offline-circle" title="Offline herunterladen">⬇️ Offline herunterladen</button>
           </div>
 
@@ -414,11 +414,11 @@
 
     <div class="player-bar-center">
       <div class="pb-controls">
-        <button id="pbShuffle" class="pb-btn" title="Zufallswiedergabe">🔀</button>
+        <button id="pbShuffle" class="pb-btn" title="Zufallswiedergabe"></button>
         <button id="pbPrev" class="pb-btn" title="Zurück">⏮</button>
-        <button id="pbPlay" class="pb-btn pb-play" title="Abspielen">▶</button>
+        <button id="pbPlay" class="pb-btn pb-play" title="Abspielen" data-state="play"></button>
         <button id="pbNext" class="pb-btn" title="Vor">⏭</button>
-        <button id="pbRepeat" class="pb-btn" title="Wiederholen">🔁</button>
+        <button id="pbRepeat" class="pb-btn" title="Wiederholen" data-mode="off"></button>
       </div>
       <div class="pb-scrubber">
         <span id="pbTimeCurrent" class="pb-time">0:00</span>
