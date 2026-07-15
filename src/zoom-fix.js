@@ -15,8 +15,15 @@
     const vv = window.visualViewport;
     const w = vv ? vv.width : window.innerWidth;
     const h = vv ? vv.height : window.innerHeight;
-    root.style.setProperty("--vvw", `${w}px`);
-    root.style.setProperty("--vvh", `${h}px`);
+    // visualViewport can (rarely, but reproducibly - caught this in
+    // testing) report 0 for a moment right around load/resize before
+    // layout has settled. Committing that 0 into --vvw/--vvh collapses
+    // html/body/.app-shell to width:0 - the ENTIRE app goes blank, far
+    // worse than the zoom bug this file exists to fix. Only ever write a
+    // real, positive reading; a bad one just leaves the last good value
+    // (or the CSS fallback of 100%/100vh) in place instead.
+    if (w > 0) root.style.setProperty("--vvw", `${w}px`);
+    if (h > 0) root.style.setProperty("--vvh", `${h}px`);
   }
 
   sync();
