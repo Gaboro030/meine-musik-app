@@ -17,6 +17,12 @@
   --radius-lg: 12px;
   --radius-md: 8px;
   --radius-sm: 4px;
+  /* Flat mask-icons for shuffle/repeat (see SHUFFLE/REPEAT ICONS below) -
+     one shared source for desktop + mobile instead of duplicating the
+     base64 data twice. */
+  --icon-shuffle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMTYgMyAyMSAzIDIxIDgiPjwvcG9seWxpbmU+PGxpbmUgeDE9IjQiIHkxPSIyMCIgeDI9IjIxIiB5Mj0iMyI+PC9saW5lPjxwb2x5bGluZSBwb2ludHM9IjIxIDE2IDIxIDIxIDE2IDIxIj48L3BvbHlsaW5lPjxsaW5lIHgxPSIxNSIgeTE9IjE1IiB4Mj0iMjEiIHkyPSIyMSI+PC9saW5lPjxsaW5lIHgxPSI0IiB5MT0iNCIgeDI9IjkiIHkyPSI5Ij48L2xpbmU+PC9zdmc+");
+  --icon-repeat: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTE3IDJsNCA0LTQgNCIvPjxwYXRoIGQ9Ik0zIDExVjlhNCA0IDAgMCAxIDQtNGgxNCIvPjxwYXRoIGQ9Ik03IDIybC00LTQgNC00Ii8+PHBhdGggZD0iTTIxIDEzdjJhNCA0IDAgMCAxLTQgNEgzIi8+PC9zdmc+");
+  --icon-repeat-one: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTE3IDJsNCA0LTQgNCIvPjxwYXRoIGQ9Ik0zIDExVjlhNCA0IDAgMCAxIDQtNGgxNCIvPjxwYXRoIGQ9Ik03IDIybC00LTQgNC00Ii8+PHBhdGggZD0iTTIxIDEzdjJhNCA0IDAgMCAxLTQgNEgzIi8+PHBhdGggZD0iTTExIDhoMXY2Ii8+PC9zdmc+");
 }
 
 /* ========= THEMES =========
@@ -258,14 +264,16 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  height: 100%;
-  /* Pinch-/Doppeltipp-Zoom brach auf Android die Fixed-Positionierung
-     (Player-Bar, Header) - Layout- und Visual-Viewport laufen dann
-     auseinander und der ambiente Hintergrund wird rechts sichtbar. Die
-     App ist keine Webseite, die gezoomt werden muss - Zoom-Geste komplett
-     unterbinden statt das Layout ans Zoomen anzupassen. maximum-scale in
-     der viewport-Meta reicht auf manchen Android-WebViews allein nicht. */
-  touch-action: pan-x pan-y;
+  /* Pinch-Zoom soll erlaubt bleiben (Nutzerwunsch) - Android-WebViews
+     legen 100%/100vh beim Zoomen aber auf den unveränderten LAYOUT-
+     Viewport fest statt auf das gerade sichtbare Stück (VISUAL-Viewport),
+     wodurch beim Rauszoomen rechts/unten ein nackter Hintergrundstreifen
+     durchscheint. --vvw/--vvh (gesetzt von zoom-fix.js über die
+     visualViewport-API) tracken die tatsächlich sichtbare Größe live und
+     ersetzen die starren Prozentwerte - Fallback auf 100%/100% falls das
+     Skript aus irgendeinem Grund nicht gelaufen ist. */
+  width: var(--vvw, 100%);
+  height: var(--vvh, 100%);
 }
 
 body {
@@ -300,6 +308,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 /* ========= APP SHELL ========= */
 .app-shell {
   display: flex;
+  width: var(--vvw, 100%);
   height: calc(100vh - 90px);
   gap: 8px;
   padding: 8px;
@@ -1208,8 +1217,14 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   justify-content: center;
   transition: color 0.15s ease;
 }
-.btn-shuffle-circle:hover { color: var(--sp-text); }
-.btn-shuffle-circle.active { color: var(--sp-green); }
+.btn-shuffle-circle:hover,
+.btn-shuffle-circle.active {
+  /* Real glyph always stays hidden - see SHUFFLE / REPEAT ICONS further
+     down, which draws the flat mask icon instead. Higher specificity
+     (.active) would otherwise win over that section's plain-class rule
+     and bring the raw color-emoji back on the active state. */
+  color: transparent;
+}
 
 .btn-offline-circle {
   display: flex;
@@ -1696,30 +1711,59 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .eq-slider-label { font-size: 0.72rem; color: var(--sp-muted); }
 
-/* ========= SHUFFLE NEON GLOW ========= */
-/* Persistent soft glow while repeat is on - drop-shadow (not just
-   text-shadow) so the glow follows the emoji glyph shape, and it picks up
-   --sp-green so each theme glows in its own accent color. */
-#pbRepeat.active {
-  color: var(--sp-green);
-  filter: drop-shadow(0 0 4px var(--sp-green)) drop-shadow(0 0 12px var(--sp-green));
+/* ========= SHUFFLE / REPEAT ICONS ========= */
+/* 🔀/🔁/🔂 are full-color emoji on Windows (Segoe UI Emoji) and Android -
+   they ignore `color`/`filter` entirely (color-emoji glyphs paint their
+   own fixed palette), so every attempt to theme or glow them just left
+   the OS's stock colored icon sitting there clashing with the flat
+   design ("komplett komisch"). Fix: hide the real glyph (color:
+   transparent - verified to fully suppress color-emoji rendering here)
+   and draw a flat CSS-mask SVG instead, which DOES respect background-
+   color/filter like any other element. Same treatment on every platform -
+   was previously only patched for the mobile shuffle icon. */
+#pbShuffle, #pbRepeat, .btn-shuffle-circle {
+  color: transparent;
+  position: relative;
+}
+#pbShuffle::before, #pbRepeat::before, .btn-shuffle-circle::before {
+  content: "";
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+  background-color: var(--sp-muted);
+  -webkit-mask: var(--icon-shuffle) center / 100% no-repeat;
+  mask: var(--icon-shuffle) center / 100% no-repeat;
+}
+#pbRepeat::before {
+  -webkit-mask-image: var(--icon-repeat);
+  mask-image: var(--icon-repeat);
+}
+/* toggleRepeat() in player.js sets data-mode to match repeatMode. */
+#pbRepeat[data-mode="one"]::before {
+  -webkit-mask-image: var(--icon-repeat-one);
+  mask-image: var(--icon-repeat-one);
+}
+#pbShuffle:hover::before, #pbRepeat:hover::before, .btn-shuffle-circle:hover::before { background-color: var(--sp-text); }
+
+/* Persistent soft glow while repeat is on, tied to the theme accent. */
+#pbRepeat.active::before {
+  background-color: var(--sp-green);
+  filter: drop-shadow(0 0 4px var(--sp-green)) drop-shadow(0 0 10px var(--sp-green));
 }
 
 /* Shuffle's glow is deliberately fixed cyan, NOT theme-tied - under a
    theme like Sunset-Orange, var(--sp-green) resolves to orange, turning
-   this into a jarring orange box that read as broken rather than "on".
-   Same treatment on every platform (was previously only overridden on
-   mobile), applies everywhere this class shows up. */
-#pbShuffle.active,
-.btn-shuffle-circle.active {
-  color: #00f2fe;
-  filter: drop-shadow(0 0 4px #00f2fe) drop-shadow(0 0 12px #00f2fe);
+   this into a jarring orange box that read as broken rather than "on". */
+#pbShuffle.active::before,
+.btn-shuffle-circle.active::before {
+  background-color: #00f2fe;
+  filter: drop-shadow(0 0 4px #00f2fe) drop-shadow(0 0 10px #00f2fe);
 }
 
 /* Repeat additionally gets a small dot under the icon while active - the
-   glow alone can be hard to spot on the 🔁 glyph, and the dot also marks
-   the spot in "repeat one" mode (🔂). */
-#pbRepeat { position: relative; }
+   glow alone can be hard to spot at this size, and the dot also marks the
+   spot in "repeat one" mode. */
 #pbRepeat.active::after {
   content: "";
   position: absolute;
@@ -2290,8 +2334,9 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   body { overflow: auto; }
   .app-shell {
     flex-direction: column;
+    width: var(--vvw, 100%);
     height: auto;
-    min-height: 100vh;
+    min-height: var(--vvh, 100vh);
     padding: 10px 10px 0;
     gap: 10px;
   }
@@ -2493,52 +2538,25 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
      der Downloader ist jetzt als Icon im Dock erreichbar (siehe unten). */
   .header-downloader-btn { display: none; }
 
-  /* --- Shuffle: keine Emoji-in-farbigem-Kasten-Optik mehr, sondern ein
-     flaches weißes Pfeile-SVG (per CSS-Mask, damit sich Farbe/Glow einfach
-     per background-color umschalten lassen) auf transparentem Hintergrund
-     - mit festem Cyan-Glow im aktiven Zustand statt der Theme-Akzentfarbe
-     (die z.B. bei "Sunset-Orange" den knalligen orangenen Kasten ergab). */
+  /* --- Shuffle: runde Chip-Optik nur auf Mobile (Desktop bleibt ein
+     flaches Icon in der Button-Reihe wie prev/next). Das Mask-Icon selbst
+     kommt jetzt aus dem globalen SHUFFLE / REPEAT ICONS Abschnitt weiter
+     oben - hier nur noch die Kreis-Chrome + der feste Cyan-Glow im
+     aktiven Zustand statt der Theme-Akzentfarbe (die z.B. bei "Sunset-
+     Orange" den knalligen orangenen Kasten ergab). */
   #pbShuffle,
   .btn-shuffle-circle {
     width: 40px;
     height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: transparent;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 50%;
   }
-  #pbShuffle::before,
-  .btn-shuffle-circle::before {
-    content: "";
-    display: block;
-    width: 18px;
-    height: 18px;
-    margin: 0 auto;
-    background-color: var(--sp-muted);
-    -webkit-mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMTYgMyAyMSAzIDIxIDgiPjwvcG9seWxpbmU+PGxpbmUgeDE9IjQiIHkxPSIyMCIgeDI9IjIxIiB5Mj0iMyI+PC9saW5lPjxwb2x5bGluZSBwb2ludHM9IjIxIDE2IDIxIDIxIDE2IDIxIj48L3BvbHlsaW5lPjxsaW5lIHgxPSIxNSIgeTE9IjE1IiB4Mj0iMjEiIHkyPSIyMSI+PC9saW5lPjxsaW5lIHgxPSI0IiB5MT0iNCIgeDI9IjkiIHkyPSI5Ij48L2xpbmU+PC9zdmc+")
-      center / 60% no-repeat;
-    mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMTYgMyAyMSAzIDIxIDgiPjwvcG9seWxpbmU+PGxpbmUgeDE9IjQiIHkxPSIyMCIgeDI9IjIxIiB5Mj0iMyI+PC9saW5lPjxwb2x5bGluZSBwb2ludHM9IjIxIDE2IDIxIDIxIDE2IDIxIj48L3BvbHlsaW5lPjxsaW5lIHgxPSIxNSIgeTE9IjE1IiB4Mj0iMjEiIHkyPSIyMSI+PC9saW5lPjxsaW5lIHgxPSI0IiB5MT0iNCIgeDI9IjkiIHkyPSI5Ij48L2xpbmU+PC9zdmc+")
-      center / 60% no-repeat;
-  }
-  /* Overrides the theme-tied NEON GLOW rule further up (color: var(--sp-
-     green) + drop-shadow in that same color) - without this, an orange or
-     other themes' accent would still leak through as the emoji/filter
-     color even with the mask giving it a new shape. Same selector
-     specificity (#id.class), later in the file, so it wins. */
   #pbShuffle.active,
   .btn-shuffle-circle.active {
-    color: transparent;
-    filter: none;
     background: rgba(0, 242, 254, 0.1);
     border-color: #00f2fe;
     box-shadow: 0 0 12px #00f2fe;
-  }
-  #pbShuffle.active::before,
-  .btn-shuffle-circle.active::before {
-    background-color: #00f2fe;
   }
 }
 

@@ -119,6 +119,7 @@ let isShuffle = false;
 let repeatMode = "off"; // off -> all -> one -> off
 let shuffleOrder = [];
 let lastShuffleOrder = []; // so a reshuffle never lands on the exact same order twice in a row
+let recentlyPlayed = []; // track indices heard lately, oldest first - keeps freshly (re)shuffled order from immediately repeating them
 let prefetchedNextForTrack = -1; // guards the 80%-progress re-check below from firing more than once per track
 let isLiked = false;
 let currentView = "home"; // home | library | playlist
@@ -543,7 +544,10 @@ function selectPlaylist(idx) {
   playlistTrackCount.textContent = `${currentPlaylist.tracks.length} Titel`;
   // Keep the shuffle *setting* across playlist switches, but regenerate
   // the order for the new playlist - the old order's indices belong to a
-  // different track list and would freeze/duplicate the queue.
+  // different track list and would freeze/duplicate the queue. Same for
+  // recentlyPlayed: those indices belong to the OLD playlist's track
+  // list too and would otherwise steer the new shuffle by coincidence.
+  recentlyPlayed = [];
   if (isShuffle) buildShuffleOrder();
   renderTrackTable();
   loadRecommendations();
@@ -871,12 +875,44 @@ function buildShuffleOrder(keepCurrentFirst = true) {
       order.unshift(currentTrackIndex);
     }
   }
+
+  // Uniform Fisher-Yates is mathematically fine but still "feels" barely
+  // shuffled when a song heard a minute ago lands right at the front
+  // again - the actual complaint behind "richtig krass shuffeln". Push
+  // any track from the recently-played history out of the first few
+  // upcoming slots (right after the kept current track), swapping it for
+  // a later slot that ISN'T recently played. Only runs with enough spare
+  // tracks to make a real swap possible.
+  const startPos = keepCurrentFirst && order[0] === currentTrackIndex ? 1 : 0;
+  const windowSize = Math.min(recentlyPlayed.length, order.length - startPos - 1);
+  for (let i = startPos; i < startPos + windowSize; i++) {
+    if (!recentlyPlayed.includes(order[i])) continue;
+    const swapWith = order.findIndex((v, idx) => idx > i && !recentlyPlayed.includes(v));
+    if (swapWith !== -1) {
+      [order[i], order[swapWith]] = [order[swapWith], order[i]];
+    }
+  }
+
   shuffleOrder = order;
+}
+
+// Called whenever a track actually starts playing - keeps a short rolling
+// history so the next (re)shuffle can steer away from repeating it too
+// soon. Capped relative to playlist length so tiny playlists don't end up
+// with "recently played" covering the whole thing (which would leave
+// buildShuffleOrder's swap loop nothing to work with).
+function trackRecentlyPlayed(index) {
+  if (index < 0) return;
+  recentlyPlayed = recentlyPlayed.filter((i) => i !== index);
+  recentlyPlayed.push(index);
+  const cap = currentPlaylist ? Math.max(1, Math.min(10, currentPlaylist.tracks.length - 2)) : 10;
+  if (recentlyPlayed.length > cap) recentlyPlayed = recentlyPlayed.slice(-cap);
 }
 
 function playTrack(index) {
   if (!currentPlaylist || !currentPlaylist.tracks[index]) return;
   currentTrackIndex = index;
+  trackRecentlyPlayed(index);
   const track = currentPlaylist.tracks[index];
 
   initAudioGraph();
@@ -1135,6 +1171,10 @@ pbRepeat.addEventListener("click", () => {
   repeatMode = repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
   pbRepeat.classList.toggle("active", repeatMode !== "off");
   pbRepeat.textContent = repeatMode === "one" ? "🔂" : "🔁";
+  // Treibt das flache Mask-Icon in styles.css (SHUFFLE / REPEAT ICONS) -
+  // der echte Emoji-Text bleibt unsichtbar (color:transparent), das CSS
+  // schaltet anhand dieses Attributs zwischen Loop- und Loop+1-Icon um.
+  pbRepeat.dataset.mode = repeatMode;
 });
 
 function toggleLike() {

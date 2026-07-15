@@ -177,8 +177,14 @@ fn scan_playlist_dir(dir: &Path, name: &str) -> Option<PlaylistOut> {
             p.extension()
                 .and_then(|e| e.to_str())
                 // .m4a: Android-Downloads (Innertube, kein ffmpeg zum
-                // MP3-Konvertieren) - WebView spielt AAC nativ.
-                .map(|e| e.eq_ignore_ascii_case("mp3") || e.eq_ignore_ascii_case("m4a"))
+                // MP3-Konvertieren) - WebView spielt AAC nativ. .mp4: der
+                // "Video"-Downloadformat landet im selben Playlist-Ordner
+                // (download_progress in innertube.rs) - fehlte hier in der
+                // Whitelist, war dadurch weder lokal noch nach Handy-Sync
+                // in der Bibliothek sichtbar, obwohl die Datei physisch da
+                // war (Sync überträgt jede Datei im Ordner, unabhängig von
+                // der Endung).
+                .map(|e| e.eq_ignore_ascii_case("mp3") || e.eq_ignore_ascii_case("m4a") || e.eq_ignore_ascii_case("mp4"))
                 .unwrap_or(false)
         })
         .map(|p| {
