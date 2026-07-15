@@ -257,7 +257,7 @@
   83%  { background: #7b2fff; box-shadow: 0 0 6px #7b2fff; }
   100% { background: #ff004c; box-shadow: 0 0 6px #ff004c; }
 }
-:root[data-theme="rgb-wave"] .lyrics-line-fill {
+:root[data-theme="rgb-wave"] .lyrics-word-fill {
   animation: rgbTextShadowCycle 6s linear infinite;
 }
 
@@ -1633,26 +1633,33 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   transform: scale(1.06);
 }
 
-/* Karaoke wipe: two identical text layers stacked on top of each other.
-   .lyrics-line-base is the plain dim text (always visible, defines the
-   line's actual layout/height). .lyrics-line-fill is an absolutely
-   positioned duplicate with the bright color + glow, clipped from the
-   right via clip-path so only the already-sung portion (0 to --wipe) is
-   revealed - a text-shadow can't be split mid-word by itself (it colors
-   the whole glyph run uniformly), clipping a second glowing copy on top
-   is what makes the glow track the actual sung words instead of lighting
-   the entire line at once. player.js updates --wipe every animation
-   frame from audioEl.currentTime. Default (no --wipe set, i.e. every
-   non-active line) clips the fill away entirely. */
-.lyrics-line-base,
-.lyrics-line-fill {
-  display: block;
+/* Karaoke wipe - PER WORD, not per line: each word gets its own base+fill
+   pair, each with its OWN --wipe custom property, so the highlight moves
+   word by word instead of one constant-speed bar sweeping across the
+   entire line regardless of word length/pauses ("wort für wort perfekt
+   gelinked" - lrclib only gives per-LINE timestamps, so player.js
+   estimates each word's time window by distributing the line's duration
+   proportional to word length, then wipes each word only during its own
+   window - the previous single-span-per-line version wiped the whole
+   line at one constant rate no matter how the words inside it were
+   actually paced).
+   .lyrics-word is the positioning anchor (inline-block, own stacking
+   context) - .lyrics-word-base is the plain dim text in normal flow
+   (defines layout), .lyrics-word-fill is an absolutely positioned
+   duplicate clipped to just that WORD's own sung fraction. */
+.lyrics-word {
+  position: relative;
+  display: inline-block;
 }
-.lyrics-line-base {
+.lyrics-word-base,
+.lyrics-word-fill {
+  display: inline-block;
+}
+.lyrics-word-base {
   color: var(--sp-muted-2);
   transition: color 0.4s ease;
 }
-.lyrics-line-fill {
+.lyrics-word-fill {
   position: absolute;
   inset: 0;
   /* Clear white, not the theme accent - "leuchtet in klarem Weiß", not a
@@ -1667,7 +1674,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   pointer-events: none;
 }
 
-.lyrics-line.sung .lyrics-line-base { color: var(--sp-muted); }
+.lyrics-line.sung .lyrics-word-base { color: var(--sp-muted); }
 
 /* ========= EQUALIZER POPOVER ========= */
 .eq-wrap { position: relative; }
@@ -2538,21 +2545,21 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
      der Downloader ist jetzt als Icon im Dock erreichbar (siehe unten). */
   .header-downloader-btn { display: none; }
 
-  /* --- Shuffle: runde Chip-Optik nur auf Mobile (Desktop bleibt ein
-     flaches Icon in der Button-Reihe wie prev/next). Das Mask-Icon selbst
-     kommt jetzt aus dem globalen SHUFFLE / REPEAT ICONS Abschnitt weiter
-     oben - hier nur noch die Kreis-Chrome + der feste Cyan-Glow im
-     aktiven Zustand statt der Theme-Akzentfarbe (die z.B. bei "Sunset-
-     Orange" den knalligen orangenen Kasten ergab). */
-  #pbShuffle,
+  /* --- .btn-shuffle-circle (der Shuffle-Button in der "Meins"-Kopfzeile,
+     direkt neben dem runden grünen Play-Button) bleibt auch auf Mobile ein
+     Kreis-Chip - er ist schon auf jeder Breite rundes 40px-Element (Basis-
+     Regel weiter oben), hier nur der feste Cyan-Glow im aktiven Zustand
+     statt der Theme-Akzentfarbe (bei "Sunset-Orange" sonst ein knalliger
+     orangener Kasten).
+     #pbShuffle (Player-Bar unten) bekommt BEWUSST KEINE Kreis-Chrome mehr:
+     das ließ ihn neben den flachen prev/next/repeat-Icons wie ein fremdes,
+     überdimensioniertes Element wirken ("sieht buggy aus") - er ist jetzt
+     nur noch ein flaches Icon wie seine Nachbarn, das globale SHUFFLE /
+     REPEAT ICONS-Mask-Icon weiter oben liefert Form + Glow bereits. */
   .btn-shuffle-circle {
-    width: 40px;
-    height: 40px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 50%;
   }
-  #pbShuffle.active,
   .btn-shuffle-circle.active {
     background: rgba(0, 242, 254, 0.1);
     border-color: #00f2fe;

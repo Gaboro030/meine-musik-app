@@ -2251,7 +2251,7 @@ audioEl.addEventListener("timeupdate", () => {
    up whatever is being sung right now, keeps it vertically centered, and
    dims lines differently before/after. All text lands via textContent -
    lyrics come from external APIs and could contain arbitrary markup. */
-let lyricsSyncLines = null; // [{t, el}] sorted by t, or null when unsynced
+let lyricsSyncLines = null; // [{t, el, words:[{start,end,el}]}] sorted by t, or null when unsynced
 let lyricsActiveIdx = -1;
 let lyricsRequestToken = 0; // drops stale responses after a quick track change
 
@@ -2266,29 +2266,63 @@ function parseLrc(lrc) {
   return out.sort((a, b) => a.t - b.t);
 }
 
+/* lrclib only ever gives one timestamp per LINE, never per word - true
+   "wort für wort" sync data doesn't exist here to read. This estimates a
+   time window per word instead: the line's total duration (until the
+   next line's timestamp) is distributed across its words proportional to
+   word length (+1 per word so short words like "a"/"ich" still get a
+   believable sliver instead of flashing instantly), so longer words get
+   proportionally more of the line's time and the highlight visibly steps
+   word by word rather than sweeping the whole line at one constant rate. */
+function wordTimeWindows(text, lineStart, lineEnd) {
+  const words = text.split(/(\s+)/).filter((w) => w !== "");
+  const weights = words.map((w) => (/\s/.test(w) ? 0 : w.length + 1));
+  const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
+  const duration = Math.max(lineEnd - lineStart, 0.3);
+  let acc = 0;
+  return words.map((w, i) => {
+    const start = lineStart + (acc / totalWeight) * duration;
+    acc += weights[i];
+    const end = lineStart + (acc / totalWeight) * duration;
+    return { text: w, isSpace: /\s/.test(w), start, end };
+  });
+}
+
 function renderSyncedLyrics(lines) {
   lyricsBody.textContent = "";
   lyricsBody.classList.remove("static");
   lyricsSyncLines = [];
   lyricsActiveIdx = -1;
-  lines.forEach(({ t, text }) => {
+  lines.forEach(({ t, text }, i) => {
     const div = document.createElement("div");
     div.className = "lyrics-line";
-    // Two stacked copies of the same text (both via textContent - never
-    // innerHTML, lyrics come from an external API): .lyrics-line-base is
-    // the plain dim layer that always shows, .lyrics-line-fill is an
-    // absolutely-positioned bright+glow duplicate that CSS clips down to
-    // just the sung portion via --wipe. See player.css for why a single
-    // text-shadow can't do this alone.
-    const base = document.createElement("span");
-    base.className = "lyrics-line-base";
-    base.textContent = text || "♪";
-    const fill = document.createElement("span");
-    fill.className = "lyrics-line-fill";
-    fill.textContent = text || "♪";
-    div.append(base, fill);
+    const lineEnd = i + 1 < lines.length ? lines[i + 1].t : t + 6;
+    const words = wordTimeWindows(text || "♪", t, lineEnd);
+    const wordEls = [];
+    words.forEach(({ text: w, isSpace, start, end }) => {
+      if (isSpace) {
+        div.appendChild(document.createTextNode(w));
+        return;
+      }
+      // Two stacked copies of the same word (both via textContent - never
+      // innerHTML, lyrics come from an external API): .lyrics-word-base is
+      // the plain dim layer that always shows, .lyrics-word-fill is an
+      // absolutely-positioned bright+glow duplicate that CSS clips down to
+      // just the sung portion of THIS word via --wipe.
+      const span = document.createElement("span");
+      span.className = "lyrics-word";
+      const base = document.createElement("span");
+      base.className = "lyrics-word-base";
+      base.textContent = w;
+      const fill = document.createElement("span");
+      fill.className = "lyrics-word-fill";
+      fill.textContent = w;
+      span.append(base, fill);
+      div.appendChild(span);
+      wordEls.push({ start, end, el: span });
+    });
     lyricsBody.appendChild(div);
-    lyricsSyncLines.push({ t, el: div });
+    lyricsSyncLines.push({ t, el: div, words: wordEls });
   });
   updateLyricsHighlight();
 }
@@ -2319,10 +2353,10 @@ function updateLyricsHighlight() {
   }
 
   if (idx !== lyricsActiveIdx) {
-    lyricsSyncLines.forEach(({ el }, i) => {
+    lyricsSyncLines.forEach(({ el, words }, i) => {
       el.classList.toggle("active", i === idx);
       el.classList.toggle("sung", i < idx); // seek-safe: recomputed every change
-      if (i !== idx) el.style.removeProperty("--wipe");
+      if (i !== idx) words.forEach(({ el: wEl }) => wEl.style.removeProperty("--wipe"));
     });
     lyricsActiveIdx = idx;
     if (idx >= 0) {
@@ -2330,11 +2364,16 @@ function updateLyricsHighlight() {
     }
   }
 
+  // Wort für Wort statt eines gleichmäßigen Wischs über die ganze Zeile:
+  // jedes Wort hat sein eigenes geschätztes Zeitfenster (wordTimeWindows),
+  // volle Helligkeit sobald die aktuelle Zeit sein Fenster passiert hat,
+  // 0 davor, dazwischen ein weicher Übergang - so leuchtet immer nur das
+  // gerade gesungene Wort auf statt der ganzen Zeile auf einmal.
   if (idx >= 0) {
-    const start = lyricsSyncLines[idx].t;
-    const end = idx + 1 < lyricsSyncLines.length ? lyricsSyncLines[idx + 1].t : start + 6;
-    const pct = Math.min(Math.max((t - start) / Math.max(end - start, 0.3), 0), 1) * 100;
-    lyricsSyncLines[idx].el.style.setProperty("--wipe", `${pct.toFixed(1)}%`);
+    lyricsSyncLines[idx].words.forEach(({ start, end, el: wEl }) => {
+      const pct = Math.min(Math.max((t - start) / Math.max(end - start, 0.05), 0), 1) * 100;
+      wEl.style.setProperty("--wipe", `${pct.toFixed(1)}%`);
+    });
   }
 }
 
