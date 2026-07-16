@@ -277,6 +277,13 @@ html, body {
      Skript aus irgendeinem Grund nicht gelaufen ist. */
   width: var(--vvw, 100%);
   height: var(--vvh, 100%);
+  /* Android-WebViews vergroessern Schrift/Layout teils automatisch
+     ("Font Boosting"), wenn sie eine schmale Seite erkennen - das laesst
+     eng gepackte Reihen wie die Player-Bar-Buttons ohne echte Zoomstufe
+     ueberlaufen. Deaktiviert dieses automatische Nachskalieren komplett,
+     Pinch-Zoom selbst bleibt davon unberuehrt. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -2538,7 +2545,14 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
      bewegt sich. */
   .player-bar-anchor {
     position: sticky;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    /* max() statt reinem env()-Wert: manche Android-WebViews melden
+       safe-area-inset-bottom nicht korrekt (bleibt 0px), obwohl die
+       System-Geste-Leiste trotzdem einen Streifen am unteren Rand
+       ueberdeckt - dadurch rutschten pb-controls/pb-scrubber (untere
+       zwei Zeilen der Bar) unsichtbar hinter die Geste-Leiste, nur die
+       obere Info-Zeile blieb sichtbar. Fester 20px-Mindestabstand als
+       Fallback, echter env()-Wert gewinnt wenn er groesser ist. */
+    bottom: max(calc(env(safe-area-inset-bottom, 0px) + 8px), 20px);
   }
   .player-bar {
     margin: 0 10px;
