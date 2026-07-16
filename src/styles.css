@@ -267,21 +267,20 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  /* Pinch-Zoom soll erlaubt bleiben (Nutzerwunsch) - Android-WebViews
-     legen 100%/100vh beim Zoomen aber auf den unveränderten LAYOUT-
-     Viewport fest statt auf das gerade sichtbare Stück (VISUAL-Viewport),
-     wodurch beim Rauszoomen rechts/unten ein nackter Hintergrundstreifen
-     durchscheint. --vvw/--vvh (gesetzt von zoom-fix.js über die
-     visualViewport-API) tracken die tatsächlich sichtbare Größe live und
-     ersetzen die starren Prozentwerte - Fallback auf 100%/100% falls das
-     Skript aus irgendeinem Grund nicht gelaufen ist. */
-  width: var(--vvw, 100%);
-  height: var(--vvh, 100%);
+  /* Pinch-Zoom ist jetzt komplett gesperrt (maximum-scale=1.0,
+     user-scalable=no im viewport-meta) - der ganze vorherige JS-Hack
+     (zoom-fix.js, --vvw/--vvh per visualViewport-API) war nur noetig, um
+     Zoom-Drift zwischen Layout- und Visual-Viewport auszugleichen und ist
+     jetzt ueberfluessig (war ausserdem selbst die Fehlerquelle fuer einen
+     Timing-Bug: Player-Bar-Controls fehlten manchmal, weil der erste JS-
+     Sync zu frueh lief). 100dvh statt 100vh: die "dynamic viewport height"
+     zieht obere/untere System-Navigationsleisten automatisch ab und
+     aktualisiert sich nativ, ganz ohne JS. */
+  width: 100%;
+  height: 100dvh;
   /* Android-WebViews vergroessern Schrift/Layout teils automatisch
      ("Font Boosting"), wenn sie eine schmale Seite erkennen - das laesst
-     eng gepackte Reihen wie die Player-Bar-Buttons ohne echte Zoomstufe
-     ueberlaufen. Deaktiviert dieses automatische Nachskalieren komplett,
-     Pinch-Zoom selbst bleibt davon unberuehrt. */
+     eng gepackte Reihen wie die Player-Bar-Buttons ueberlaufen. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -318,8 +317,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 /* ========= APP SHELL ========= */
 .app-shell {
   display: flex;
-  width: var(--vvw, 100%);
-  height: calc(100vh - 90px);
+  width: 100%;
+  height: calc(100dvh - 90px);
   gap: 8px;
   padding: 8px;
 }
@@ -2407,9 +2406,9 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   body { overflow: auto; }
   .app-shell {
     flex-direction: column;
-    width: var(--vvw, 100%);
+    width: 100%;
     height: auto;
-    min-height: var(--vvh, 100vh);
+    min-height: 100dvh;
     padding: 10px 10px 0;
     gap: 10px;
   }
