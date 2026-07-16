@@ -55,7 +55,7 @@ pub async fn update_now_playing(
         let state = app.state::<android::NowPlaying>();
         state
             .0
-            .run_mobile_plugin(
+            .run_mobile_plugin::<()>(
                 "updateNowPlaying",
                 android::NowPlayingPayload { title, artist, playing },
             )
@@ -76,7 +76,7 @@ pub async fn clear_now_playing(app: tauri::AppHandle) -> Result<(), String> {
         let state = app.state::<android::NowPlaying>();
         state
             .0
-            .run_mobile_plugin("clearNowPlaying", android::Empty {})
+            .run_mobile_plugin::<()>("clearNowPlaying", android::Empty {})
             .map_err(|e| e.to_string())?;
     }
     #[cfg(not(target_os = "android"))]
