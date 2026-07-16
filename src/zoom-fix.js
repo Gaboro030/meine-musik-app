@@ -33,4 +33,18 @@
   }
   window.addEventListener("resize", sync);
   window.addEventListener("orientationchange", sync);
+
+  // Der allererste sync() oben lief bevor die Android-WebView ihr Layout
+  // fertig vermessen hat (Statusleiste/Geste-Leiste/Sicherheitsabstaende
+  // sind da teils noch nicht final) - das Ergebnis ist positiv, aber zu
+  // klein, und bleibt so stehen, bis der Nutzer zufaellig scrollt oder
+  // zoomt (das feuert erst ein echtes resize/scroll-Event). Genau das war
+  // der gemeldete Bug: oben/normal gezoomt fehlten die Player-Bar-Controls,
+  // erst "ganz runter und wieder ein bisschen hoch scrollen" holte sie
+  // zurueck. Fix: mehrfach nachsyncen, bis das Layout sicher fertig ist -
+  // ohne dass der Nutzer je scrollen oder zoomen muss.
+  window.addEventListener("load", sync);
+  for (const delay of [50, 150, 300, 600, 1200, 2000]) {
+    setTimeout(sync, delay);
+  }
 })();
