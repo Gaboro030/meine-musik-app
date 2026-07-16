@@ -1,7 +1,9 @@
 mod commands;
 mod discovery;
+mod hotkeys;
 mod innertube;
 mod lyrics;
+mod nowplaying;
 mod party;
 mod playlist;
 mod sync;
@@ -12,11 +14,48 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // Global (system-wide) hotkeys - desktop only, see hotkeys.rs. One
+    // shared handler for every registered shortcut: looks up which
+    // action it maps to via hotkeys::ACTIVE and relays that to the
+    // frontend as a "global-hotkey" event.
+    #[cfg(desktop)]
+    {
+        use tauri::Emitter;
+        builder = builder.plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    match event.state() {
+                        tauri_plugin_global_shortcut::ShortcutState::Pressed => {
+                            if let Ok(table) = hotkeys::ACTIVE.lock() {
+                                if let Some((_, id)) = table.iter().find(|(s, _)| s == shortcut) {
+                                    let _ = app.emit("global-hotkey", id.clone());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                })
+                .build(),
+        );
+    }
+
+    // Spotify/YT-Music-Style Wiedergabe-Notification - Android-only, siehe
+    // nowplaying.rs. Startet den PlaybackService-Foreground-Service, der
+    // die Android-WebView sonst beim Minimieren stummschaltende
+    // Hintergrund-Pausierung umgeht.
+    #[cfg(target_os = "android")]
+    {
+        builder = builder.plugin(nowplaying::android::init());
+    }
+
+    builder
         .setup(|app| {
             let handle = app.handle();
 
@@ -74,6 +113,8 @@ pub fn run() {
             commands::fetch_thumbnail,
             commands::download_track,
             commands::download_track_progress,
+            commands::clear_lyrics_cache,
+            commands::get_app_version,
             playlist::resolve_playlist,
             trash::list_trash,
             trash::restore_trash,
@@ -97,6 +138,9 @@ pub fn run() {
             sync::sync_stop,
             sync::sync_list_peers,
             sync::sync_send_playlists,
+            hotkeys::set_global_hotkeys,
+            nowplaying::update_now_playing,
+            nowplaying::clear_now_playing,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

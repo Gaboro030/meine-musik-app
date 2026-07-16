@@ -21,6 +21,8 @@ if (!existsSync(androidRoot)) {
 mkdirSync(pkgDir, { recursive: true });
 copyFileSync(join(root, "android-extra", "PlaybackService.kt"), join(pkgDir, "PlaybackService.kt"));
 console.log("-> copied PlaybackService.kt");
+copyFileSync(join(root, "android-extra", "NowPlayingPlugin.kt"), join(pkgDir, "NowPlayingPlugin.kt"));
+console.log("-> copied NowPlayingPlugin.kt");
 
 let manifest = readFileSync(manifestPath, "utf8");
 

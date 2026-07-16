@@ -325,9 +325,48 @@
           </div>
         </div>
         <div class="settings-section">
+          <div class="settings-section-title">Wiedergabe &amp; Sound</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Weicher Übergang (Crossfade)</div>
+              <div class="settings-row-desc">Songs blenden sich beim Wechsel sanft ineinander statt hart zu schneiden</div>
+            </div>
+            <button type="button" id="crossfadeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Cache &amp; Speicher</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Songtext-Cache leeren</div>
+              <div class="settings-row-desc">Lokal gespeicherte Songtexte löschen - werden beim nächsten Abspielen neu geladen</div>
+            </div>
+            <button type="button" id="clearLyricsCacheBtn" class="btn-secondary">Leeren</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Sync &amp; Verbindung</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Handy-Sync beim Start aktivieren</div>
+              <div class="settings-row-desc">Gerät ist sofort im WLAN sichtbar, ohne den Sync-Popover erst zu öffnen</div>
+            </div>
+            <button type="button" id="syncAutoStartToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
+          </div>
+        </div>
+        <div class="settings-section" id="hotkeysSettingsSection">
           <div class="settings-section-title">Hotkeys</div>
           <div class="hotkey-list" id="hotkeyList"></div>
           <div class="settings-row-desc" style="margin-top:8px;">Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.</div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">App-Info</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Version</div>
+              <div class="settings-row-desc" id="appVersionText">—</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -471,6 +510,8 @@
   <script src="zoom-fix.js"></script>
   <script src="tauri-shim.js"></script>
   <script src="player.js"></script>
+  <script src="hotkeys-native.js"></script>
+  <script src="nowplaying-native.js"></script>
   <script src="themes.js"></script>
   <script src="sync.js"></script>
   <script src="mobile-ui.js"></script>

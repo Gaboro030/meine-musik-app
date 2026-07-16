@@ -58,6 +58,10 @@ const settingsToggleBtn = document.getElementById("settingsToggleBtn");
 const settingsModal = document.getElementById("settingsModal");
 const settingsModalClose = document.getElementById("settingsModalClose");
 const glowToggleSwitch = document.getElementById("glowToggleSwitch");
+const crossfadeToggleSwitch = document.getElementById("crossfadeToggleSwitch");
+const syncAutoStartToggleSwitch = document.getElementById("syncAutoStartToggleSwitch");
+const clearLyricsCacheBtn = document.getElementById("clearLyricsCacheBtn");
+const appVersionText = document.getElementById("appVersionText");
 const hotkeyList = document.getElementById("hotkeyList");
 
 const pbLyrics = document.getElementById("pbLyrics");
@@ -1548,11 +1552,16 @@ function resetFadeForNewTrack() {
   if (!masterGain || !audioCtx) return;
   const now = audioCtx.currentTime;
   masterGain.gain.cancelScheduledValues(now);
+  if (!crossfadeEnabled) {
+    masterGain.gain.setValueAtTime(1, now);
+    return;
+  }
   masterGain.gain.setValueAtTime(FADE_FLOOR, now);
   masterGain.gain.linearRampToValueAtTime(1, now + FADE_IN_SECONDS);
 }
 
 function maybeStartFadeOut() {
+  if (!crossfadeEnabled) return;
   if (!masterGain || !audioCtx || fadingOut) return;
   if (!audioEl.duration || !isFinite(audioEl.duration)) return;
   const remaining = audioEl.duration - audioEl.currentTime;
@@ -1662,6 +1671,62 @@ glowToggleSwitch.addEventListener("click", () => setGlowEnabled(!glowEnabled));
 glowToggleSwitch.classList.toggle("active", glowEnabled);
 glowToggleSwitch.setAttribute("aria-checked", String(glowEnabled));
 if (!glowEnabled) ambientGlowEl.classList.add("glow-off");
+
+/* ===== Settings: Crossfade toggle ===== */
+const CROSSFADE_ENABLED_KEY = "crossfadeEnabled";
+let crossfadeEnabled = localStorage.getItem(CROSSFADE_ENABLED_KEY) !== "0";
+
+function setCrossfadeEnabled(enabled) {
+  crossfadeEnabled = enabled;
+  localStorage.setItem(CROSSFADE_ENABLED_KEY, enabled ? "1" : "0");
+  crossfadeToggleSwitch.classList.toggle("active", enabled);
+  crossfadeToggleSwitch.setAttribute("aria-checked", String(enabled));
+}
+
+crossfadeToggleSwitch.addEventListener("click", () => setCrossfadeEnabled(!crossfadeEnabled));
+crossfadeToggleSwitch.classList.toggle("active", crossfadeEnabled);
+crossfadeToggleSwitch.setAttribute("aria-checked", String(crossfadeEnabled));
+
+/* ===== Settings: Handy-Sync beim Start ===== */
+const SYNC_AUTO_START_KEY = "syncAutoStart";
+let syncAutoStart = localStorage.getItem(SYNC_AUTO_START_KEY) === "1";
+
+function setSyncAutoStart(enabled) {
+  syncAutoStart = enabled;
+  localStorage.setItem(SYNC_AUTO_START_KEY, enabled ? "1" : "0");
+  syncAutoStartToggleSwitch.classList.toggle("active", enabled);
+  syncAutoStartToggleSwitch.setAttribute("aria-checked", String(enabled));
+}
+
+syncAutoStartToggleSwitch.addEventListener("click", () => setSyncAutoStart(!syncAutoStart));
+syncAutoStartToggleSwitch.classList.toggle("active", syncAutoStart);
+syncAutoStartToggleSwitch.setAttribute("aria-checked", String(syncAutoStart));
+// sync.js reads this flag itself once on load (see there) - just persisting
+// the toggle here keeps all Handy-Sync logic in its own file.
+
+/* ===== Settings: Cache & Speicher ===== */
+clearLyricsCacheBtn.addEventListener("click", async () => {
+  clearLyricsCacheBtn.disabled = true;
+  const original = clearLyricsCacheBtn.textContent;
+  try {
+    const res = await fetch("/api/settings/clear-lyrics-cache", { method: "POST" });
+    const data = await res.json();
+    showToast(`🧹 ${data.removed || 0} zwischengespeicherte Songtexte gelöscht`);
+  } catch (_) {
+    showToast("Cache konnte nicht geleert werden.");
+  } finally {
+    clearLyricsCacheBtn.disabled = false;
+    clearLyricsCacheBtn.textContent = original;
+  }
+});
+
+/* ===== Settings: App-Info ===== */
+fetch("/api/settings/version")
+  .then((res) => res.json())
+  .then((data) => {
+    appVersionText.textContent = data.version ? `v${data.version}` : "—";
+  })
+  .catch(() => {});
 
 /* ===== Fully configurable hotkeys =====
    Every action below gets its own combo, freely reassignable in the

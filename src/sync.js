@@ -102,6 +102,11 @@
   }
 
   modeBtn.addEventListener("click", toggleSync);
+
+  // Settings -> "Handy-Sync beim Start aktivieren" (player.js persists the
+  // toggle, sync.js just reads it once here) - skips having to open the
+  // popover and press "Sync-Modus starten" manually every launch.
+  if (localStorage.getItem("syncAutoStart") === "1") toggleSync();
   toggleBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     popover.classList.toggle("hidden");

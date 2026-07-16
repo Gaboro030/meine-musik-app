@@ -2650,6 +2650,10 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
      der Downloader ist jetzt als Icon im Dock erreichbar (siehe unten). */
   .header-downloader-btn { display: none; }
 
+  /* --- Hotkeys-Einstellung ergibt auf dem Handy keinen Sinn (keine
+     Tastatur zum Umbelegen) - PC behält den Abschnitt unverändert. */
+  #hotkeysSettingsSection { display: none; }
+
   /* --- .btn-shuffle-circle (der Shuffle-Button in der "Meins"-Kopfzeile,
      direkt neben dem runden grünen Play-Button) bleibt auch auf Mobile ein
      Kreis-Chip - er ist schon auf jeder Breite rundes 40px-Element (Basis-

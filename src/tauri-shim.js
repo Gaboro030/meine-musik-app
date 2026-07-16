@@ -194,6 +194,16 @@
     }
     if (parts[1] === "hotkey") return jsonResponse({ ok: true });
 
+    // --- settings --------------------------------------------------------
+    if (parts[1] === "settings") {
+      if (parts[2] === "version") {
+        return jsonResponse({ version: await invoke("get_app_version") });
+      }
+      if (parts[2] === "clear-lyrics-cache" && method === "POST") {
+        return jsonResponse({ removed: await invoke("clear_lyrics_cache") });
+      }
+    }
+
     return jsonResponse({ error: "Nicht verfügbar." }, 404);
   }
 

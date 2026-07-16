@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-hotkeys",
+  "description": "System-wide global hotkeys - desktop only (no keyboard/background concept on Android)",
+  "windows": ["main"],
+  "platforms": ["windows", "linux", "macOS"],
+  "permissions": [
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister-all"
+  ]
+}

@@ -48,6 +48,13 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 
+# System-weite Hotkeys (funktionieren auch wenn die App minimiert ist) -
+# der Plugin unterstuetzt nur Desktop (keine Tastatur/kein "minimiert" auf
+# Android) - als Target-Dependency statt in [dependencies], damit der
+# Android-Build den Crate erst gar nicht sieht.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2"
+
 [profile.release]
 panic = "abort"
 codegen-units = 1

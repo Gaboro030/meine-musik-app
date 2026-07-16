@@ -826,3 +826,32 @@ fn error_response(status: StatusCode, msg: &str) -> Response<Vec<u8>> {
         .body(msg.as_bytes().to_vec())
         .unwrap()
 }
+
+/// Deletes every cached `.lyrics.json` sidecar under music_root (Settings
+/// -> "Songtext-Cache leeren") - get_lyrics_cached (lyrics.rs) just
+/// re-fetches from the API next time a song is opened, same as if it had
+/// never been cached.
+#[tauri::command]
+pub async fn clear_lyrics_cache(state: tauri::State<'_, AppState>) -> Result<u32, String> {
+    let mut removed = 0u32;
+    let Ok(playlists) = std::fs::read_dir(&state.music_root) else {
+        return Ok(0);
+    };
+    for playlist_dir in playlists.flatten() {
+        let Ok(files) = std::fs::read_dir(playlist_dir.path()) else { continue };
+        for entry in files.flatten() {
+            let path = entry.path();
+            if path.to_string_lossy().ends_with(".lyrics.json") {
+                if std::fs::remove_file(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+    }
+    Ok(removed)
+}
+
+#[tauri::command]
+pub fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
