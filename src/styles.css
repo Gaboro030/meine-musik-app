@@ -2518,14 +2518,30 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
      unangetastet. */
   .sidebar-footer { display: none; }
 
-  /* --- Player-Bar fest am unteren Rand, kompakt --- */
-  .player-bar {
-    position: fixed;
-    left: 10px;
-    right: 10px;
+  /* --- Player-Bar: sticky statt fixed ---
+     War "position: fixed", positioniert relativ zum LAYOUT-Viewport - in
+     Android-WebViews driftet der beim Reinzoomen/Rauszoomen vom sichtbaren
+     VISUAL-Viewport auseinander, wodurch die Bar nur bei bestimmten
+     Zoomstufen tatsächlich im sichtbaren Bereich lag (bei anderen schien
+     sie zu fehlen, obwohl sie technisch noch da war). "sticky" verankert
+     sie am unteren Bildschirmrand relativ zum TATSÄCHLICH sichtbaren
+     Bereich bei jeder Zoomstufe, ganz ohne die Fixed/Visual-Viewport-
+     Falle.
+     Sticky sitzt auf einem eigenen, unsichtbaren Wrapper (.player-bar-
+     anchor in index.html) statt direkt auf .player-bar selbst - das
+     Ausblenden beim Runterscrollen (mobile-ui.js, body.mobile-bars-
+     hidden) animiert weiterhin .player-bar per transform/opacity, und
+     ein zusätzliches transform auf einem GLEICHZEITIG sticky-
+     positionierten Element verhält sich in manchen Engines nicht
+     zuverlässig (beim Testen reproduziert) - der Anchor bleibt fix
+     verankert und unangetastet, nur sein normales (nicht-sticky) Kind
+     bewegt sich. */
+  .player-bar-anchor {
+    position: sticky;
     bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
-    z-index: 400;
-    margin: 0;
+  }
+  .player-bar {
+    margin: 0 10px;
     min-height: var(--mobile-player-bar-h);
     padding: 10px 14px;
     grid-template-columns: 1fr;
@@ -2535,15 +2551,12 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .pb-controls { gap: 26px; }
   .pb-scrubber { max-width: none; }
 
-  /* Inhalt braucht Platz für die festen Leisten unten - war vorher auf
-     .main-view gesetzt, einer Klasse, die auf keinem einzigen Element im
-     HTML existiert (der echte Scroll-Container ist .content-scroll) - die
-     Reservierung griff also nie, weshalb sich der letzte Song einer langen
-     Playlist nie ganz über die Player-Bar hinausscrollen ließ. Großzügig
-     bemessen (deutlich mehr als die Leisten-Formel oben ergibt), damit da
-     immer Luft bleibt, auch wenn ein Popover mal offen ist. */
+  /* Sticky liegt im normalen Fluss - kein Overlap mehr, das ausgeglichen
+     werden müsste. Ein kleiner Rest-Abstand reicht als Luft zum letzten
+     Song, statt der früheren pauschalen Überlappungs-Reservierung für die
+     fixed-Bar. */
   .content-scroll {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 160px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
   }
 
   /* --- EIN Scroll-Container für den ganzen Viewport ---
@@ -2611,9 +2624,10 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .track-table { margin-top: 6px; }
 
   /* --- Bottom-UI beim Scrollen ausblenden (mobile-ui.js) ---
-     Nur noch die Player-Bar ist fix am unteren Rand (das Dock ist in den
-     Header gewandert und scrollt normal mit) - per transform statt
-     display, bleibt smooth animierbar und behält Layout. */
+     .player-bar ist absichtlich NICHT das sticky-Element (das ist der
+     .player-bar-anchor-Wrapper, siehe oben) - transform/opacity landen
+     hier auf einem ganz normalen, nicht positionierten Kind-Element,
+     genau deshalb funktioniert die Animation zuverlässig. */
   .player-bar {
     transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
