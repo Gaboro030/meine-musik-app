@@ -5,7 +5,12 @@
   "identifier": "com.meinemusik.app",
   "build": {
     "frontendDist": "../src",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": {
+      "script": "node scripts/dev-server.mjs",
+      "cwd": "..",
+      "wait": false
+    }
   },
   "app": {
     "withGlobalTauri": true,
