@@ -263,10 +263,39 @@
     const partyToggleBtn = document.getElementById("partyToggleBtn");
     const partyAudio = document.getElementById("partyAudio");
     let partyState = null;
+    let partyStateReceivedAt = 0; // Date.now() beim Empfang - Basis der Drift-Korrektur
     let followingParty = false;
+
+    /* Wo steht der Host JETZT wirklich? state.position ist die Position
+       zum SENDE-Zeitpunkt - bei laufender Wiedergabe seitdem weitergelaufen.
+       Statt der Host-Systemuhr (state.updated - Uhren von Host und Gast
+       gehen gerade übers Internet auseinander) zählt die lokal gemessene
+       Zeit seit Empfang: frei von Uhren-Versatz, nur die einmalige
+       Übertragungslatenz bleibt als kleiner konstanter Fehler übrig. */
+    function expectedHostPosition() {
+      if (!partyState) return 0;
+      const base = partyState.position || 0;
+      if (!partyState.playing) return base;
+      return base + (Date.now() - partyStateReceivedAt) / 1000;
+    }
+
+    function syncPartyAudio() {
+      const state = partyState;
+      if (!followingParty || !state || !state.active || !state.stream_url) return;
+      if (!partyAudio.src.endsWith(state.stream_url)) {
+        partyAudio.src = state.stream_url;
+        partyAudio.currentTime = expectedHostPosition();
+      } else if (Math.abs(partyAudio.currentTime - expectedHostPosition()) > 1.5) {
+        // Mehr als 1.5s neben dem Host - zurückschnappen.
+        partyAudio.currentTime = expectedHostPosition();
+      }
+      if (state.playing && partyAudio.paused) partyAudio.play().catch(() => {});
+      if (!state.playing && !partyAudio.paused) partyAudio.pause();
+    }
 
     function applyPartyState(state) {
       partyState = state;
+      partyStateReceivedAt = Date.now();
       if (!state || !state.active) {
         partyCard.classList.add("hidden");
         if (followingParty) {
@@ -281,19 +310,14 @@
       partyCover.src = state.cover || PLACEHOLDER_COVER;
       partyTitle.textContent = state.title || "—";
       partyArtist.textContent = state.artist || "Unbekannter Interpret";
-
-      if (followingParty && state.stream_url) {
-        if (!partyAudio.src.endsWith(state.stream_url)) {
-          partyAudio.src = state.stream_url;
-          partyAudio.currentTime = state.position || 0;
-        } else if (Math.abs(partyAudio.currentTime - (state.position || 0)) > 1.5) {
-          // Drifted more than 1.5s from the host - snap back in sync.
-          partyAudio.currentTime = state.position || 0;
-        }
-        if (state.playing && partyAudio.paused) partyAudio.play().catch(() => {});
-        if (!state.playing && !partyAudio.paused) partyAudio.pause();
-      }
+      syncPartyAudio();
     }
+
+    // Laufende Drift-Kontrolle zwischen zwei Sync-Events - fängt auch den
+    // Fall ab, dass ein Seek/Play des Hosts im Funkloch verpasst wurde.
+    setInterval(() => {
+      if (followingParty) syncPartyAudio();
+    }, 2000);
 
     partyToggleBtn.addEventListener("click", () => {
       followingParty = !followingParty;
@@ -306,9 +330,80 @@
       }
     });
 
-    /* ===== Live updates via the shared SSE bus ===== */
-    if ("EventSource" in window) {
-      const events = new EventSource("/api/events");
+    /* ===== Live updates via the shared SSE bus =====
+       Robust gegen Netzwerkwechsel (WLAN -> Mobilfunk): EventSource
+       reconnectet zwar von selbst bei kurzen Aussetzern, stirbt bei einem
+       echten Interface-Wechsel aber oft still und endgültig. Deshalb:
+       expliziter Neuaufbau mit Backoff bei onerror, sofortiger Neuaufbau
+       bei "online"/Tab-Rückkehr, und nach jedem (Re-)Connect einmal
+       Zustand + Warteschlange frisch ziehen - was während der Lücke
+       passiert ist, wäre sonst für immer verpasst. */
+    let events = null;
+    let reconnectTimer = null;
+    let reconnectDelay = 1000;
+
+    /* Anwesenheit: einmal joinen (Name bleibt im localStorage, id auch -
+       Reconnects frischen denselben Eintrag auf statt zu duplizieren),
+       dann alle 20s ein Heartbeat. Antwortet der Server mit ok:false,
+       kennt er die id nicht mehr (Neustart) - dann neu joinen. */
+    let guestId = localStorage.getItem("partyGuestId") || null;
+
+    function guestName() {
+      let name = localStorage.getItem("partyGuestName");
+      if (!name) {
+        name = "Gast-" + Math.floor(100 + Math.random() * 900);
+        localStorage.setItem("partyGuestName", name);
+      }
+      return name;
+    }
+
+    async function joinParty() {
+      try {
+        const res = await fetch("/api/party/join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: guestName(), id: guestId }),
+        });
+        const data = await res.json();
+        if (data.id) {
+          guestId = data.id;
+          localStorage.setItem("partyGuestId", guestId);
+        }
+      } catch (_) {}
+    }
+
+    setInterval(async () => {
+      if (!guestId) return;
+      try {
+        const res = await fetch("/api/party/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: guestId }),
+        });
+        const data = await res.json();
+        if (data && data.ok === false) joinParty();
+      } catch (_) {}
+    }, 20000);
+
+    function refreshFromServer() {
+      fetch("/api/party/state")
+        .then((r) => r.json())
+        .then(applyPartyState)
+        .catch(() => {});
+      loadQueue();
+      joinParty();
+    }
+
+    function connectEvents() {
+      if (!("EventSource" in window)) return;
+      if (events) {
+        try { events.close(); } catch (_) {}
+      }
+      events = new EventSource("/api/events");
+      events.addEventListener("open", () => {
+        reconnectDelay = 1000;
+        refreshFromServer();
+      });
       events.addEventListener("queue_update", (e) => {
         try {
           renderQueue(JSON.parse(e.data).queue || []);
@@ -319,12 +414,34 @@
           applyPartyState(JSON.parse(e.data));
         } catch (_) {}
       });
+      events.addEventListener("error", () => {
+        // CONNECTING heißt: der Browser versucht selbst zu reconnecten -
+        // dann nicht dazwischenfunken. CLOSED heißt endgültig tot.
+        if (events.readyState === EventSource.CLOSED) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connectEvents, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+        }
+      });
     }
 
-    fetch("/api/party/state")
-      .then((r) => r.json())
-      .then(applyPartyState)
-      .catch(() => {});
+    window.addEventListener("online", () => {
+      clearTimeout(reconnectTimer);
+      connectEvents();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      // Nach Rückkehr aus dem Hintergrund kann die Verbindung tot sein,
+      // ohne je ein error-Event geliefert zu haben - im Zweifel neu.
+      if (!events || events.readyState === EventSource.CLOSED) {
+        connectEvents();
+      } else {
+        refreshFromServer();
+      }
+    });
+
+    connectEvents();
+    refreshFromServer();
 
     loadLibrary();
     loadQueue();

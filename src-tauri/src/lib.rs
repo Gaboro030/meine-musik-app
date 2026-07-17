@@ -129,6 +129,7 @@ pub fn run() {
             party::party_internet,
             party::party_get_state,
             party::party_set_state,
+            party::party_participants,
             party::queue_list,
             party::queue_remove,
             innertube::set_po_token,

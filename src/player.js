@@ -130,6 +130,8 @@ let currentView = "home"; // home | library | playlist
 let previousView = "home"; // where the back arrow returns to from playlist view
 let nowPlayingMeta = null; // {playlist, file, title, artist, cover, stream_url} - feeds party-mode heartbeat
 let liveQueue = []; // collaborative queue from guest phones, kept in sync via SSE
+let userQueue = []; // eigene "Als nächstes"-Warteschlange (3-Punkte-Menü pro Track), volle Metadaten-Snapshots
+let queueResumeIndex = -1; // Playlist-Position vor dem Abzweig in die Queue - nextTrack() macht dort weiter
 
 /* ===== Helpers ===== */
 function fmtTime(sec) {
@@ -798,6 +800,21 @@ function renderTrackTable() {
     tdDuration.className = "col-duration";
     tdDuration.textContent = t.duration ? fmtTime(t.duration) : "—";
 
+    // ⋯ (U+22EF, reines Textzeichen - kein Emoji-Risiko wie bei 🔀/⏸):
+    // Menü mit "Als nächstes spielen" / "An Warteschlange anhängen".
+    const tdMore = document.createElement("td");
+    tdMore.className = "col-more";
+    const moreBtn = document.createElement("button");
+    moreBtn.type = "button";
+    moreBtn.className = "track-more-btn";
+    moreBtn.textContent = "⋯";
+    moreBtn.title = "Optionen";
+    moreBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openTrackMoreMenu(moreBtn, t);
+    });
+    tdMore.appendChild(moreBtn);
+
     const tdAdd = document.createElement("td");
     tdAdd.className = "col-add";
     const addBtn = document.createElement("button");
@@ -823,7 +840,7 @@ function renderTrackTable() {
     });
     tdRemove.appendChild(removeBtn);
 
-    tr.append(tdIndex, tdTitle, tdAlbum, tdDuration, tdAdd, tdRemove);
+    tr.append(tdIndex, tdTitle, tdAlbum, tdDuration, tdMore, tdAdd, tdRemove);
     tr.addEventListener("click", () => {
       // Klick auf den bereits laufenden Track: pausieren bzw. fortsetzen
       // statt von vorne zu starten.
@@ -950,12 +967,16 @@ function playTrack(index) {
   prefetchedNextForTrack = -1;
 }
 
-/* Plays a track handed over from the collaborative queue (guest phones).
-   Not tied to currentPlaylist/currentTrackIndex - it has its own full
-   metadata already, so this bypasses the indexed playTrack() path
-   entirely instead of trying to force it into a playlist context it
-   doesn't belong to. */
-function playQueuedEntry(entry) {
+/* Plays a track handed over from a queue (own "Als nächstes"-Warteschlange
+   oder Gast-Handys der Party). Not tied to currentPlaylist/
+   currentTrackIndex - it has its own full metadata already, so this
+   bypasses the indexed playTrack() path entirely instead of trying to
+   force it into a playlist context it doesn't belong to. */
+function playQueuedEntry(entry, source = "guest") {
+  // Merken, wo die Playlist gerade stand - nach Abarbeiten der Queue
+  // macht nextTrack() dort weiter statt wieder bei Track 0 anzufangen.
+  if (currentTrackIndex >= 0) queueResumeIndex = currentTrackIndex;
+
   initAudioGraph();
   resetFadeForNewTrack();
 
@@ -975,16 +996,19 @@ function playQueuedEntry(entry) {
   updateMediaSessionMetadata({ title: entry.title, artist: entry.artist, album: "" });
   updateAmbientGlow(entry.cover);
   nowPlayingMeta = {
-    playlist: "",
-    file: "",
+    playlist: entry.playlist || "",
+    file: entry.file || "",
     title: entry.title,
     artist: entry.artist,
     cover: entry.cover,
     stream_url: entry.stream_url,
   };
 
-  fetch(`/api/queue/${entry.id}`, { method: "DELETE" }).catch(() => {});
-  showToast(`👥 Aus der Warteschlange: „${entry.title}"`);
+  if (source === "guest") {
+    fetch(`/api/queue/${entry.id}`, { method: "DELETE" }).catch(() => {});
+    showToast(`👥 Aus der Warteschlange: „${entry.title}"`);
+  }
+  renderQueuePanel();
 }
 
 function updatePlayButton(playing) {
@@ -1015,25 +1039,36 @@ function togglePlayPause() {
 }
 
 function nextTrack() {
-  // Guest-queued songs always take priority over normal playlist advance,
-  // same as every music app's "up next" queue.
+  // Eigene "Als nächstes"-Warteschlange hat höchste Priorität, danach die
+  // Gast-Queue der Party - wie das "Up next" jeder Musik-App.
+  if (userQueue.length) {
+    playQueuedEntry(userQueue.shift(), "user");
+    return;
+  }
   if (liveQueue.length) {
     const entry = liveQueue.shift();
     playQueuedEntry(entry);
     return;
   }
   if (!currentPlaylist || !currentPlaylist.tracks.length) return;
+  // Queue ist leer und der letzte Song kam aus der Queue (Index -1):
+  // an der gemerkten Playlist-Position weitermachen statt bei 0.
+  let fromIndex = currentTrackIndex;
+  if (fromIndex === -1 && queueResumeIndex >= 0) {
+    fromIndex = queueResumeIndex;
+    queueResumeIndex = -1;
+  }
   if (isShuffle) {
-    const pos = shuffleOrder.indexOf(currentTrackIndex);
+    const pos = shuffleOrder.indexOf(fromIndex);
     const nextPos = (pos + 1) % shuffleOrder.length;
-    if (nextPos === 0 && repeatMode !== "all") {
+    if (nextPos === 0 && repeatMode !== "all" && pos !== -1) {
       updatePlayButton(false);
       return;
     }
     playTrack(shuffleOrder[nextPos]);
     return;
   }
-  let next = currentTrackIndex + 1;
+  let next = fromIndex + 1;
   if (next >= currentPlaylist.tracks.length) {
     if (repeatMode !== "all") {
       updatePlayButton(false);
@@ -1246,14 +1281,37 @@ let audioErrorRetryTimer = null;
 let consecutiveAudioErrors = 0;
 const MAX_CONSECUTIVE_AUDIO_ERRORS = 5;
 
+let retriedForSrc = null; // pro Quelle genau EIN Sofort-Retry, bevor übersprungen wird
+
 audioEl.addEventListener("playing", () => {
   consecutiveAudioErrors = 0;
+  retriedForSrc = null;
 });
 
 audioEl.addEventListener("error", () => {
   // deleteTrack() intentionally clears src, which also fires an error
   // event - that's not a stream failure, so ignore it.
   if (!audioEl.getAttribute("src")) return;
+
+  // Erststrategie: derselbe Titel, ein Sofort-Retry mit Positions-Restore.
+  // Fängt kurze Netz-/Stream-Aussetzer ab, ohne den Song zu verlieren -
+  // erst wenn dieselbe Quelle direkt nochmal scheitert, wird übersprungen.
+  const src = audioEl.getAttribute("src");
+  if (retriedForSrc !== src) {
+    retriedForSrc = src;
+    const pos = audioEl.currentTime || 0;
+    showToast("⚠️ Aussetzer im Stream – versuche es erneut …");
+    audioEl.load();
+    const restore = () => {
+      audioEl.removeEventListener("canplay", restore);
+      if (pos > 0 && isFinite(audioEl.duration) && pos < audioEl.duration) {
+        audioEl.currentTime = pos;
+      }
+      audioEl.play().catch(() => {});
+    };
+    audioEl.addEventListener("canplay", restore);
+    return;
+  }
 
   consecutiveAudioErrors += 1;
   updatePlayButton(false);
@@ -1265,6 +1323,309 @@ audioEl.addEventListener("error", () => {
   clearTimeout(audioErrorRetryTimer);
   audioErrorRetryTimer = setTimeout(() => nextTrack(), 3000);
 });
+
+/* Hänger-Watchdog: "stalled"/"waiting" heißt der Browser bekommt gerade
+   keine Daten. Kurzes Puffern ist normal - erst wenn 10s lang trotz
+   play-Absicht nichts weitergeht, greift dieselbe Retry-Logik wie beim
+   harten error-Event (load + Positions-Restore). */
+let stallTimer = null;
+function armStallWatchdog() {
+  clearTimeout(stallTimer);
+  stallTimer = setTimeout(() => {
+    if (audioEl.paused || !audioEl.getAttribute("src")) return;
+    const pos = audioEl.currentTime || 0;
+    showToast("⚠️ Stream hängt – lade neu …");
+    audioEl.load();
+    const restore = () => {
+      audioEl.removeEventListener("canplay", restore);
+      if (pos > 0 && isFinite(audioEl.duration) && pos < audioEl.duration) {
+        audioEl.currentTime = pos;
+      }
+      audioEl.play().catch(() => {});
+    };
+    audioEl.addEventListener("canplay", restore);
+  }, 10000);
+}
+audioEl.addEventListener("stalled", armStallWatchdog);
+audioEl.addEventListener("waiting", armStallWatchdog);
+["playing", "timeupdate", "pause", "ended", "emptied"].forEach((ev) =>
+  audioEl.addEventListener(ev, () => clearTimeout(stallTimer))
+);
+
+/* Nächsten Titel vorwärmen: sobald der laufende Song zu 85% durch ist,
+   die ersten ~256KB des nächsten anfordern - wärmt Datei-Cache/HTTP-Pfad,
+   damit der Wechsel (gerade bei Offline-Dateien) verzögerungsfrei ist. */
+let warmedNextForTrack = -1;
+audioEl.addEventListener("timeupdate", () => {
+  if (!audioEl.duration || !isFinite(audioEl.duration)) return;
+  if (currentTrackIndex === warmedNextForTrack) return;
+  if (audioEl.currentTime / audioEl.duration >= 0.85) {
+    warmedNextForTrack = currentTrackIndex;
+    const next = userQueue[0] || liveQueue[0] || peekNextTrack();
+    if (next && next.stream_url) {
+      fetch(next.stream_url, { headers: { Range: "bytes=0-262143" } }).catch(() => {});
+    }
+  }
+});
+
+/* ===== Warteschlange (eigene "Als nächstes"-Queue + Panel) =====
+   userQueue = volle Metadaten-Snapshots (nicht Indizes) - überlebt damit
+   Playlist-Wechsel und Umsortieren der Quell-Playlist. Panel zeigt drei
+   Abschnitte: eigene Queue (umsortierbar per Drag-Drop und ↑/↓-Buttons,
+   löschbar), Gast-Queue der Party (löschbar, Server-synchronisiert via
+   SSE queue_update) und eine Read-only-Vorschau der danach folgenden
+   Playlist-Titel. */
+const pbQueue = document.getElementById("pbQueue");
+const queuePanel = document.getElementById("queuePanel");
+const queuePanelBody = document.getElementById("queuePanelBody");
+const queuePanelClose = document.getElementById("queuePanelClose");
+
+function queueEntryFor(track) {
+  return {
+    title: track.title,
+    artist: track.artist || "",
+    cover: track.cover || "",
+    stream_url: track.stream_url,
+    playlist: currentPlaylist ? currentPlaylist.name : "",
+    file: track.file || "",
+  };
+}
+
+function enqueueNext(track) {
+  userQueue.unshift(queueEntryFor(track));
+  showToast(`Als Nächstes: „${track.title}"`);
+  renderQueuePanel();
+}
+
+function enqueueLast(track) {
+  userQueue.push(queueEntryFor(track));
+  showToast(`In Warteschlange: „${track.title}"`);
+  renderQueuePanel();
+}
+
+let trackMoreMenuEl = null;
+function closeTrackMoreMenu() {
+  if (trackMoreMenuEl) {
+    trackMoreMenuEl.remove();
+    trackMoreMenuEl = null;
+  }
+}
+function openTrackMoreMenu(anchorBtn, track) {
+  closeTrackMoreMenu();
+  const menu = document.createElement("div");
+  menu.className = "add-to-playlist-menu track-more-menu";
+  const mkItem = (label, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "add-to-playlist-item";
+    b.textContent = label;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTrackMoreMenu();
+      fn();
+    });
+    menu.appendChild(b);
+  };
+  mkItem("Als nächstes spielen", () => enqueueNext(track));
+  mkItem("An Warteschlange anhängen", () => enqueueLast(track));
+  mkItem("Warteschlange anzeigen", () => openQueuePanel());
+  document.body.appendChild(menu);
+  const rect = anchorBtn.getBoundingClientRect();
+  const top = Math.min(rect.bottom + 4, window.innerHeight - menu.offsetHeight - 8);
+  const left = Math.min(rect.left, window.innerWidth - 250);
+  menu.style.top = `${Math.max(8, top)}px`;
+  menu.style.left = `${Math.max(8, left)}px`;
+  trackMoreMenuEl = menu;
+}
+document.addEventListener("click", () => closeTrackMoreMenu());
+
+function openQueuePanel() {
+  renderQueuePanel();
+  queuePanel.classList.remove("hidden");
+  pbQueue.classList.add("active");
+}
+function closeQueuePanel() {
+  queuePanel.classList.add("hidden");
+  pbQueue.classList.remove("active");
+}
+pbQueue.addEventListener("click", () => {
+  if (queuePanel.classList.contains("hidden")) openQueuePanel();
+  else closeQueuePanel();
+});
+queuePanelClose.addEventListener("click", closeQueuePanel);
+
+/* Nicht-destruktive Vorschau: welche Playlist-Titel kommen nach den
+   Queues dran. Spiegelt exakt die nextTrack()-Logik (inkl. Resume-Index
+   und Shuffle-Reihenfolge), verändert aber nichts. */
+function upcomingPlaylistTracks(maxCount) {
+  if (!currentPlaylist || !currentPlaylist.tracks.length) return [];
+  let fromIndex = currentTrackIndex;
+  if (fromIndex === -1 && queueResumeIndex >= 0) fromIndex = queueResumeIndex;
+  const out = [];
+  if (isShuffle && shuffleOrder.length) {
+    let pos = shuffleOrder.indexOf(fromIndex);
+    for (let step = 1; step <= shuffleOrder.length - 1 && out.length < maxCount; step++) {
+      const p = pos + step;
+      if (p >= shuffleOrder.length && repeatMode !== "all") break;
+      const t = currentPlaylist.tracks[shuffleOrder[p % shuffleOrder.length]];
+      if (t) out.push(t);
+    }
+    return out;
+  }
+  for (let step = 1; step <= currentPlaylist.tracks.length - 1 && out.length < maxCount; step++) {
+    let idx = fromIndex + step;
+    if (idx >= currentPlaylist.tracks.length) {
+      if (repeatMode !== "all") break;
+      idx %= currentPlaylist.tracks.length;
+    }
+    const t = currentPlaylist.tracks[idx];
+    if (t) out.push(t);
+  }
+  return out;
+}
+
+let dragQIndex = null;
+
+function queueSectionHeading(text) {
+  const h = document.createElement("div");
+  h.className = "queue-section-title";
+  h.textContent = text;
+  return h;
+}
+
+function queueRowBase(entry) {
+  const row = document.createElement("div");
+  row.className = "queue-row";
+  const img = document.createElement("img");
+  img.className = "queue-row-cover";
+  img.src = entry.cover || PLACEHOLDER_COVER;
+  img.alt = "";
+  const text = document.createElement("div");
+  text.className = "queue-row-text";
+  const title = document.createElement("div");
+  title.className = "queue-row-title";
+  title.textContent = entry.title;
+  const artist = document.createElement("div");
+  artist.className = "queue-row-artist";
+  artist.textContent = entry.artist || "Unbekannter Interpret";
+  text.append(title, artist);
+  row.append(img, text);
+  return row;
+}
+
+function renderQueuePanel() {
+  if (!queuePanelBody) return;
+  queuePanelBody.innerHTML = "";
+
+  // --- Eigene Queue ---
+  queuePanelBody.appendChild(queueSectionHeading(userQueue.length ? `Als Nächstes (${userQueue.length})` : "Als Nächstes"));
+  if (!userQueue.length) {
+    const empty = document.createElement("div");
+    empty.className = "queue-empty";
+    empty.textContent = "Leer - über ⋯ bei einem Song füllen.";
+    queuePanelBody.appendChild(empty);
+  }
+  userQueue.forEach((entry, idx) => {
+    const row = queueRowBase(entry);
+    row.draggable = true;
+    row.addEventListener("dragstart", (e) => {
+      dragQIndex = idx;
+      row.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    row.addEventListener("dragend", () => {
+      dragQIndex = null;
+      renderQueuePanel();
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      row.classList.add("drag-over");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (dragQIndex === null || dragQIndex === idx) return;
+      const [moved] = userQueue.splice(dragQIndex, 1);
+      userQueue.splice(idx, 0, moved);
+      dragQIndex = null;
+      renderQueuePanel();
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "queue-row-actions";
+    // ↑/↓ zusätzlich zu Drag-Drop: auf Touch-Geräten gibt es kein HTML5-DnD.
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "queue-row-btn";
+    up.textContent = "↑";
+    up.title = "Nach oben";
+    up.disabled = idx === 0;
+    up.addEventListener("click", () => {
+      const [moved] = userQueue.splice(idx, 1);
+      userQueue.splice(idx - 1, 0, moved);
+      renderQueuePanel();
+    });
+    const down = document.createElement("button");
+    down.type = "button";
+    down.className = "queue-row-btn";
+    down.textContent = "↓";
+    down.title = "Nach unten";
+    down.disabled = idx === userQueue.length - 1;
+    down.addEventListener("click", () => {
+      const [moved] = userQueue.splice(idx, 1);
+      userQueue.splice(idx + 1, 0, moved);
+      renderQueuePanel();
+    });
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "queue-row-btn queue-row-del";
+    del.textContent = "✕";
+    del.title = "Entfernen";
+    del.addEventListener("click", () => {
+      userQueue.splice(idx, 1);
+      renderQueuePanel();
+    });
+    actions.append(up, down, del);
+    row.appendChild(actions);
+    queuePanelBody.appendChild(row);
+  });
+
+  // --- Gast-Queue (Party) ---
+  if (liveQueue.length) {
+    queuePanelBody.appendChild(queueSectionHeading(`Von Gästen (${liveQueue.length})`));
+    liveQueue.forEach((entry) => {
+      const row = queueRowBase(entry);
+      const actions = document.createElement("div");
+      actions.className = "queue-row-actions";
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "queue-row-btn queue-row-del";
+      del.textContent = "✕";
+      del.title = "Entfernen";
+      del.addEventListener("click", () => {
+        // Server broadcastet queue_update - liveQueue + Panel syncen darüber.
+        fetch(`/api/queue/${entry.id}`, { method: "DELETE" }).catch(() => {});
+      });
+      actions.appendChild(del);
+      row.appendChild(actions);
+      queuePanelBody.appendChild(row);
+    });
+  }
+
+  // --- Danach: Playlist-Vorschau ---
+  const upcoming = upcomingPlaylistTracks(8);
+  if (upcoming.length) {
+    queuePanelBody.appendChild(
+      queueSectionHeading(`Danach: ${currentPlaylist ? currentPlaylist.name : ""}`)
+    );
+    upcoming.forEach((t) => {
+      const row = queueRowBase({ title: t.title, artist: t.artist, cover: coverFor(t) });
+      row.classList.add("queue-row-upcoming");
+      queuePanelBody.appendChild(row);
+    });
+  }
+}
 
 /* ===== Scrubber (click + drag) ===== */
 function seekFromEvent(e) {
@@ -1628,17 +1989,43 @@ function updateAmbientGlow(coverSrc) {
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, size, size);
       const { data } = ctx.getImageData(0, 0, size, size);
-      let r = 0, g = 0, b = 0, count = 0;
+      // Zwei dominante Farben statt nur einem Durchschnitt: alle Pixel
+      // per Helligkeit in eine helle und eine dunkle Hälfte teilen und
+      // beide getrennt mitteln. Ergibt ein echtes Farbpaar fürs Cover
+      // (z.B. Himmelblau + Schattenviolett) statt eines matschigen
+      // Einheits-Mittelwerts - Grundlage für den Spotify-artigen
+      // Player/Playlist-Verlauf (CSS-Vars --dyn-c1/--dyn-c2).
+      const pixels = [];
+      let avgLum = 0;
       for (let i = 0; i < data.length; i += 4) {
-        r += data[i];
-        g += data[i + 1];
-        b += data[i + 2];
-        count++;
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        pixels.push([r, g, b, lum]);
+        avgLum += lum;
       }
-      r = Math.round(r / count);
-      g = Math.round(g / count);
-      b = Math.round(b / count);
-      ambientGlowEl.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+      avgLum /= pixels.length;
+      const acc = { bright: [0, 0, 0, 0], dark: [0, 0, 0, 0] };
+      for (const [r, g, b, lum] of pixels) {
+        const bucket = lum >= avgLum ? acc.bright : acc.dark;
+        bucket[0] += r; bucket[1] += g; bucket[2] += b; bucket[3]++;
+      }
+      const mix = (bucket) =>
+        bucket[3]
+          ? [Math.round(bucket[0] / bucket[3]), Math.round(bucket[1] / bucket[3]), Math.round(bucket[2] / bucket[3])]
+          : null;
+      const bright = mix(acc.bright);
+      const dark = mix(acc.dark);
+      const avg = mix([
+        acc.bright[0] + acc.dark[0],
+        acc.bright[1] + acc.dark[1],
+        acc.bright[2] + acc.dark[2],
+        acc.bright[3] + acc.dark[3],
+      ]);
+      if (avg) ambientGlowEl.style.backgroundColor = `rgb(${avg[0]}, ${avg[1]}, ${avg[2]})`;
+      const root = document.documentElement;
+      if (bright) root.style.setProperty("--dyn-c1", `${bright[0]}, ${bright[1]}, ${bright[2]}`);
+      if (dark) root.style.setProperty("--dyn-c2", `${dark[0]}, ${dark[1]}, ${dark[2]}`);
+      document.body.classList.add("has-dynamic-colors");
     } catch (_) {
       // Cross-origin or decode failure - just keep the previous glow color.
     }
@@ -1660,6 +2047,9 @@ function setGlowEnabled(enabled) {
     updateAmbientGlow(lastCoverSrc);
   } else {
     ambientGlowEl.classList.add("glow-off");
+    // Cover-Farbverlauf auf Player/Playlist gehört zum selben Feature -
+    // aus heißt komplett aus, zurück zur reinen Theme-Optik.
+    document.body.classList.remove("has-dynamic-colors");
   }
 }
 
@@ -2286,7 +2676,7 @@ function prefetchPlaylistLyrics(pl) {
    prefetch lyrics for. Guest-queue entries aren't playlist tracks with
    stable metadata to prefetch against, so those are skipped. */
 function peekNextTrack() {
-  if (liveQueue.length || !currentPlaylist || !currentPlaylist.tracks.length) return null;
+  if (userQueue.length || liveQueue.length || !currentPlaylist || !currentPlaylist.tracks.length) return null;
   if (isShuffle && shuffleOrder.length) {
     const pos = shuffleOrder.indexOf(currentTrackIndex);
     const nextPos = (pos + 1) % shuffleOrder.length;
@@ -2575,6 +2965,35 @@ applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "spotify-green");
    play/pause/track-change), the server just relays it to every guest
    device over SSE. The host never listens for party_sync itself, so
    there's no feedback loop to worry about. */
+/* Teilnehmerliste im Freunde-Popover: Gast-Seiten melden sich beim
+   Party-Server an (join/heartbeat, party.rs) - jede Änderung kommt als
+   "participants"-Event über den SSE/Event-Bus rein, initial einmal per
+   Fetch. */
+const qrParticipantsTitle = document.getElementById("qrParticipantsTitle");
+const qrParticipantList = document.getElementById("qrParticipantList");
+
+function renderParticipants(list) {
+  if (!qrParticipantList) return;
+  qrParticipantsTitle.classList.toggle("hidden", !list.length);
+  qrParticipantList.innerHTML = "";
+  list.forEach((p) => {
+    const row = document.createElement("div");
+    row.className = "qr-participant";
+    const dot = document.createElement("span");
+    dot.className = "qr-participant-dot";
+    const name = document.createElement("span");
+    name.className = "qr-participant-name";
+    name.textContent = p.name || "Gast";
+    row.append(dot, name);
+    qrParticipantList.appendChild(row);
+  });
+}
+
+fetch("/api/party/participants")
+  .then((r) => r.json())
+  .then((d) => renderParticipants(d.participants || []))
+  .catch(() => {});
+
 let partyModeActive = false;
 let partyHeartbeatTimer = null;
 
@@ -2663,9 +3082,15 @@ if ("EventSource" in window) {
   hostEvents.addEventListener("queue_update", (e) => {
     try {
       liveQueue = JSON.parse(e.data).queue || [];
+      renderQueuePanel();
     } catch (_) {
       // keep whatever we had
     }
+  });
+  hostEvents.addEventListener("participants", (e) => {
+    try {
+      renderParticipants(JSON.parse(e.data).participants || []);
+    } catch (_) {}
   });
   hostEvents.addEventListener("remote_command", (e) => {
     try {

@@ -46,6 +46,8 @@
             <div class="sidebar-tool-popover-title">Freunde einladen</div>
             <img id="qrImage" class="qr-image" src="/api/qr" alt="QR-Code zur Gäste-Seite" />
             <div id="qrHint" class="qr-hint">Scannen &amp; Songs zur Warteschlange hinzufügen</div>
+            <div id="qrParticipantsTitle" class="qr-participants-title hidden">Hören gerade zu</div>
+            <div id="qrParticipantList" class="qr-participant-list"></div>
           </div>
         </div>
         <div class="sidebar-tool-wrap">
@@ -255,6 +257,7 @@
                 <th>Titel</th>
                 <th>Album</th>
                 <th class="col-duration">⏱</th>
+                <th class="col-more"></th>
                 <th class="col-add"></th>
                 <th class="col-remove"></th>
               </tr>
@@ -450,6 +453,7 @@
       </div>
       <button id="pbLike" class="pb-like" title="Merken">♡</button>
       <button id="pbLyrics" class="pb-lyrics" title="Songtext anzeigen">🎤</button>
+      <button id="pbQueue" class="pb-queue" title="Warteschlange anzeigen"></button>
     </div>
 
     <div class="player-bar-center">
@@ -505,7 +509,18 @@
   </footer>
   </div>
 
-  <audio id="audioEl" preload="metadata" crossorigin="anonymous"></audio>
+  <!-- Warteschlangen-Panel: "Als Nächstes" (eigene Queue, umsortierbar),
+       "Von Gästen" (Party-Queue) und Vorschau der danach folgenden
+       Playlist-Titel. Geöffnet über den Queue-Button in der Player-Bar. -->
+  <div id="queuePanel" class="queue-panel hidden">
+    <div class="queue-panel-header">
+      <h3>Warteschlange</h3>
+      <button id="queuePanelClose" class="modal-close" type="button">✕</button>
+    </div>
+    <div id="queuePanelBody" class="queue-panel-body"></div>
+  </div>
+
+  <audio id="audioEl" preload="auto" crossorigin="anonymous"></audio>
 
   <script src="tauri-shim.js"></script>
   <script src="player.js"></script>

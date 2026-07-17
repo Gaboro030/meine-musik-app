@@ -45,6 +45,12 @@ pub struct HubInner {
     // outside the WiFi can join too.
     public_url: Mutex<Option<String>>,
     tunnel: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
+    // Aktive Party-Teilnehmer: Gast-Seiten melden sich per POST
+    // /api/party/join an und halten sich mit /api/party/heartbeat am
+    // Leben; ohne Lebenszeichen fliegt ein Eintrag nach 45s raus. Jede
+    // Änderung wird als "participants"-Event gebroadcastet (Gäste über
+    // SSE, Host-UI über den Tauri-Event-Bus).
+    participants: Mutex<Vec<serde_json::Value>>,
 }
 
 fn default_party_state() -> serde_json::Value {
@@ -67,6 +73,7 @@ impl Hub {
             app: OnceLock::new(),
             public_url: Mutex::new(None),
             tunnel: Mutex::new(None),
+            participants: Mutex::new(Vec::new()),
         }))
     }
 
@@ -111,6 +118,29 @@ impl Hub {
             let _ = app.emit(&format!("party-{event}"), payload.clone());
         }
     }
+}
+
+fn now_secs() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
+const PARTICIPANT_TIMEOUT_SECS: f64 = 45.0;
+
+/// Abgelaufene Teilnehmer entfernen; gibt (aktuelle Liste, ob sich etwas
+/// geändert hat) zurück.
+fn prune_participants(hub: &Hub) -> (Vec<serde_json::Value>, bool) {
+    let mut list = hub.0.participants.lock().unwrap();
+    let before = list.len();
+    let cutoff = now_secs() - PARTICIPANT_TIMEOUT_SECS;
+    list.retain(|p| p.get("last_seen").and_then(|x| x.as_f64()).unwrap_or(0.0) >= cutoff);
+    (list.clone(), list.len() != before)
+}
+
+fn broadcast_participants(hub: &Hub, list: &[serde_json::Value]) {
+    hub.broadcast("participants", &json!({ "participants": list }));
 }
 
 fn truncated(v: &serde_json::Value, key: &str, max: usize) -> serde_json::Value {
@@ -330,6 +360,17 @@ pub fn party_set_state(hub: tauri::State<Hub>, state: serde_json::Value) -> serd
     apply_party_state(&hub, &state)
 }
 
+/// Aktuelle Party-Teilnehmer fürs Host-UI (Freunde-Popover). Räumt dabei
+/// gleich Abgelaufene auf.
+#[tauri::command]
+pub fn party_participants(hub: tauri::State<Hub>) -> Vec<serde_json::Value> {
+    let (list, changed) = prune_participants(&hub);
+    if changed {
+        broadcast_participants(&hub, &list);
+    }
+    list
+}
+
 #[tauri::command]
 pub fn queue_list(hub: tauri::State<Hub>) -> Vec<serde_json::Value> {
     hub.0.queue.lock().unwrap().clone()
@@ -352,6 +393,9 @@ pub async fn run_server(hub: Hub) {
         .route("/api/queue/add", post(api_queue_add))
         .route("/api/queue/:id", delete(api_queue_delete))
         .route("/api/party/state", get(api_party_get).post(api_party_post))
+        .route("/api/party/join", post(api_party_join))
+        .route("/api/party/heartbeat", post(api_party_heartbeat))
+        .route("/api/party/participants", get(api_party_participants))
         .route("/api/events", get(api_events))
         .route("/stream/:playlist/:file", get(api_stream))
         // Handy-Sync (sync.rs): peer devices POST files straight into this
@@ -382,6 +426,24 @@ pub async fn run_server(hub: Hub) {
     if let Ok(addr) = listener.local_addr() {
         hub.0.port.store(addr.port(), Ordering::Relaxed);
     }
+
+    // Ohne diesen Ticker würde ein verschwundener Gast (Handy aus, Browser
+    // zu) erst beim nächsten Join/Heartbeat IRGENDEINES Gastes aus der
+    // Teilnehmerliste fallen - wenn niemand mehr da ist, also nie.
+    {
+        let hub_prune = hub.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
+            loop {
+                tick.tick().await;
+                let (list, changed) = prune_participants(&hub_prune);
+                if changed {
+                    broadcast_participants(&hub_prune, &list);
+                }
+            }
+        });
+    }
+
     if let Err(e) = axum::serve(listener, router).await {
         eprintln!("Party-Server beendet: {e}");
     }
@@ -433,6 +495,80 @@ async fn api_queue_delete(State(hub): State<Hub>, AxPath(id): AxPath<String>) ->
 
 async fn api_party_get(State(hub): State<Hub>) -> Json<serde_json::Value> {
     Json(hub.0.party.lock().unwrap().clone())
+}
+
+/// Gast meldet sich (wieder) an. Mit bekannter id wird der bestehende
+/// Eintrag aufgefrischt statt dupliziert - die Gast-Seite schickt ihre id
+/// nach jedem Reconnect erneut mit.
+async fn api_party_join(
+    State(hub): State<Hub>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let name_raw = body.get("name").and_then(|x| x.as_str()).unwrap_or("Gast").trim().to_string();
+    let name: String = if name_raw.is_empty() {
+        "Gast".to_string()
+    } else {
+        name_raw.chars().take(40).collect()
+    };
+    let existing_id = body.get("id").and_then(|x| x.as_str()).map(str::to_string);
+    let id = {
+        let mut list = hub.0.participants.lock().unwrap();
+        let now = now_secs();
+        let reused = existing_id.as_deref().and_then(|eid| {
+            list.iter_mut()
+                .find(|p| p.get("id").and_then(|x| x.as_str()) == Some(eid))
+        });
+        match reused {
+            Some(p) => {
+                p["name"] = json!(name);
+                p["last_seen"] = json!(now);
+                existing_id.clone().unwrap()
+            }
+            None => {
+                let new_id = uuid::Uuid::new_v4().to_string();
+                list.push(json!({ "id": new_id, "name": name, "last_seen": now }));
+                new_id
+            }
+        }
+    };
+    let (list, _) = prune_participants(&hub);
+    broadcast_participants(&hub, &list);
+    Json(json!({ "ok": true, "id": id }))
+}
+
+async fn api_party_heartbeat(
+    State(hub): State<Hub>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let id = body.get("id").and_then(|x| x.as_str()).unwrap_or("");
+    let known = {
+        let mut list = hub.0.participants.lock().unwrap();
+        match list
+            .iter_mut()
+            .find(|p| p.get("id").and_then(|x| x.as_str()) == Some(id))
+        {
+            Some(p) => {
+                p["last_seen"] = json!(now_secs());
+                true
+            }
+            None => false,
+        }
+    };
+    let (list, changed) = prune_participants(&hub);
+    if changed {
+        broadcast_participants(&hub, &list);
+    }
+    // known=false heißt: Server wurde neu gestartet o.ä. - Gast soll neu
+    // joinen (macht die Gast-Seite von selbst, sobald sie das sieht).
+    Json(json!({ "ok": known }))
+}
+
+async fn api_party_participants(State(hub): State<Hub>) -> Json<serde_json::Value> {
+    let (list, changed) = prune_participants(&hub);
+    if changed {
+        broadcast_participants(&hub, &list);
+    }
+    Json(json!({ "participants": list }))
 }
 
 async fn api_party_post(

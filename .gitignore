@@ -3,8 +3,6 @@ target/
 dist-app/
 src-tauri/gen/
 src-tauri/binaries/
-src-tauri/icons/*.png
-src-tauri/icons/*.ico
-src-tauri/icons/*.icns
+src-tauri/icons/
 *.log
 .DS_Store

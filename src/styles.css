@@ -26,6 +26,7 @@
   --icon-play: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzAwMCI+PHBvbHlnb24gcG9pbnRzPSI1IDMgMjAgMTIgNSAyMSA1IDMiLz48L3N2Zz4=");
   --icon-pause: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzAwMCI+PHJlY3QgeD0iNSIgeT0iMyIgd2lkdGg9IjUiIGhlaWdodD0iMTgiIHJ4PSIxIi8+PHJlY3QgeD0iMTQiIHk9IjMiIHdpZHRoPSI1IiBoZWlnaHQ9IjE4IiByeD0iMSIvPjwvc3ZnPg==");
   --icon-download: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIxIDE1djRhMiAyIDAgMCAxLTIgMkg1YTIgMiAwIDAgMS0yLTJ2LTQiLz48cG9seWxpbmUgcG9pbnRzPSI3IDEwIDEyIDE1IDE3IDEwIi8+PGxpbmUgeDE9IjEyIiB5MT0iMTUiIHgyPSIxMiIgeTI9IjMiLz48L3N2Zz4=");
+  --icon-queue: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PGxpbmUgeDE9IjMiIHkxPSI2IiB4Mj0iMTMiIHkyPSI2Ii8+PGxpbmUgeDE9IjMiIHkxPSIxMiIgeDI9IjEzIiB5Mj0iMTIiLz48bGluZSB4MT0iMyIgeTE9IjE4IiB4Mj0iOSIgeTI9IjE4Ii8+PHBvbHlnb24gcG9pbnRzPSIxNiA2IDIyIDEwIDE2IDE0IDE2IDYiIGZpbGw9IiMwMDAiIHN0cm9rZT0ibm9uZSIvPjwvc3ZnPg==");
 }
 
 /* ========= THEMES =========
@@ -314,6 +315,36 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .ambient-glow.glow-off { opacity: 0; }
 
+/* ========= DYNAMISCHES COLOR-MATCHING (Spotify-Style) =========
+   player.js extrahiert beim Trackwechsel ZWEI dominante Cover-Farben
+   (helle + dunkle Hälfte, --dyn-c1/--dyn-c2 als "r, g, b"-Tripel) und
+   setzt body.has-dynamic-colors. Die Verläufe liegen als halbtransparente
+   Schicht ÜBER dem Theme-Hintergrund (rgba mit niedriger Deckkraft statt
+   Vollfarbe), damit jedes Theme durchscheint und lesbar bleibt. Die
+   background-Transition macht den Wechsel beim nächsten Song weich. An/
+   Aus hängt am bestehenden "Dynamic Glow"-Setting. */
+body.has-dynamic-colors .player-bar {
+  background:
+    linear-gradient(
+      110deg,
+      rgba(var(--dyn-c1, 40, 40, 40), 0.32) 0%,
+      rgba(var(--dyn-c2, 18, 18, 18), 0.5) 55%,
+      rgba(0, 0, 0, 0.55) 100%
+    ),
+    linear-gradient(180deg, var(--sp-elevated) 0%, var(--sp-black) 100%);
+  transition: background 1.2s ease;
+}
+body.has-dynamic-colors .playlist-hero {
+  background: linear-gradient(
+    180deg,
+    rgba(var(--dyn-c1, 40, 40, 40), 0.35) 0%,
+    rgba(var(--dyn-c2, 18, 18, 18), 0.12) 70%,
+    transparent 100%
+  );
+  border-radius: var(--radius-lg);
+  transition: background 1.2s ease;
+}
+
 /* ========= APP SHELL ========= */
 .app-shell {
   display: flex;
@@ -482,6 +513,38 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .qr-image { width: 100%; border-radius: var(--radius-sm); background: #fff; padding: 8px; display: block; }
 .qr-hint { font-size: 0.75rem; color: var(--sp-muted); margin-top: 8px; text-align: center; word-break: break-all; }
+
+/* Live-Teilnehmerliste im Freunde-Popover (party.rs join/heartbeat). */
+.qr-participants-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sp-muted);
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sp-border);
+}
+.qr-participant {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  font-size: 0.85rem;
+}
+.qr-participant-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sp-green);
+  box-shadow: 0 0 6px var(--sp-green);
+  flex-shrink: 0;
+}
+.qr-participant-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .party-popover-status { font-size: 0.85rem; color: var(--sp-muted); margin-bottom: 12px; line-height: 1.4; }
 .party-toggle-switch {
@@ -919,6 +982,117 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .track-row:hover .track-add-btn { opacity: 1; }
 .track-add-btn:hover { color: var(--sp-green); }
+
+/* ⋯-Menü pro Track (Als nächstes spielen / An Warteschlange anhängen).
+   Desktop: wie track-add-btn erst bei Zeilen-Hover sichtbar; auf Touch
+   (mobile Media Query unten) dauerhaft eingeblendet - dort gibt es kein
+   Hover als Entdeckungsweg. */
+.col-more { width: 40px; }
+.track-more-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sp-muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.track-row:hover .track-more-btn { opacity: 1; }
+.track-more-btn:hover { color: var(--sp-text); }
+
+/* ===== Warteschlangen-Panel ===== */
+.queue-panel {
+  position: fixed;
+  right: 16px;
+  top: 70px;
+  bottom: 110px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  background: var(--sp-elevated);
+  border: 1px solid var(--sp-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  z-index: 600;
+  overflow: hidden;
+}
+.queue-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--sp-border);
+}
+.queue-panel-header h3 { font-size: 1rem; }
+.queue-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px 14px;
+}
+.queue-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sp-muted);
+  padding: 12px 6px 6px;
+}
+.queue-empty {
+  color: var(--sp-muted-2);
+  font-size: 0.85rem;
+  padding: 4px 6px 8px;
+}
+.queue-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  transition: background 0.12s ease;
+}
+.queue-row:hover { background: var(--sp-surface); }
+.queue-row.dragging { opacity: 0.45; }
+.queue-row.drag-over { box-shadow: inset 0 2px 0 var(--sp-green); }
+.queue-row-upcoming { opacity: 0.65; }
+.queue-row-cover {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--sp-surface);
+  flex-shrink: 0;
+}
+.queue-row-text { min-width: 0; flex: 1; }
+.queue-row-title {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.queue-row-artist {
+  font-size: 0.75rem;
+  color: var(--sp-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.queue-row-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.queue-row-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--sp-muted);
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.queue-row-btn:hover:not(:disabled) { color: var(--sp-text); background: var(--sp-surface); }
+.queue-row-btn:disabled { opacity: 0.3; cursor: default; }
+.queue-row-del:hover:not(:disabled) { color: #f15e6c; }
 
 .card-title {
   font-weight: 700;
@@ -1387,6 +1561,30 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .pb-lyrics:hover { color: var(--sp-text); }
 .pb-lyrics.active { color: var(--sp-green); }
+
+/* Queue-Button: flaches Mask-Icon (Listen-Symbol mit Play-Dreieck),
+   gleiche Technik wie SHUFFLE / REPEAT ICONS weiter unten. */
+.pb-queue {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+.pb-queue::before {
+  content: "";
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+  background-color: var(--sp-muted);
+  -webkit-mask: var(--icon-queue) center / 100% no-repeat;
+  mask: var(--icon-queue) center / 100% no-repeat;
+}
+.pb-queue:hover::before { background-color: var(--sp-text); }
+.pb-queue.active::before {
+  background-color: var(--sp-green);
+  filter: drop-shadow(0 0 4px var(--sp-green));
+}
 
 .player-bar-center {
   display: flex;
@@ -2686,6 +2884,22 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
     background: rgba(0, 242, 254, 0.1);
     border-color: #00f2fe;
     box-shadow: 0 0 12px #00f2fe;
+  }
+
+  /* ⋯-Button auf Touch immer sichtbar - es gibt kein Hover, über das er
+     sonst auftauchen würde. */
+  .track-more-btn { opacity: 1; }
+
+  /* Warteschlangen-Panel als Bottom-Sheet über der Player-Bar statt
+     rechter Desktop-Karte. */
+  .queue-panel {
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: calc(var(--mobile-player-bar-h) + 40px);
+    width: auto;
+    max-width: none;
+    max-height: 58vh;
   }
 }
 

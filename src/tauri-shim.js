@@ -186,6 +186,9 @@
       return jsonResponse({ error: "Nicht verfügbar." }, 404);
     }
     if (parts[1] === "party") {
+      if (parts[2] === "participants") {
+        return jsonResponse({ participants: await invoke("party_participants") });
+      }
       if (method === "POST") {
         await invoke("party_set_state", { state: jsonBody() });
         return jsonResponse({ ok: true });
