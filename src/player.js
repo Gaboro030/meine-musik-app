@@ -7,6 +7,8 @@ const libraryView = document.getElementById("libraryView");
 const playlistView = document.getElementById("playlistView");
 const homeGreeting = document.getElementById("homeGreeting");
 const recentGrid = document.getElementById("recentGrid");
+const dailyMixSection = document.getElementById("dailyMixSection");
+const dailyMixGrid = document.getElementById("dailyMixGrid");
 const libraryGrid = document.getElementById("libraryGrid");
 const navBackBtn = document.getElementById("navBackBtn");
 const playlistCover = document.getElementById("playlistCover");
@@ -70,6 +72,9 @@ const lyricsTitle = document.getElementById("lyricsTitle");
 const lyricsArtist = document.getElementById("lyricsArtist");
 const lyricsBody = document.getElementById("lyricsBody");
 const lyricsCloseBtn = document.getElementById("lyricsCloseBtn");
+const lyricsSyncMinus = document.getElementById("lyricsSyncMinus");
+const lyricsSyncPlus = document.getElementById("lyricsSyncPlus");
+const lyricsSyncReadout = document.getElementById("lyricsSyncReadout");
 
 const confirmModal = document.getElementById("confirmModal");
 const confirmModalTitle = document.getElementById("confirmModalTitle");
@@ -185,6 +190,78 @@ let nowPlayingMeta = null; // {playlist, file, title, artist, cover, stream_url}
 let liveQueue = []; // collaborative queue from guest phones, kept in sync via SSE
 let userQueue = []; // eigene "Als nächstes"-Warteschlange (3-Punkte-Menü pro Track), volle Metadaten-Snapshots
 let queueResumeIndex = -1; // Playlist-Position vor dem Abzweig in die Queue - nextTrack() macht dort weiter
+
+/* ===== Play-Counter (Grundlage für "Daily Mix") =====
+   Zählt einen Track ab 50% Wiedergabe als "gehört" - reines lokales
+   Zählen, kein Server-Roundtrip nötig, dieselbe localStorage-Konvention
+   wie Resume-Positionen/Crossfade-Setting usw. */
+const PLAY_COUNTS_KEY = "playCounts";
+
+function playCountStorageKey(playlistName, file) {
+  return `${playlistName || ""}::${file || ""}`;
+}
+function loadPlayCounts() {
+  try {
+    return JSON.parse(localStorage.getItem(PLAY_COUNTS_KEY) || "{}");
+  } catch (_) {
+    return {};
+  }
+}
+function bumpPlayCount(playlistName, file) {
+  if (!playlistName || !file) return;
+  const map = loadPlayCounts();
+  const key = playCountStorageKey(playlistName, file);
+  map[key] = (map[key] || 0) + 1;
+  localStorage.setItem(PLAY_COUNTS_KEY, JSON.stringify(map));
+}
+
+let playCountedForTrack = null; // verhindert Mehrfachzählung innerhalb desselben Songs
+audioEl.addEventListener("timeupdate", () => {
+  if (!nowPlayingMeta || !audioEl.duration || !isFinite(audioEl.duration)) return;
+  const key = playCountStorageKey(nowPlayingMeta.playlist, nowPlayingMeta.file);
+  if (key === playCountedForTrack) return;
+  if (audioEl.currentTime / audioEl.duration >= 0.5) {
+    playCountedForTrack = key;
+    bumpPlayCount(nowPlayingMeta.playlist, nowPlayingMeta.file);
+  }
+});
+
+/* ===== Weiter hören =====
+   Lange Tracks (Mixes/DJ-Sets/Podcast-artige Downloads) sollen beim
+   erneuten Öffnen dort fortsetzen, wo man aufgehört hat, statt bei 0 neu
+   zu starten. Kurze normale Songs (der Regelfall) bleiben unangetastet -
+   niemand will bei einem 3-Minuten-Song "weiterhören" statt ihn von vorne
+   zu hören. */
+const RESUME_KEY = "resumePositions";
+const RESUME_THRESHOLD_SECONDS = 480; // 8 Minuten
+
+function resumeStorageKey(playlistName, file) {
+  return `${playlistName || ""}::${file || ""}`;
+}
+function loadResumeMap() {
+  try {
+    return JSON.parse(localStorage.getItem(RESUME_KEY) || "{}");
+  } catch (_) {
+    return {};
+  }
+}
+function getResumePosition(playlistName, file) {
+  return loadResumeMap()[resumeStorageKey(playlistName, file)] || 0;
+}
+function setResumePosition(playlistName, file, pos) {
+  const map = loadResumeMap();
+  const key = resumeStorageKey(playlistName, file);
+  // Unter 10s oder praktisch durchgelaufen: Eintrag löschen statt einer
+  // Position, die beim nächsten Mal sofort wieder "fertig" ist.
+  if (pos < 10) delete map[key];
+  else map[key] = pos;
+  localStorage.setItem(RESUME_KEY, JSON.stringify(map));
+}
+function clearResumePosition(playlistName, file) {
+  const map = loadResumeMap();
+  delete map[resumeStorageKey(playlistName, file)];
+  localStorage.setItem(RESUME_KEY, JSON.stringify(map));
+}
 
 /* ===== Helpers ===== */
 function fmtTime(sec) {
@@ -343,8 +420,68 @@ function renderHome() {
     recentGrid.appendChild(card);
   });
 
+  renderDailyMix();
   loadDiscover();
   loadDiscoverArtistRows();
+}
+
+/* ===== Daily Mix (Home) =====
+   Top-Titel nach lokalem Play-Counter (bumpPlayCount, siehe oben) - rein
+   clientseitig, kein Server-Konzept dahinter. Bewusst nicht "pro Tag neu
+   gemischt" (kein Mehrwert ohne echte Hoergeschichte über Zeit) - zeigt
+   einfach die aktuell meistgehörten Titel als klickbare Karten, wie die
+   anderen Home-Bereiche. */
+function renderDailyMix() {
+  const counts = loadPlayCounts();
+  const entries = Object.keys(counts)
+    .map((key) => ({ key, count: counts[key] }))
+    .filter((e) => e.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 12);
+
+  dailyMixSection.classList.toggle("hidden", !entries.length);
+  if (!entries.length) return;
+
+  dailyMixGrid.innerHTML = "";
+  entries.forEach(({ key, count }) => {
+    const sep = key.lastIndexOf("::");
+    const plName = key.slice(0, sep);
+    const file = key.slice(sep + 2);
+    const plIdx = library.findIndex((pl) => pl.name === plName);
+    if (plIdx === -1) return;
+    const trackIdx = library[plIdx].tracks.findIndex((t) => t.file === file);
+    if (trackIdx === -1) return;
+    const track = library[plIdx].tracks[trackIdx];
+
+    const card = document.createElement("div");
+    card.className = "card";
+    const coverWrap = document.createElement("div");
+    coverWrap.className = "card-cover-wrap";
+    const img = document.createElement("img");
+    img.className = "card-cover";
+    img.src = coverFor(track);
+    img.alt = "";
+    const playBtn = document.createElement("button");
+    playBtn.className = "card-play-btn";
+    playBtn.textContent = "▶";
+    playBtn.title = "Abspielen";
+    playBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      playTrackIn(plIdx, trackIdx);
+    });
+    coverWrap.append(img, playBtn);
+
+    const title = document.createElement("div");
+    title.className = "card-title";
+    title.textContent = track.title;
+    const sub = document.createElement("div");
+    sub.className = "card-sub";
+    sub.textContent = `${count}× gehört`;
+
+    card.append(coverWrap, title, sub);
+    card.addEventListener("click", () => playTrackIn(plIdx, trackIdx));
+    dailyMixGrid.appendChild(card);
+  });
 }
 
 /* ===== Discover (Home screen - download straight into the library) ===== */
@@ -994,8 +1131,24 @@ function playTrack(index, opts = {}) {
   // mit vollem Pegel - nur UI/Metadaten nachziehen, nicht neu laden.
   if (!opts.handoff) {
     resetFadeForNewTrack();
+    playCountedForTrack = null; // frischer Start - auch bei sofortigem Replay wieder zählbar
     audioEl.src = track.stream_url;
     audioEl.play().catch(() => {});
+    // Weiter hören: nur bei langen Tracks (Mixes/Sets), und erst sobald die
+    // Metadaten da sind - currentTime vor loadedmetadata zu setzen wird von
+    // manchen Browsern schlicht ignoriert.
+    if ((track.duration || 0) > RESUME_THRESHOLD_SECONDS) {
+      const resumeAt = getResumePosition(currentPlaylist.name, track.file);
+      if (resumeAt > 10) {
+        audioEl.addEventListener(
+          "loadedmetadata",
+          () => {
+            if (resumeAt < audioEl.duration - 10) audioEl.currentTime = resumeAt;
+          },
+          { once: true }
+        );
+      }
+    }
   }
 
   pbCover.src = coverFor(track);
@@ -1037,6 +1190,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
   // handoff: siehe playTrack - Element spielt schon, nichts neu laden.
   if (!opts.handoff) {
     resetFadeForNewTrack();
+    playCountedForTrack = null;
     audioEl.src = entry.stream_url;
     audioEl.play().catch(() => {});
   }
@@ -1318,6 +1472,20 @@ audioEl.addEventListener("timeupdate", () => {
 
 audioEl.addEventListener("loadedmetadata", () => {
   pbTimeTotal.textContent = fmtTime(audioEl.duration);
+});
+
+/* Weiter hören: Position alle paar Sekunden sichern (nur lange Tracks),
+   nahe des Endes stattdessen löschen (gilt als durchgelaufen - sonst
+   würde ein erneutes Abspielen kurz vor Schluss wieder fortsetzen). */
+let lastResumeSaveAt = 0;
+audioEl.addEventListener("timeupdate", () => {
+  if (!nowPlayingMeta || !audioEl.duration || audioEl.duration <= RESUME_THRESHOLD_SECONDS) return;
+  const now = performance.now();
+  if (now - lastResumeSaveAt < 5000) return;
+  lastResumeSaveAt = now;
+  const remaining = audioEl.duration - audioEl.currentTime;
+  if (remaining < 15) clearResumePosition(nowPlayingMeta.playlist, nowPlayingMeta.file);
+  else setResumePosition(nowPlayingMeta.playlist, nowPlayingMeta.file, audioEl.currentTime);
 });
 
 audioEl.addEventListener("ended", () => {
@@ -1892,6 +2060,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
    AudioContext starts suspended until a real click/tap resumes it. */
 let audioCtx = null;
 let eqBass, eqMid, eqTreble, masterGain, normalizerCompressor;
+let visualizerAnalyser = null;
 let gainA = null, gainB = null; // ein Gain pro <audio>-Element - die beiden Crossfade-Rampen
 let audioGraphReady = false;
 const eqSettings = { bass: 0, mid: 0, treble: 0 };
@@ -1942,9 +2111,17 @@ function initAudioGraph() {
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 1;
 
+  // Analyser NACH masterGain abgegriffen: erfasst so das kombinierte
+  // Signal beider Crossfade-Elemente (egal welches gerade aktiv ist oder
+  // ob gerade überblendet wird), nicht nur eines davon einzeln.
+  visualizerAnalyser = audioCtx.createAnalyser();
+  visualizerAnalyser.fftSize = 128;
+  visualizerAnalyser.smoothingTimeConstant = 0.8;
+
   sourceA.connect(gainA).connect(eqBass);
   sourceB.connect(gainB).connect(eqBass);
-  eqBass.connect(eqMid).connect(eqTreble).connect(normalizerCompressor).connect(masterGain).connect(audioCtx.destination);
+  eqBass.connect(eqMid).connect(eqTreble).connect(normalizerCompressor).connect(masterGain);
+  masterGain.connect(visualizerAnalyser).connect(audioCtx.destination);
   audioGraphReady = true;
 }
 
@@ -2275,6 +2452,85 @@ glowToggleSwitch.addEventListener("click", () => setGlowEnabled(!glowEnabled));
 glowToggleSwitch.classList.toggle("active", glowEnabled);
 glowToggleSwitch.setAttribute("aria-checked", String(glowEnabled));
 if (!glowEnabled) ambientGlowEl.classList.add("glow-off");
+
+/* ===== Vollbild-Visualizer =====
+   AnalyserNode sitzt im initAudioGraph()-Graph (nach masterGain, vor
+   audioCtx.destination) - erfasst also automatisch beide Crossfade-
+   Elemente. Reines Canvas-2D, kein extra Rendering-Framework nötig für
+   einen simplen Frequenzbalken-Look. */
+const visualizerOverlay = document.getElementById("visualizerOverlay");
+const visualizerCanvas = document.getElementById("visualizerCanvas");
+const visualizerCover = document.getElementById("visualizerCover");
+const visualizerTitle = document.getElementById("visualizerTitle");
+const visualizerArtist = document.getElementById("visualizerArtist");
+const visualizerCloseBtn = document.getElementById("visualizerCloseBtn");
+const visualizerCtx = visualizerCanvas.getContext("2d");
+let visualizerRafId = null;
+
+function drawVisualizerFrame() {
+  const w = visualizerCanvas.width;
+  const h = visualizerCanvas.height;
+  visualizerCtx.clearRect(0, 0, w, h);
+
+  if (visualizerAnalyser) {
+    const data = new Uint8Array(visualizerAnalyser.frequencyBinCount);
+    visualizerAnalyser.getByteFrequencyData(data);
+    const barCount = data.length;
+    const gap = 4;
+    const barWidth = w / barCount - gap;
+    const accent = getComputedStyle(document.documentElement).getPropertyValue("--sp-green").trim() || "#1db954";
+    for (let i = 0; i < barCount; i++) {
+      const pct = data[i] / 255;
+      const barHeight = Math.max(3, pct * h * 0.85);
+      const x = i * (barWidth + gap);
+      const grad = visualizerCtx.createLinearGradient(0, h - barHeight, 0, h);
+      grad.addColorStop(0, accent);
+      grad.addColorStop(1, "rgba(255,255,255,0.15)");
+      visualizerCtx.fillStyle = grad;
+      visualizerCtx.fillRect(x, h - barHeight, barWidth, barHeight);
+    }
+  }
+
+  visualizerRafId = visualizerOverlay.classList.contains("hidden")
+    ? null
+    : requestAnimationFrame(drawVisualizerFrame);
+}
+
+function resizeVisualizerCanvas() {
+  visualizerCanvas.width = visualizerCanvas.clientWidth * (window.devicePixelRatio || 1);
+  visualizerCanvas.height = visualizerCanvas.clientHeight * (window.devicePixelRatio || 1);
+}
+
+function openVisualizer() {
+  if (!nowPlayingMeta) {
+    showToast("Gerade wird kein Titel abgespielt.");
+    return;
+  }
+  initAudioGraph();
+  visualizerTitle.textContent = nowPlayingMeta.title;
+  visualizerArtist.textContent = nowPlayingMeta.artist || "Unbekannter Interpret";
+  visualizerCover.src = coverFor({ cover: nowPlayingMeta.cover });
+  visualizerOverlay.classList.remove("hidden");
+  resizeVisualizerCanvas();
+  if (visualizerRafId === null) visualizerRafId = requestAnimationFrame(drawVisualizerFrame);
+}
+
+function closeVisualizer() {
+  visualizerOverlay.classList.add("hidden");
+  if (visualizerRafId !== null) {
+    cancelAnimationFrame(visualizerRafId);
+    visualizerRafId = null;
+  }
+}
+
+pbCover.addEventListener("click", openVisualizer);
+visualizerCloseBtn.addEventListener("click", closeVisualizer);
+visualizerOverlay.addEventListener("click", (e) => {
+  if (e.target === visualizerOverlay) closeVisualizer();
+});
+window.addEventListener("resize", () => {
+  if (!visualizerOverlay.classList.contains("hidden")) resizeVisualizerCanvas();
+});
 
 /* ===== Settings: Crossfade toggle ===== */
 const CROSSFADE_ENABLED_KEY = "crossfadeEnabled";
@@ -2940,6 +3196,52 @@ let lyricsSyncLines = null; // [{t, el, words:[{start,end,el}]}] sorted by t, or
 let lyricsActiveIdx = -1;
 let lyricsRequestToken = 0; // drops stale responses after a quick track change
 
+/* ===== Manuelle Sync-Justierung =====
+   lrclib-Zeitstempel sind community-eingereicht und nicht immer exakt auf
+   JEDE Version/jeden Rip abgestimmt - eine kleine, pro Song gemerkte
+   Korrektur (+/- Sekunden) gleicht das aus, wenn der Songtext trotz der
+   Silben-/Lücken-Verbesserung oben noch spürbar vor- oder nacheilt. */
+const LYRICS_SYNC_KEY = "lyricsSyncOffsets";
+let lyricsSyncOffset = 0;
+
+function lyricsSyncStorageKey(title, artist) {
+  return `${(artist || "").trim().toLowerCase()}::${(title || "").trim().toLowerCase()}`;
+}
+
+function loadLyricsSyncOffsets() {
+  try {
+    return JSON.parse(localStorage.getItem(LYRICS_SYNC_KEY) || "{}");
+  } catch (_) {
+    return {};
+  }
+}
+
+function loadLyricsSyncOffsetFor(title, artist) {
+  const all = loadLyricsSyncOffsets();
+  return all[lyricsSyncStorageKey(title, artist)] || 0;
+}
+
+function saveLyricsSyncOffsetFor(title, artist, value) {
+  const all = loadLyricsSyncOffsets();
+  const key = lyricsSyncStorageKey(title, artist);
+  if (Math.abs(value) < 0.05) delete all[key];
+  else all[key] = value;
+  localStorage.setItem(LYRICS_SYNC_KEY, JSON.stringify(all));
+}
+
+function updateLyricsSyncReadout() {
+  if (!lyricsSyncReadout) return;
+  const sign = lyricsSyncOffset > 0 ? "+" : "";
+  lyricsSyncReadout.textContent = `${sign}${lyricsSyncOffset.toFixed(1)}s`;
+}
+
+function adjustLyricsSyncOffset(delta) {
+  lyricsSyncOffset = Math.max(-10, Math.min(10, lyricsSyncOffset + delta));
+  updateLyricsSyncReadout();
+  if (nowPlayingMeta) saveLyricsSyncOffsetFor(nowPlayingMeta.title, nowPlayingMeta.artist, lyricsSyncOffset);
+  updateLyricsHighlight();
+}
+
 function parseLrc(lrc) {
   const out = [];
   lrc.split("\n").forEach((raw) => {
@@ -2951,19 +3253,47 @@ function parseLrc(lrc) {
   return out.sort((a, b) => a.t - b.t);
 }
 
+/* Grobe Silbenschätzung (Vokalgruppen zählen) statt reiner Zeichenlänge -
+   "geschätzten" ist besser als "genau falsch": kurze Wörter mit vielen
+   Vokalen ("eau") bekommen realistischer Gewicht als bei purer
+   Zeichenzählung, und umgekehrt lange konsonantenlastige Wörter nicht
+   übermäßig viel Zeit. */
+function estimateSyllables(word) {
+  const w = word.toLowerCase().replace(/[^a-zäöüß]/g, "");
+  if (!w) return 1;
+  const groups = w.match(/[aeiouyäöü]+/g);
+  return Math.max(1, groups ? groups.length : 1);
+}
+
+function textWeight(text) {
+  return (
+    text
+      .split(/\s+/)
+      .filter(Boolean)
+      .reduce((sum, w) => sum + estimateSyllables(w) + 0.4, 0) || 1
+  );
+}
+
 /* lrclib only ever gives one timestamp per LINE, never per word - true
    "wort für wort" sync data doesn't exist here to read. This estimates a
-   time window per word instead: the line's total duration (until the
-   next line's timestamp) is distributed across its words proportional to
-   word length (+1 per word so short words like "a"/"ich" still get a
-   believable sliver instead of flashing instantly), so longer words get
-   proportionally more of the line's time and the highlight visibly steps
-   word by word rather than sweeping the whole line at one constant rate. */
+   time window per word instead, distributing [lineStart, lineEnd]
+   proportional to each word's estimated syllable count.
+
+   Wichtige Korrektur ("kommt manchmal nicht richtig hinterher"): bei einer
+   grossen Lücke zwischen zwei Zeilen (Instrumental-Teil) wurde das LETZTE
+   Wort bisher auf die GESAMTE Lücke gestreckt und "kroch" quälend langsam
+   bis zur nächsten Zeile. Jetzt wird eine plausible Sprechdauer aus der
+   Silbenzahl geschätzt (~0.32s/Silbe) - ist die tatsächliche Lücke deutlich
+   größer, endet das letzte Wort dort und nicht erst an der nächsten Zeile. */
+const SECONDS_PER_SYLLABLE_WEIGHT = 0.32;
+
 function wordTimeWindows(text, lineStart, lineEnd) {
   const words = text.split(/(\s+)/).filter((w) => w !== "");
-  const weights = words.map((w) => (/\s/.test(w) ? 0 : w.length + 1));
+  const weights = words.map((w) => (/\s/.test(w) ? 0 : estimateSyllables(w) + 0.4));
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
-  const duration = Math.max(lineEnd - lineStart, 0.3);
+  const rawSpan = Math.max(lineEnd - lineStart, 0.3);
+  const naturalSpan = totalWeight * SECONDS_PER_SYLLABLE_WEIGHT;
+  const duration = Math.min(rawSpan, Math.max(naturalSpan, 0.3));
   let acc = 0;
   return words.map((w, i) => {
     const start = lineStart + (acc / totalWeight) * duration;
@@ -2971,6 +3301,62 @@ function wordTimeWindows(text, lineStart, lineEnd) {
     const end = lineStart + (acc / totalWeight) * duration;
     return { text: w, isSpace: /\s/.test(w), start, end };
   });
+}
+
+/* Klammer-Ad-Libs ("(hold my hand)") nicht mehr inline in Klammern zeigen,
+   sondern als eigene kleinere Zeile darunter (siehe renderSyncedLyrics) -
+   extrahiert den/die Klammerinhalt(e) und liefert den Rest als Haupttext.
+   Ist die KOMPLETTE Zeile nur eine Klammer, bleibt sie unangetastet (sonst
+   verschwindet der einzige Text der Zeile aus der "Haupt"-Reihe). */
+function splitAdlib(text) {
+  const matches = [...text.matchAll(/\(([^()]+)\)/g)];
+  if (!matches.length) return { main: text, adlib: "" };
+  const main = text.replace(/\s*\([^()]+\)\s*/g, " ").replace(/\s+/g, " ").trim();
+  if (!main) return { main: text, adlib: "" };
+  const adlib = matches.map((m) => m[1].trim()).filter(Boolean).join(" ");
+  return { main, adlib };
+}
+
+/* Baut die Wort-Spans (Klick-zum-Springen + Wisch-Glow) in `container` und
+   gibt die {start,end,el}-Liste für updateLyricsHighlight() zurück. Von
+   Haupt- UND Ad-Lib-Zeile gleichermaßen genutzt. */
+function appendWordsToContainer(container, words) {
+  const wordEls = [];
+  words.forEach(({ text: w, isSpace, start, end }) => {
+    if (isSpace) {
+      container.appendChild(document.createTextNode(w));
+      return;
+    }
+    // Two stacked copies of the same word (both via textContent - never
+    // innerHTML, lyrics come from an external API): .lyrics-word-base is
+    // the plain dim layer that always shows, .lyrics-word-fill is an
+    // absolutely-positioned bright+glow duplicate that CSS clips down to
+    // just the sung portion of THIS word via --wipe.
+    const span = document.createElement("span");
+    span.className = "lyrics-word";
+    const base = document.createElement("span");
+    base.className = "lyrics-word-base";
+    base.textContent = w;
+    const fill = document.createElement("span");
+    fill.className = "lyrics-word-fill";
+    fill.textContent = w;
+    span.append(base, fill);
+    // Klick auf ein Wort (egal ob vergangen oder zukünftig, egal ob
+    // Haupt- oder Ad-Lib-Zeile) springt direkt an dessen Startzeit.
+    span.addEventListener("click", (e) => {
+      e.stopPropagation(); // sonst schließt der Overlay-Klick-außerhalb-Handler das Overlay
+      if (isFinite(start)) {
+        // t_lyrics = t_audio + Offset (siehe updateLyricsHighlight) - umgekehrt
+        // aufgelöst, damit ein Klick auf ein Wort wirklich an den Moment
+        // springt, an dem es tatsächlich gesungen wird.
+        audioEl.currentTime = Math.max(0, start - lyricsSyncOffset);
+        updateLyricsHighlight();
+      }
+    });
+    container.appendChild(span);
+    wordEls.push({ start, end, el: span });
+  });
+  return wordEls;
 }
 
 function renderSyncedLyrics(lines) {
@@ -2982,32 +3368,29 @@ function renderSyncedLyrics(lines) {
     const div = document.createElement("div");
     div.className = "lyrics-line";
     const lineEnd = i + 1 < lines.length ? lines[i + 1].t : t + 6;
-    const words = wordTimeWindows(text || "♪", t, lineEnd);
-    const wordEls = [];
-    words.forEach(({ text: w, isSpace, start, end }) => {
-      if (isSpace) {
-        div.appendChild(document.createTextNode(w));
-        return;
-      }
-      // Two stacked copies of the same word (both via textContent - never
-      // innerHTML, lyrics come from an external API): .lyrics-word-base is
-      // the plain dim layer that always shows, .lyrics-word-fill is an
-      // absolutely-positioned bright+glow duplicate that CSS clips down to
-      // just the sung portion of THIS word via --wipe.
-      const span = document.createElement("span");
-      span.className = "lyrics-word";
-      const base = document.createElement("span");
-      base.className = "lyrics-word-base";
-      base.textContent = w;
-      const fill = document.createElement("span");
-      fill.className = "lyrics-word-fill";
-      fill.textContent = w;
-      span.append(base, fill);
-      div.appendChild(span);
-      wordEls.push({ start, end, el: span });
-    });
+    const { main, adlib } = splitAdlib(text || "♪");
+
+    let words = [];
+    if (adlib) {
+      // Ad-Lib folgt zeitlich auf den Haupttext (typisches Call-and-
+      // Response-Muster) - Zeitbudget der Zeile proportional zum
+      // geschätzten Sprechgewicht beider Teile aufteilen.
+      const mainWeight = textWeight(main);
+      const adlibWeight = textWeight(adlib);
+      const splitPoint = t + (lineEnd - t) * (mainWeight / (mainWeight + adlibWeight));
+      words = appendWordsToContainer(div, wordTimeWindows(main, t, splitPoint));
+
+      const adlibDiv = document.createElement("div");
+      adlibDiv.className = "lyrics-line-adlib";
+      const adlibWords = appendWordsToContainer(adlibDiv, wordTimeWindows(adlib, splitPoint, lineEnd));
+      div.appendChild(adlibDiv);
+      words = words.concat(adlibWords);
+    } else {
+      words = appendWordsToContainer(div, wordTimeWindows(main, t, lineEnd));
+    }
+
     lyricsBody.appendChild(div);
-    lyricsSyncLines.push({ t, el: div, words: wordEls });
+    lyricsSyncLines.push({ t, el: div, words });
   });
   updateLyricsHighlight();
 }
@@ -3030,7 +3413,10 @@ let lyricsRafId = null;
 
 function updateLyricsHighlight() {
   if (!lyricsSyncLines) return;
-  const t = audioEl.currentTime;
+  // t_lyrics = t_audio + Offset: positiver Offset holt die Hervorhebung
+  // nach vorn (korrigiert "Songtext eilt hinterher"), negativer schiebt sie
+  // zurück ("Songtext eilt voraus").
+  const t = audioEl.currentTime + lyricsSyncOffset;
   let idx = -1;
   for (let i = 0; i < lyricsSyncLines.length; i++) {
     if (lyricsSyncLines[i].t <= t) idx = i;
@@ -3089,6 +3475,8 @@ async function openLyrics() {
   startLyricsLoop();
   lyricsTitle.textContent = meta.title;
   lyricsArtist.textContent = meta.artist || "Unbekannter Interpret";
+  lyricsSyncOffset = loadLyricsSyncOffsetFor(meta.title, meta.artist);
+  updateLyricsSyncReadout();
   renderStaticLyrics("Lade Songtext …");
   try {
     const data = await fetchLyricsData(meta.playlist, meta.file, meta.title, meta.artist, audioEl.duration);
@@ -3127,6 +3515,14 @@ pbLyrics.addEventListener("click", openLyrics);
 lyricsCloseBtn.addEventListener("click", closeLyrics);
 lyricsOverlay.addEventListener("click", (e) => {
   if (e.target === lyricsOverlay) closeLyrics();
+});
+lyricsSyncMinus.addEventListener("click", () => adjustLyricsSyncOffset(-0.3));
+lyricsSyncPlus.addEventListener("click", () => adjustLyricsSyncOffset(0.3));
+lyricsSyncReadout.addEventListener("click", () => {
+  lyricsSyncOffset = 0;
+  updateLyricsSyncReadout();
+  if (nowPlayingMeta) saveLyricsSyncOffsetFor(nowPlayingMeta.title, nowPlayingMeta.artist, 0);
+  updateLyricsHighlight();
 });
 
 /* ===== Sidebar tool popovers (QR / Party / Design) =====
@@ -3210,7 +3606,19 @@ function renderParticipants(list) {
     const name = document.createElement("span");
     name.className = "qr-participant-name";
     name.textContent = p.name || "Gast";
-    row.append(dot, name);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "qr-participant-remove";
+    removeBtn.textContent = "✕";
+    removeBtn.title = "Aus der Party entfernen";
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      fetch(`/api/party/participants/${encodeURIComponent(p.id)}`, { method: "DELETE" })
+        .then((r) => r.json())
+        .then((d) => renderParticipants(d.participants || []))
+        .catch(() => {});
+    });
+    row.append(dot, name, removeBtn);
     qrParticipantList.appendChild(row);
   });
 }
@@ -3219,6 +3627,17 @@ fetch("/api/party/participants")
   .then((r) => r.json())
   .then((d) => renderParticipants(d.participants || []))
   .catch(() => {});
+
+/* Skip-Abstimmung: Gäste stimmen auf ihrer Seite ab (party.rs zählt und
+   entscheidet die Mehrheit), der Host bekommt hier nur den Stand zum
+   Anzeigen und - sobald die Schwelle erreicht ist - das Signal zum echten
+   Skip. */
+const partySkipStatus = document.getElementById("partySkipStatus");
+function renderSkipVotes({ count, needed }) {
+  if (!partySkipStatus) return;
+  partySkipStatus.classList.toggle("hidden", !count);
+  if (count) partySkipStatus.textContent = `🙋 Skip-Wunsch: ${count}/${needed}`;
+}
 
 let partyModeActive = false;
 let partyHeartbeatTimer = null;
@@ -3324,6 +3743,17 @@ if ("EventSource" in window) {
     } catch (_) {
       // ignore malformed event
     }
+  });
+  hostEvents.addEventListener("skip_votes", (e) => {
+    try {
+      renderSkipVotes(JSON.parse(e.data));
+    } catch (_) {}
+  });
+  // Mehrheit erreicht (party.rs zählt) - echter Skip auf dem Host. Kein
+  // Toast/Bestätigung noetig, das war ja bereits der demokratische Wille
+  // der Gaeste.
+  hostEvents.addEventListener("skip_now", () => {
+    if (partyModeActive) nextTrack();
   });
 }
 

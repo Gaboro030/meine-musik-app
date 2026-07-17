@@ -130,6 +130,8 @@ pub fn run() {
             party::party_get_state,
             party::party_set_state,
             party::party_participants,
+            party::party_remove_participant,
+            commands::export_playlist_m3u,
             party::queue_list,
             party::queue_remove,
             innertube::set_po_token,

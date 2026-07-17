@@ -122,4 +122,99 @@
 
   setHidden(false);
   mq.addEventListener("change", () => setHidden(false));
+
+  // ===== Wischen auf der Player-Bar = vor/zurück =====
+  // Bewusst nur auf .player-bar-left (Cover+Titel) statt der ganzen Bar:
+  // dort liegt kein anderes Drag-Gesture (Scrubber/Lautstärke sind
+  // eigene, weiter rechts liegende Elemente) - eine grosse, klare
+  // horizontale Bewegung dort kann also gefahrlos als "skip" gedeutet
+  // werden, ohne mit Tipp-auf-Buttons oder Scrubber-Ziehen zu kollidieren.
+  const swipeZone = document.querySelector(".player-bar-left");
+  if (swipeZone) {
+    let swipeStartX = null;
+    let swipeStartY = null;
+    swipeZone.addEventListener(
+      "touchstart",
+      (e) => {
+        if (!mq.matches) return;
+        swipeStartX = e.touches[0].clientX;
+        swipeStartY = e.touches[0].clientY;
+      },
+      { passive: true }
+    );
+    swipeZone.addEventListener(
+      "touchend",
+      (e) => {
+        if (swipeStartX === null || !mq.matches) return;
+        const dx = e.changedTouches[0].clientX - swipeStartX;
+        const dy = e.changedTouches[0].clientY - swipeStartY;
+        swipeStartX = null;
+        // Deutlich mehr horizontal als vertikal, sonst war es Scrollen/ein
+        // schräger Tipp, kein Skip-Wisch.
+        if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.6) {
+          if (dx < 0 && typeof nextTrack === "function") nextTrack();
+          else if (dx > 0 && typeof prevTrack === "function") prevTrack();
+        }
+      },
+      { passive: true }
+    );
+  }
+
+  // ===== Pull-to-Refresh in der Bibliothek =====
+  // Nur wenn bereits ganz oben gescrollt ist (nearTop) UND weiter nach
+  // unten gezogen wird, zaehlt es als Pull-Geste statt als normales
+  // Scrollen - sonst wuerde jeder Scroll-Start versehentlich mit
+  // auslösen.
+  const pullIndicator = document.createElement("div");
+  pullIndicator.className = "pull-refresh-indicator";
+  pullIndicator.textContent = "↓ Loslassen zum Aktualisieren";
+  document.body.appendChild(pullIndicator);
+
+  let pullStartY = null;
+  let pulling = false;
+  const PULL_THRESHOLD = 70;
+
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      if (!mq.matches) return;
+      pullStartY = nearTop() ? e.touches[0].clientY : null;
+      pulling = false;
+    },
+    { passive: true }
+  );
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (pullStartY === null || !mq.matches) return;
+      const dy = e.touches[0].clientY - pullStartY;
+      if (dy > 10 && nearTop()) {
+        pulling = true;
+        const pct = Math.min(dy / PULL_THRESHOLD, 1);
+        pullIndicator.style.opacity = String(pct);
+        pullIndicator.style.transform = `translateX(-50%) translateY(${Math.min(dy * 0.4, 40)}px)`;
+        pullIndicator.classList.toggle("ready", dy > PULL_THRESHOLD);
+      } else if (dy <= 0) {
+        pulling = false;
+        pullIndicator.style.opacity = "0";
+      }
+    },
+    { passive: true }
+  );
+  document.addEventListener("touchend", (e) => {
+    if (pulling) {
+      const dy = (e.changedTouches[0].clientY || 0) - (pullStartY || 0);
+      if (dy > PULL_THRESHOLD && typeof refreshLibrary === "function") {
+        pullIndicator.textContent = "⟳ Wird aktualisiert …";
+        Promise.resolve(refreshLibrary()).finally(() => {
+          pullIndicator.style.opacity = "0";
+          pullIndicator.textContent = "↓ Loslassen zum Aktualisieren";
+        });
+      } else {
+        pullIndicator.style.opacity = "0";
+      }
+    }
+    pulling = false;
+    pullStartY = null;
+  });
 })();

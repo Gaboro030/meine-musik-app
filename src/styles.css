@@ -297,6 +297,12 @@ a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 .hidden { display: none !important; }
 
+/* Pull-to-Refresh-Indikator (mobile-ui.js) existiert immer im DOM, ist
+   aber nur innerhalb der Mobile-Media-Query sichtbar (siehe dort) - ohne
+   dieses Basis-display:none würde das leere Element auf dem Desktop
+   normal im Dokumentfluss landen. */
+.pull-refresh-indicator { display: none; }
+
 /* Touch-Feinschliff: kein grauer Tap-Blitz, keine Doppeltipp-Zoom-
    Wartezeit (touch-action) und keine versehentliche Textmarkierung beim
    schnellen Tippen auf Bedienelemente - macht die UI auf dem Handy
@@ -544,6 +550,31 @@ body.has-dynamic-colors .playlist-hero {
   gap: 8px;
   padding: 6px 2px;
   font-size: 0.85rem;
+}
+.qr-participant-remove {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--sp-muted-2);
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+.qr-participant:hover .qr-participant-remove { opacity: 1; }
+.qr-participant-remove:hover { color: #f15e6c; background: rgba(241, 94, 108, 0.12); }
+
+.party-skip-status {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.82rem;
+  text-align: center;
 }
 .qr-participant-dot {
   width: 8px;
@@ -1753,6 +1784,55 @@ body.has-dynamic-colors .playlist-hero {
 }
 .pb-volume-wrap:hover .pb-volume-handle { opacity: 1; }
 
+/* ========= VOLLBILD-VISUALIZER ========= */
+.pb-cover { cursor: pointer; }
+.visualizer-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.visualizer-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.visualizer-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  pointer-events: none;
+}
+.visualizer-cover {
+  width: min(46vh, 46vw);
+  height: min(46vh, 46vw);
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  margin-bottom: 24px;
+}
+.visualizer-title { font-size: 1.6rem; font-weight: 800; }
+.visualizer-artist { font-size: 1.05rem; color: var(--sp-muted); margin-top: 6px; }
+.visualizer-close {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 16px);
+  right: 16px;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+}
+.visualizer-close:hover { background: rgba(255, 255, 255, 0.16); }
+
 /* ========= LYRICS OVERLAY ========= */
 .lyrics-overlay {
   position: fixed;
@@ -1779,9 +1859,11 @@ body.has-dynamic-colors .playlist-hero {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   flex-shrink: 0;
 }
+.lyrics-title-block { min-width: 0; flex: 1 1 auto; }
 .lyrics-title {
   font-size: 1.6rem;
   font-weight: 800;
@@ -1895,6 +1977,45 @@ body.has-dynamic-colors .playlist-hero {
 }
 
 .lyrics-line.sung .lyrics-word-base { color: var(--sp-muted); }
+.lyrics-word { cursor: pointer; }
+
+/* Klammer-Ad-Libs ("(hold my hand)") als eigene kleinere Zeile statt
+   inline in Klammern - eigenes Gewicht/Farbe, aber dasselbe Wort-Glow wie
+   die Hauptzeile (teilt sich .lyrics-word/-base/-fill). */
+.lyrics-line-adlib {
+  font-size: 0.62em;
+  font-weight: 600;
+  margin-top: 4px;
+  opacity: 0.75;
+}
+.lyrics-line.active .lyrics-line-adlib { opacity: 0.9; }
+
+/* Sync-Feinjustierung im Overlay-Header. */
+.lyrics-sync-adjust {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.lyrics-sync-btn {
+  padding: 6px 10px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sp-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.lyrics-sync-btn:hover { background: rgba(255, 255, 255, 0.16); color: var(--sp-text); }
+.lyrics-sync-readout {
+  min-width: 46px;
+  text-align: center;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--sp-muted);
+  cursor: pointer;
+}
+.lyrics-sync-readout:hover { color: var(--sp-text); }
 
 /* ========= EQUALIZER POPOVER ========= */
 .eq-wrap { position: relative; }
@@ -2915,6 +3036,27 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   /* ⋯-Button auf Touch immer sichtbar - es gibt kein Hover, über das er
      sonst auftauchen würde. */
   .track-more-btn { opacity: 1; }
+
+  /* Pull-to-Refresh-Indikator (mobile-ui.js) - fest an der Oberkante,
+     Sichtbarkeit/Position werden per JS während des Ziehens animiert. */
+  .pull-refresh-indicator {
+    display: block;
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    border-radius: 100px;
+    background: var(--sp-elevated);
+    border: 1px solid var(--sp-border);
+    font-size: 0.75rem;
+    color: var(--sp-muted);
+    opacity: 0;
+    z-index: 700;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+  .pull-refresh-indicator.ready { color: var(--sp-green); }
 
   /* Warteschlangen-Panel als Bottom-Sheet über der Player-Bar statt
      rechter Desktop-Karte. */

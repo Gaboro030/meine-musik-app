@@ -110,6 +110,9 @@
           await invoke("delete_playlist", { name });
           return jsonResponse({ ok: true });
         }
+        if (parts[4] === "export-m3u") {
+          return jsonResponse({ content: await invoke("export_playlist_m3u", { playlistName: name }) });
+        }
       }
       if (parts[2] === "track" && method === "DELETE") {
         await invoke("remove_track_from_playlist", {
@@ -186,6 +189,9 @@
       return jsonResponse({ error: "Nicht verfügbar." }, 404);
     }
     if (parts[1] === "party") {
+      if (parts[2] === "participants" && parts.length === 4 && method === "DELETE") {
+        return jsonResponse({ participants: await invoke("party_remove_participant", { id: seg(parts[3]) }) });
+      }
       if (parts[2] === "participants") {
         return jsonResponse({ participants: await invoke("party_participants") });
       }

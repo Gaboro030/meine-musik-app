@@ -855,3 +855,27 @@ pub async fn clear_lyrics_cache(state: tauri::State<'_, AppState>) -> Result<u32
 pub fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
+
+/// Standard-M3U mit absoluten Dateipfaden (nicht dem app-internen
+/// stream://-Schema) - der Sinn eines Exports ist, die Playlist in einem
+/// ANDEREN Player zu oeffnen, der von unserem Streaming-Protokoll nichts
+/// weiss. Gleiche Reihenfolge/Endungs-Filter wie die eigentliche
+/// Bibliotheksansicht (scan_playlist_dir), damit Export und App-Ansicht
+/// nie auseinanderlaufen. Ein Zip-Backup wurde bewusst nicht gebaut - die
+/// Dateien liegen bereits als ganz normaler Ordner auf der Platte, ein
+/// Export bringt nur bei der M3U-Referenz auf andere Player echten
+/// Mehrwert.
+#[tauri::command]
+pub fn export_playlist_m3u(state: tauri::State<AppState>, playlist_name: String) -> Result<String, String> {
+    let dir = safe_join(&state.music_root, &safe_filename(&playlist_name))?;
+    let pl = scan_playlist_dir(&dir, &playlist_name).ok_or("Playlist leer oder nicht gefunden.")?;
+    let mut out = String::from("#EXTM3U\n");
+    for t in &pl.tracks {
+        let abs = dir.join(&t.file);
+        let artist = if t.artist.trim().is_empty() { "Unbekannt" } else { &t.artist };
+        let seconds = t.duration.map(|d| d.round() as i64).unwrap_or(-1);
+        out.push_str(&format!("#EXTINF:{seconds},{artist} - {}\n", t.title));
+        out.push_str(&format!("{}\n", abs.display()));
+    }
+    Ok(out)
+}

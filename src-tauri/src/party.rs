@@ -22,6 +22,7 @@ use axum::{
 use futures_util::StreamExt;
 use serde_json::json;
 use std::path::PathBuf;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::broadcast;
@@ -51,6 +52,15 @@ pub struct HubInner {
     // Änderung wird als "participants"-Event gebroadcastet (Gäste über
     // SSE, Host-UI über den Tauri-Event-Bus).
     participants: Mutex<Vec<serde_json::Value>>,
+    // Vom Host entfernte Teilnehmer-ids - blockt den Heartbeat, damit ein
+    // gekickter Gast sich nicht durch sein eigenes naechstes Lebenszeichen
+    // sofort wieder selbst einlaedt (siehe api_party_heartbeat).
+    kicked: Mutex<HashSet<String>>,
+    // Skip-Abstimmung: Teilnehmer-ids, die fuer den GERADE laufenden Track
+    // (identifiziert ueber file+title, siehe apply_party_state) skippen
+    // wollen. Wird bei jedem Trackwechsel geleert.
+    skip_votes: Mutex<HashSet<String>>,
+    skip_votes_for: Mutex<(String, String)>, // (file, title) - gegen dieses Paar zaehlen skip_votes
 }
 
 fn default_party_state() -> serde_json::Value {
@@ -74,6 +84,9 @@ impl Hub {
             public_url: Mutex::new(None),
             tunnel: Mutex::new(None),
             participants: Mutex::new(Vec::new()),
+            kicked: Mutex::new(HashSet::new()),
+            skip_votes: Mutex::new(HashSet::new()),
+            skip_votes_for: Mutex::new((String::new(), String::new())),
         }))
     }
 
@@ -186,7 +199,34 @@ fn apply_party_state(hub: &Hub, data: &serde_json::Value) -> serde_json::Value {
     });
     *hub.0.party.lock().unwrap() = snapshot.clone();
     hub.broadcast("party_sync", &snapshot);
+
+    // Neuer Track (file+title geaendert) - alte Skip-Stimmen sind
+    // gegenstandslos, sonst wuerde ein Vote fuer Song A den nagelneuen
+    // Song B sofort mitreissen.
+    let file = data.get("file").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let title = data.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let track_changed = {
+        let mut sv_for = hub.0.skip_votes_for.lock().unwrap();
+        if *sv_for != (file.clone(), title.clone()) {
+            *sv_for = (file, title);
+            true
+        } else {
+            false
+        }
+    };
+    if track_changed {
+        hub.0.skip_votes.lock().unwrap().clear();
+        broadcast_skip_votes(hub);
+    }
+
     snapshot
+}
+
+fn broadcast_skip_votes(hub: &Hub) {
+    let count = hub.0.skip_votes.lock().unwrap().len();
+    let participants = prune_participants(hub).0.len();
+    let needed = participants.div_ceil(2).max(1);
+    hub.broadcast("skip_votes", &json!({ "count": count, "needed": needed, "participants": participants }));
 }
 
 /// Look the track up in the real library instead of trusting client-sent
@@ -371,6 +411,23 @@ pub fn party_participants(hub: tauri::State<Hub>) -> Vec<serde_json::Value> {
     list
 }
 
+/// Host entfernt einen Teilnehmer aus dem Freunde-Popover. Landet zusaetzlich
+/// im kicked-Set (siehe api_party_join/api_party_heartbeat), damit der
+/// naechste automatische Reconnect der Gast-Seite ihn nicht sofort wieder
+/// reinholt.
+#[tauri::command]
+pub fn party_remove_participant(hub: tauri::State<Hub>, id: String) -> Vec<serde_json::Value> {
+    hub.0
+        .participants
+        .lock()
+        .unwrap()
+        .retain(|p| p.get("id").and_then(|x| x.as_str()) != Some(id.as_str()));
+    hub.0.kicked.lock().unwrap().insert(id);
+    let (list, _) = prune_participants(&hub);
+    broadcast_participants(&hub, &list);
+    list
+}
+
 #[tauri::command]
 pub fn queue_list(hub: tauri::State<Hub>) -> Vec<serde_json::Value> {
     hub.0.queue.lock().unwrap().clone()
@@ -396,6 +453,7 @@ pub async fn run_server(hub: Hub) {
         .route("/api/party/join", post(api_party_join))
         .route("/api/party/heartbeat", post(api_party_heartbeat))
         .route("/api/party/participants", get(api_party_participants))
+        .route("/api/party/skip-vote", post(api_party_skip_vote))
         .route("/api/events", get(api_events))
         .route("/stream/:playlist/:file", get(api_stream))
         // Handy-Sync (sync.rs): peer devices POST files straight into this
@@ -511,6 +569,15 @@ async fn api_party_join(
         name_raw.chars().take(40).collect()
     };
     let existing_id = body.get("id").and_then(|x| x.as_str()).map(str::to_string);
+    // Gekickter Gast reconnectet (WLAN-Wechsel, Tab-Wechsel) mit seiner
+    // alten localStorage-id: nicht wieder aufnehmen, sondern klar sagen
+    // dass er entfernt wurde - sonst wuerde jeder automatische Reconnect
+    // (guest.html) das Kicken sofort rueckgaengig machen.
+    if let Some(eid) = &existing_id {
+        if hub.0.kicked.lock().unwrap().contains(eid) {
+            return Json(json!({ "ok": true, "kicked": true }));
+        }
+    }
     let id = {
         let mut list = hub.0.participants.lock().unwrap();
         let now = now_secs();
@@ -541,6 +608,9 @@ async fn api_party_heartbeat(
     Json(body): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
     let id = body.get("id").and_then(|x| x.as_str()).unwrap_or("");
+    if hub.0.kicked.lock().unwrap().contains(id) {
+        return Json(json!({ "ok": false, "kicked": true }));
+    }
     let known = {
         let mut list = hub.0.participants.lock().unwrap();
         match list
@@ -561,6 +631,40 @@ async fn api_party_heartbeat(
     // known=false heißt: Server wurde neu gestartet o.ä. - Gast soll neu
     // joinen (macht die Gast-Seite von selbst, sobald sie das sieht).
     Json(json!({ "ok": known }))
+}
+
+/// Toggle: stimmt der Gast schon fuer Skip, hebt der zweite Aufruf die
+/// eigene Stimme wieder auf. Ueberquert die Stimmenzahl dabei die
+/// Mehrheitsschwelle, geht zusaetzlich ein "skip_now" raus, auf das nur
+/// der Host reagiert (echter nextTrack()).
+async fn api_party_skip_vote(
+    State(hub): State<Hub>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let id = body.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    if id.is_empty() {
+        return Json(json!({ "ok": false }));
+    }
+    let participants = prune_participants(&hub).0.len().max(1);
+    let needed = participants.div_ceil(2).max(1);
+    let (voted, count, crossed) = {
+        let mut votes = hub.0.skip_votes.lock().unwrap();
+        let before = votes.len();
+        let now_voted = if votes.contains(&id) {
+            votes.remove(&id);
+            false
+        } else {
+            votes.insert(id);
+            true
+        };
+        let after = votes.len();
+        (now_voted, after, before < needed && after >= needed)
+    };
+    hub.broadcast("skip_votes", &json!({ "count": count, "needed": needed, "participants": participants }));
+    if crossed {
+        hub.broadcast("skip_now", &json!({}));
+    }
+    Json(json!({ "ok": true, "voted": voted, "count": count, "needed": needed }))
 }
 
 async fn api_party_participants(State(hub): State<Hub>) -> Json<serde_json::Value> {

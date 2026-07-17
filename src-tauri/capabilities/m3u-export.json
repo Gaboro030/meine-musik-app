@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "m3u-export",
+  "description": "Playlist-Export als M3U (m3u-export.js) - fs:default deckt nur die App-eigenen Verzeichnisse ab, dialog.save() liefert aber einen vom Nutzer frei gewaehlten Pfad (Desktop/Dokumente/Downloads/Home).",
+  "windows": ["main"],
+  "platforms": ["windows", "linux", "macOS"],
+  "permissions": [
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$HOME/**" },
+        { "path": "$AUDIO/**" }
+      ]
+    }
+  ]
+}

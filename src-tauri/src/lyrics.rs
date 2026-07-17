@@ -1,4 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::OnceLock;
+
+use regex::Regex;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct LyricsResult {
@@ -19,55 +23,140 @@ fn str_field(v: &serde_json::Value, key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Strips YouTube-Rip-Rauschen ("(Official Video)", "(Lyrics)", "HD",
+/// "Remastered", jede Klammer) aus Titel/Interpret, BEVOR damit bei lrclib
+/// angefragt wird - unsere Bibliothekstitel sind roh von YouTube und genau
+/// dieses Rauschen liess den Exakt-Match (lrclib_get) haeufig fehlschlagen,
+/// wodurch der Code auf die ungeprueft erste Volltextsuche auswich (siehe
+/// similarity_ok weiter unten - die Wurzel des "komplett anderes Lied"-
+/// Bugs). Behaelt Gross-/Kleinschreibung und normale Satzzeichen, damit die
+/// Anfrage noch wie natuerlicher Text aussieht.
+fn clean_query_text(text: &str) -> String {
+    static NOISE: OnceLock<Regex> = OnceLock::new();
+    static BRACKETS: OnceLock<Regex> = OnceLock::new();
+    let noise = NOISE.get_or_init(|| {
+        Regex::new(r"(?i)\((?:official\s*)?(?:music\s*)?video\)|\((?:official\s*)?audio\)|\blyrics?\b|\blyric\s*video\b|\bvisualizer\b|\bofficial\s*video\b|\bhd\b|\b4k\b|\bremaster(?:ed)?\b").unwrap()
+    });
+    let brackets = BRACKETS.get_or_init(|| Regex::new(r"[\[\(].*?[\]\)]").unwrap());
+    let step1 = noise.replace_all(text, " ");
+    let step2 = brackets.replace_all(&step1, " ");
+    step2.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Lowercase + alles auf Wort-Tokens reduziert - fuer den Aehnlichkeits-
+/// Vergleich zwischen angefragtem und von lrclib zurueckgegebenem Titel/
+/// Interpret, nicht fuer die Anfrage selbst (siehe clean_query_text).
+fn normalize_for_compare(text: &str) -> HashSet<String> {
+    static NONWORD: OnceLock<Regex> = OnceLock::new();
+    let nonword = NONWORD.get_or_init(|| Regex::new(r"[^\w\s]").unwrap());
+    let cleaned = clean_query_text(text);
+    nonword
+        .replace_all(&cleaned, " ")
+        .to_lowercase()
+        .split_whitespace()
+        .filter(|w| w.len() > 1) // "a"/"i"/"&" etc. sind zu generisch, um als Uebereinstimmung zu zaehlen
+        .map(|w| w.to_string())
+        .collect()
+}
+
+/// Ist `candidate` (Titel ODER Interpret aus der lrclib-Antwort) plausibel
+/// dasselbe wie `requested`? Wortmengen-Ueberlappung (Jaccard) statt exakter
+/// Gleichheit - toleriert Reihenfolge-/Feat.-Unterschiede, verwirft aber
+/// zuverlaessig ein komplett anderes Lied. Leeres `requested` (kein
+/// Interpret bekannt) blockt nichts.
+fn similarity_ok(requested: &str, candidate: &str) -> bool {
+    let a = normalize_for_compare(requested);
+    if a.is_empty() {
+        return true;
+    }
+    let b = normalize_for_compare(candidate);
+    if b.is_empty() {
+        return false;
+    }
+    if a == b {
+        return true;
+    }
+    let inter = a.intersection(&b).count();
+    let union = a.union(&b).count();
+    union > 0 && (inter as f64 / union as f64) >= 0.5
+}
+
+fn candidate_ok(requested_title: &str, requested_artist: &str, got_title: &str, got_artist: &str) -> bool {
+    similarity_ok(requested_title, got_title) && similarity_ok(requested_artist, got_artist)
+}
+
+struct LrcHit {
+    synced: Option<String>,
+    plain: Option<String>,
+    track_name: String,
+    artist_name: String,
+}
+
 async fn lrclib_get(
     client: &reqwest::Client,
     title: &str,
     artist: &str,
     duration: Option<f64>,
-) -> (Option<String>, Option<String>) {
+) -> Option<LrcHit> {
+    let clean_title = clean_query_text(title);
+    let clean_artist = clean_query_text(artist);
     let mut params = vec![
-        ("track_name".to_string(), title.to_string()),
-        ("artist_name".to_string(), artist.to_string()),
+        ("track_name".to_string(), clean_title),
+        ("artist_name".to_string(), clean_artist),
     ];
     if let Some(d) = duration {
         params.push(("duration".to_string(), (d as i64).to_string()));
     }
-    let Ok(resp) = client.get(LRCLIB_GET).query(&params).send().await else {
-        return (None, None);
-    };
+    let resp = client.get(LRCLIB_GET).query(&params).send().await.ok()?;
     if !resp.status().is_success() {
-        return (None, None);
+        return None;
     }
-    let Ok(data) = resp.json::<serde_json::Value>().await else {
-        return (None, None);
-    };
-    (str_field(&data, "syncedLyrics"), str_field(&data, "plainLyrics"))
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let synced = str_field(&data, "syncedLyrics");
+    let plain = str_field(&data, "plainLyrics");
+    if synced.is_none() && plain.is_none() {
+        return None;
+    }
+    Some(LrcHit {
+        synced,
+        plain,
+        track_name: str_field(&data, "trackName").unwrap_or_default(),
+        artist_name: str_field(&data, "artistName").unwrap_or_default(),
+    })
 }
 
-async fn lrclib_search(
-    client: &reqwest::Client,
-    title: &str,
-    artist: &str,
-) -> (Option<String>, Option<String>) {
-    let q = format!("{artist} {title}");
-    let Ok(resp) = client.get(LRCLIB_SEARCH).query(&[("q", q)]).send().await else {
-        return (None, None);
-    };
+/// Volltextsuche statt Exakt-Match - prueft mehrere Kandidaten (nicht mehr
+/// blind items[0]) und nimmt den ERSTEN, der wirklich zu Titel+Interpret
+/// passt. Genau das war die Ursache des "komplett anderes Lied"-Bugs: die
+/// alte Version vertraute lrclib's Ranking bedingungslos.
+async fn lrclib_search(client: &reqwest::Client, title: &str, artist: &str) -> Option<LrcHit> {
+    let q = format!("{} {}", clean_query_text(artist), clean_query_text(title));
+    let resp = client.get(LRCLIB_SEARCH).query(&[("q", q)]).send().await.ok()?;
     if !resp.status().is_success() {
-        return (None, None);
+        return None;
     }
-    let Ok(items) = resp.json::<Vec<serde_json::Value>>().await else {
-        return (None, None);
-    };
-    match items.first() {
-        Some(item) => (str_field(item, "syncedLyrics"), str_field(item, "plainLyrics")),
-        None => (None, None),
+    let items: Vec<serde_json::Value> = resp.json().await.ok()?;
+    for item in items.iter().take(8) {
+        let track_name = str_field(item, "trackName").unwrap_or_default();
+        let artist_name = str_field(item, "artistName").unwrap_or_default();
+        if !candidate_ok(title, artist, &track_name, &artist_name) {
+            continue;
+        }
+        let synced = str_field(item, "syncedLyrics");
+        let plain = str_field(item, "plainLyrics");
+        if synced.is_none() && plain.is_none() {
+            continue;
+        }
+        return Some(LrcHit { synced, plain, track_name, artist_name });
     }
+    None
 }
 
 async fn lyrics_ovh(client: &reqwest::Client, title: &str, artist: &str) -> Option<String> {
     let enc = |s: &str| percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string();
-    let url = format!("https://api.lyrics.ovh/v1/{}/{}", enc(artist), enc(title));
+    let clean_title = clean_query_text(title);
+    let clean_artist = clean_query_text(artist);
+    let url = format!("https://api.lyrics.ovh/v1/{}/{}", enc(&clean_artist), enc(&clean_title));
     let resp = client.get(&url).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
@@ -82,6 +171,10 @@ async fn lyrics_ovh(client: &reqwest::Client, title: &str, artist: &str) -> Opti
 /// resort. Both are free/keyless, fixed hosts - no SSRF concern since
 /// title/artist only ever end up as query params or URL-encoded path
 /// segments, never as a raw URL passed through.
+///
+/// Jeder Kandidat wird gegen Titel+Interpret der Anfrage geprueft
+/// (candidate_ok) - lieber "keine Lyrics gefunden" als ein falscher Song
+/// (siehe similarity_ok).
 #[tauri::command]
 pub async fn fetch_lyrics(
     title: String,
@@ -96,13 +189,21 @@ pub async fn fetch_lyrics(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let (mut synced, mut plain) = lrclib_get(&client, &title, &artist, duration).await;
-    if synced.is_none() && plain.is_none() {
-        let (s2, p2) = lrclib_search(&client, &title, &artist).await;
-        synced = s2;
-        plain = p2;
+    let mut hit = lrclib_get(&client, &title, &artist, duration).await;
+    if let Some(h) = &hit {
+        if !candidate_ok(&title, &artist, &h.track_name, &h.artist_name) {
+            hit = None;
+        }
     }
-    if plain.is_none() {
+    if hit.is_none() {
+        hit = lrclib_search(&client, &title, &artist).await;
+    }
+
+    let (synced, mut plain) = match hit {
+        Some(h) => (h.synced, h.plain),
+        None => (None, None),
+    };
+    if plain.is_none() && synced.is_none() {
         plain = lyrics_ovh(&client, &title, &artist).await;
     }
 

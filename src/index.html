@@ -58,6 +58,7 @@
               Spielt auf allen Geräten im WLAN exakt denselben Song synchron ab.
             </div>
             <button type="button" id="partyModeBtn" class="party-toggle-switch">Party starten</button>
+            <div id="partySkipStatus" class="party-skip-status hidden"></div>
           </div>
         </div>
         <div class="sidebar-tool-wrap">
@@ -197,6 +198,10 @@
 
         <div id="homeView" class="view-section hidden">
           <h1 id="homeGreeting" class="home-greeting">Guten Tag</h1>
+          <section class="home-section hidden" id="dailyMixSection">
+            <h2 class="home-section-title">📻 Daily Mix</h2>
+            <div class="card-grid" id="dailyMixGrid"></div>
+          </section>
           <section class="home-section">
             <h2 class="home-section-title">Zuletzt hinzugefügt</h2>
             <div class="card-grid" id="recentGrid"></div>
@@ -231,6 +236,7 @@
               <div class="playlist-title-row">
                 <h1 id="playlistTitle">—</h1>
                 <button type="button" id="renamePlaylistBtn" class="icon-btn" title="Playlist umbenennen">✏️</button>
+                <button type="button" id="exportPlaylistBtn" class="icon-btn" title="Als M3U exportieren (für andere Player)">📤</button>
                 <button type="button" id="deletePlaylistBtn" class="icon-btn icon-btn-danger" title="Playlist löschen">🗑️</button>
               </div>
               <div class="playlist-sub">
@@ -433,9 +439,14 @@
   <div id="lyricsOverlay" class="lyrics-overlay hidden">
     <div class="lyrics-panel">
       <div class="lyrics-panel-header">
-        <div>
+        <div class="lyrics-title-block">
           <div id="lyricsTitle" class="lyrics-title">—</div>
           <div id="lyricsArtist" class="lyrics-artist">—</div>
+        </div>
+        <div class="lyrics-sync-adjust" id="lyricsSyncAdjust" title="Songtext-Sync feinjustieren, falls er vor- oder nacheilt">
+          <button type="button" id="lyricsSyncMinus" class="lyrics-sync-btn">−0.3s</button>
+          <span id="lyricsSyncReadout" class="lyrics-sync-readout" title="Zum Zurücksetzen klicken">0.0s</span>
+          <button type="button" id="lyricsSyncPlus" class="lyrics-sync-btn">+0.3s</button>
         </div>
         <button type="button" id="lyricsCloseBtn" class="modal-close lyrics-close">✕</button>
       </div>
@@ -509,6 +520,19 @@
   </footer>
   </div>
 
+  <!-- Vollbild-Visualizer: grosses Cover + audioreaktive Frequenzbalken
+       (Web-Audio-AnalyserNode, siehe player.js initAudioGraph). Öffnen
+       über Klick aufs Player-Bar-Cover. -->
+  <div id="visualizerOverlay" class="visualizer-overlay hidden">
+    <canvas id="visualizerCanvas" class="visualizer-canvas"></canvas>
+    <div class="visualizer-content">
+      <img id="visualizerCover" class="visualizer-cover" src="" alt="" />
+      <div id="visualizerTitle" class="visualizer-title">—</div>
+      <div id="visualizerArtist" class="visualizer-artist">—</div>
+    </div>
+    <button type="button" id="visualizerCloseBtn" class="modal-close visualizer-close">✕</button>
+  </div>
+
   <!-- Warteschlangen-Panel: "Als Nächstes" (eigene Queue, umsortierbar),
        "Von Gästen" (Party-Queue) und Vorschau der danach folgenden
        Playlist-Titel. Geöffnet über den Queue-Button in der Player-Bar. -->
@@ -528,6 +552,7 @@
   <script src="nowplaying-native.js"></script>
   <script src="themes.js"></script>
   <script src="sync.js"></script>
+  <script src="m3u-export.js"></script>
   <script src="mobile-ui.js"></script>
   <script type="module" src="potoken-init.js"></script>
 </body>
