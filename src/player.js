@@ -104,7 +104,60 @@ const pbVolumeWrap = document.getElementById("pbVolumeWrap");
 const pbVolumeBar = document.getElementById("pbVolumeBar");
 const pbVolumeHandle = document.getElementById("pbVolumeHandle");
 const pbVolIcon = document.getElementById("pbVolIcon");
-const audioEl = document.getElementById("audioEl");
+/* ===== Dual-Audio für echtes Crossfade =====
+   Zwei <audio>-Elemente wechseln sich als "aktives" Element ab: während
+   die letzten CROSSFADE_SECONDS eines Songs laufen, spielt das jeweils
+   andere Element den nächsten Titel schon überlappend an (eigener Gain im
+   Web-Audio-Graph rampt hoch, der des sterbenden Songs runter). Beim
+   ended-Event wird nur noch die Rolle getauscht - lückenlos.
+
+   `audioEl` bleibt die EINE Variable, über die der gesamte restliche Code
+   (Scrubber, Events, Fehler-Retry, nowplaying-native.js, tauri-shim.js)
+   das aktive Element anspricht - der Tausch ist für alle transparent.
+   Damit Event-Handler nach einem Rollentausch weiter funktionieren,
+   registriert der addEventListener-Wrapper unten jeden Handler auf BEIDEN
+   Elementen und lässt ihn nur feuern, wenn das Event vom gerade aktiven
+   Element kommt. Kein einziger bestehender addEventListener-Aufruf muss
+   dafür angefasst werden. */
+const audioElA = document.getElementById("audioEl");
+const audioElB = document.createElement("audio");
+audioElB.preload = "auto";
+audioElB.crossOrigin = "anonymous";
+document.body.appendChild(audioElB);
+let audioEl = audioElA;
+
+{
+  const origAddA = audioElA.addEventListener.bind(audioElA);
+  const origAddB = audioElB.addEventListener.bind(audioElB);
+  const origRemA = audioElA.removeEventListener.bind(audioElA);
+  const origRemB = audioElB.removeEventListener.bind(audioElB);
+  const wrapMap = new Map();
+  const bindBoth = function (type, fn, opts) {
+    if (typeof fn !== "function") return;
+    let wrapped = wrapMap.get(fn);
+    if (!wrapped) {
+      wrapped = function (e) {
+        if (e.currentTarget !== audioEl) return;
+        return fn.call(e.currentTarget, e);
+      };
+      wrapMap.set(fn, wrapped);
+    }
+    origAddA(type, wrapped, opts);
+    origAddB(type, wrapped, opts);
+  };
+  const removeBoth = function (type, fn, opts) {
+    const wrapped = wrapMap.get(fn);
+    if (!wrapped) return;
+    origRemA(type, wrapped, opts);
+    origRemB(type, wrapped, opts);
+  };
+  audioElA.addEventListener = bindBoth;
+  audioElB.addEventListener = bindBoth;
+  audioElA.removeEventListener = removeBoth;
+  audioElB.removeEventListener = removeBoth;
+}
+
+const otherAudioEl = () => (audioEl === audioElA ? audioElB : audioElA);
 
 const PLACEHOLDER_COVER =
   "data:image/svg+xml;utf8," +
@@ -930,17 +983,20 @@ function trackRecentlyPlayed(index) {
   if (recentlyPlayed.length > cap) recentlyPlayed = recentlyPlayed.slice(-cap);
 }
 
-function playTrack(index) {
+function playTrack(index, opts = {}) {
   if (!currentPlaylist || !currentPlaylist.tracks[index]) return;
   currentTrackIndex = index;
   trackRecentlyPlayed(index);
   const track = currentPlaylist.tracks[index];
 
   initAudioGraph();
-  resetFadeForNewTrack();
-
-  audioEl.src = track.stream_url;
-  audioEl.play().catch(() => {});
+  // handoff = Crossfade-Rollentausch: das Element spielt den Titel schon
+  // mit vollem Pegel - nur UI/Metadaten nachziehen, nicht neu laden.
+  if (!opts.handoff) {
+    resetFadeForNewTrack();
+    audioEl.src = track.stream_url;
+    audioEl.play().catch(() => {});
+  }
 
   pbCover.src = coverFor(track);
   pbTitle.textContent = track.title;
@@ -972,16 +1028,18 @@ function playTrack(index) {
    currentTrackIndex - it has its own full metadata already, so this
    bypasses the indexed playTrack() path entirely instead of trying to
    force it into a playlist context it doesn't belong to. */
-function playQueuedEntry(entry, source = "guest") {
+function playQueuedEntry(entry, source = "guest", opts = {}) {
   // Merken, wo die Playlist gerade stand - nach Abarbeiten der Queue
   // macht nextTrack() dort weiter statt wieder bei Track 0 anzufangen.
   if (currentTrackIndex >= 0) queueResumeIndex = currentTrackIndex;
 
   initAudioGraph();
-  resetFadeForNewTrack();
-
-  audioEl.src = entry.stream_url;
-  audioEl.play().catch(() => {});
+  // handoff: siehe playTrack - Element spielt schon, nichts neu laden.
+  if (!opts.handoff) {
+    resetFadeForNewTrack();
+    audioEl.src = entry.stream_url;
+    audioEl.play().catch(() => {});
+  }
 
   pbCover.src = entry.cover || PLACEHOLDER_COVER;
   pbTitle.textContent = entry.title;
@@ -1264,10 +1322,15 @@ audioEl.addEventListener("loadedmetadata", () => {
 
 audioEl.addEventListener("ended", () => {
   if (repeatMode === "one") {
+    // resetFadeForNewTrack räumt auch einen evtl. noch laufenden
+    // Crossfade-Ghost ab (Repeat-One wurde mitten in der Ausblendphase
+    // eingeschaltet) - sonst liefe der nächste Song parallel weiter.
+    resetFadeForNewTrack();
     audioEl.currentTime = 0;
     audioEl.play().catch(() => {});
     return;
   }
+  if (completeCrossfadeHandoff()) return;
   nextTrack();
 });
 
@@ -1653,7 +1716,10 @@ function setVolumeFromEvent(e) {
   const rect = pbVolumeWrap.querySelector(".pb-volume-track").getBoundingClientRect();
   const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
   const pct = rect.width ? x / rect.width : 0;
-  audioEl.volume = pct;
+  // Beide Elemente: nach einem Crossfade-Rollentausch soll die Lautstärke
+  // nicht plötzlich auf einem alten Wert stehen.
+  audioElA.volume = pct;
+  audioElB.volume = pct;
   pbVolumeBar.style.width = `${pct * 100}%`;
   pbVolumeHandle.style.left = `${pct * 100}%`;
   pbVolIcon.textContent = pct === 0 ? "🔇" : pct < 0.5 ? "🔉" : "🔊";
@@ -1826,15 +1892,24 @@ window.addEventListener("drop", (e) => e.preventDefault());
    AudioContext starts suspended until a real click/tap resumes it. */
 let audioCtx = null;
 let eqBass, eqMid, eqTreble, masterGain, normalizerCompressor;
+let gainA = null, gainB = null; // ein Gain pro <audio>-Element - die beiden Crossfade-Rampen
 let audioGraphReady = false;
 const eqSettings = { bass: 0, mid: 0, treble: 0 };
+
+const activeGain = () => (audioEl === audioElA ? gainA : gainB);
+const otherGain = () => (audioEl === audioElA ? gainB : gainA);
 
 function initAudioGraph() {
   if (audioGraphReady) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
   if (!Ctx) return; // very old browser - playback still works, just no EQ/fade
   audioCtx = new Ctx();
-  const source = audioCtx.createMediaElementSource(audioEl);
+  const sourceA = audioCtx.createMediaElementSource(audioElA);
+  const sourceB = audioCtx.createMediaElementSource(audioElB);
+  gainA = audioCtx.createGain();
+  gainA.gain.value = 1;
+  gainB = audioCtx.createGain();
+  gainB.gain.value = 0; // B startet stumm - wird erst als Crossfade-Partner hochgerampt
 
   eqBass = audioCtx.createBiquadFilter();
   eqBass.type = "lowshelf";
@@ -1867,7 +1942,9 @@ function initAudioGraph() {
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 1;
 
-  source.connect(eqBass).connect(eqMid).connect(eqTreble).connect(normalizerCompressor).connect(masterGain).connect(audioCtx.destination);
+  sourceA.connect(gainA).connect(eqBass);
+  sourceB.connect(gainB).connect(eqBass);
+  eqBass.connect(eqMid).connect(eqTreble).connect(normalizerCompressor).connect(masterGain).connect(audioCtx.destination);
   audioGraphReady = true;
 }
 
@@ -1898,42 +1975,179 @@ document.addEventListener("click", (e) => {
   }
 });
 
-/* Simple single-element "soft crossfade": ramp the master gain down over
-   the last FADE_SECONDS of a track, then playTrack() (via
-   resetFadeForNewTrack) ramps the next track back up from a low starting
-   gain. No overlapping second <audio> element, so nothing about
-   next/prev/shuffle/repeat track selection needed to change. */
-const FADE_SECONDS = 2.5;
+/* ===== Echtes Dual-Audio-Crossfade =====
+   In den letzten CROSSFADE_SECONDS eines Songs startet das INAKTIVE
+   <audio>-Element den nächsten Titel bereits überlappend (sein Gain rampt
+   0 -> 1, der des laufenden 1 -> FADE_FLOOR). Beim ended-Event wird nur
+   noch die Rolle getauscht (completeCrossfadeHandoff) - kein Neuladen,
+   keine Lücke. Kennt der Player keinen nächsten Titel, bleibt es beim
+   weichen Ausblenden wie bisher. Manuelle Aktionen (Klick auf anderen
+   Song, next/prev, Seek zurück) brechen die Vorbereitung sauber ab. */
+const CROSSFADE_SECONDS = 4;
 const FADE_IN_SECONDS = 1.2;
-const FADE_FLOOR = 0.05;
+const FADE_FLOOR = 0.02;
 let fadingOut = false;
+let crossfadePrepared = null; // {kind: "user"|"guest"|"playlist", entry?, index?, streamUrl}
+
+function cancelCrossfadePrep() {
+  if (!crossfadePrepared) return;
+  crossfadePrepared = null;
+  const o = otherAudioEl();
+  o.pause();
+  if (audioGraphReady) {
+    const og = otherGain();
+    const now = audioCtx.currentTime;
+    og.gain.cancelScheduledValues(now);
+    og.gain.setValueAtTime(0, now);
+  }
+}
 
 function resetFadeForNewTrack() {
   fadingOut = false;
-  if (!masterGain || !audioCtx) return;
+  cancelCrossfadePrep();
+  if (!audioGraphReady) return;
+  const g = activeGain();
   const now = audioCtx.currentTime;
-  masterGain.gain.cancelScheduledValues(now);
+  g.gain.cancelScheduledValues(now);
   if (!crossfadeEnabled) {
-    masterGain.gain.setValueAtTime(1, now);
+    g.gain.setValueAtTime(1, now);
     return;
   }
-  masterGain.gain.setValueAtTime(FADE_FLOOR, now);
-  masterGain.gain.linearRampToValueAtTime(1, now + FADE_IN_SECONDS);
+  g.gain.setValueAtTime(FADE_FLOOR, now);
+  g.gain.linearRampToValueAtTime(1, now + FADE_IN_SECONDS);
+}
+
+/* Welcher Titel käme als nächstes? Spiegelt exakt die nextTrack()-
+   Prioritäten (eigene Queue > Gast-Queue > Playlist inkl. Shuffle/Repeat/
+   Resume-Index), ohne irgendetwas zu konsumieren. */
+function peekNextEntry() {
+  if (userQueue.length) return { kind: "user", entry: userQueue[0], streamUrl: userQueue[0].stream_url };
+  if (liveQueue.length) return { kind: "guest", entry: liveQueue[0], streamUrl: liveQueue[0].stream_url };
+  if (!currentPlaylist || !currentPlaylist.tracks.length) return null;
+  let fromIndex = currentTrackIndex;
+  if (fromIndex === -1 && queueResumeIndex >= 0) fromIndex = queueResumeIndex;
+  let idx;
+  if (isShuffle && shuffleOrder.length) {
+    const pos = shuffleOrder.indexOf(fromIndex);
+    const nextPos = (pos + 1) % shuffleOrder.length;
+    if (nextPos === 0 && repeatMode !== "all" && pos !== -1) return null;
+    idx = shuffleOrder[nextPos];
+  } else {
+    idx = fromIndex + 1;
+    if (idx >= currentPlaylist.tracks.length) {
+      if (repeatMode !== "all") return null;
+      idx = 0;
+    }
+  }
+  const t = currentPlaylist.tracks[idx];
+  return t ? { kind: "playlist", index: idx, streamUrl: t.stream_url } : null;
 }
 
 function maybeStartFadeOut() {
-  if (!crossfadeEnabled) return;
-  if (!masterGain || !audioCtx || fadingOut) return;
+  if (!crossfadeEnabled || !audioGraphReady || fadingOut) return;
+  if (repeatMode === "one") return;
   if (!audioEl.duration || !isFinite(audioEl.duration)) return;
   const remaining = audioEl.duration - audioEl.currentTime;
-  if (remaining <= FADE_SECONDS && remaining > 0) {
+  if (remaining <= CROSSFADE_SECONDS && remaining > 0) {
     fadingOut = true;
     const now = audioCtx.currentTime;
-    masterGain.gain.cancelScheduledValues(now);
-    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.linearRampToValueAtTime(FADE_FLOOR, now + remaining);
+    const g = activeGain();
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(g.gain.value, now);
+    g.gain.linearRampToValueAtTime(FADE_FLOOR, now + remaining);
+
+    const next = peekNextEntry();
+    if (next && next.streamUrl) {
+      const o = otherAudioEl();
+      const og = otherGain();
+      o.volume = audioEl.volume;
+      o.src = next.streamUrl;
+      o.currentTime = 0;
+      og.gain.cancelScheduledValues(now);
+      og.gain.setValueAtTime(0.0001, now);
+      og.gain.linearRampToValueAtTime(1, now + remaining);
+      o.play()
+        .then(() => {
+          crossfadePrepared = next;
+        })
+        .catch(() => {
+          // Ghost konnte nicht starten (Ladefehler o.ä.) - ended-Event
+          // nimmt dann einfach den normalen nextTrack()-Weg.
+          if (audioGraphReady) og.gain.setValueAtTime(0, audioCtx.currentTime);
+        });
+    }
   }
 }
+
+/* Rollentausch am Songende: das vorbereitete Element spielt bereits mit
+   vollem Gain - hier wird nur noch audioEl umgezeigt, der Alte gestoppt
+   und die UI/Metadaten-Seite über den handoff-Modus von playTrack/
+   playQueuedEntry nachgezogen (die dann NICHT neu laden). */
+function completeCrossfadeHandoff() {
+  const prepared = crossfadePrepared;
+  if (!prepared) return false;
+  crossfadePrepared = null;
+  const ghost = otherAudioEl();
+  if (ghost.paused || !ghost.getAttribute("src")) return false;
+
+  const old = audioEl;
+  audioEl = ghost;
+  fadingOut = false;
+  if (audioGraphReady) {
+    const now = audioCtx.currentTime;
+    activeGain().gain.cancelScheduledValues(now);
+    activeGain().gain.setValueAtTime(1, now);
+    otherGain().gain.cancelScheduledValues(now);
+    otherGain().gain.setValueAtTime(0, now);
+  }
+  old.pause();
+
+  if (prepared.kind === "user") {
+    const i = userQueue.findIndex((e) => e.stream_url === prepared.entry.stream_url);
+    if (i >= 0) userQueue.splice(i, 1);
+    playQueuedEntry(prepared.entry, "user", { handoff: true });
+  } else if (prepared.kind === "guest") {
+    const i = liveQueue.findIndex((e) => e.id === prepared.entry.id);
+    if (i >= 0) liveQueue.splice(i, 1);
+    playQueuedEntry(prepared.entry, "guest", { handoff: true });
+  } else {
+    playTrack(prepared.index, { handoff: true });
+  }
+
+  // Das echte "play"-Event des neuen aktiven Elements feuerte, als es noch
+  // inaktiver Ghost war - also unterdrückt. Synthetisch nachreichen, damit
+  // play/pause-Konsumenten (Android-Notification in nowplaying-native.js,
+  // MediaSession-Status, Play-Button) den neuen Titel mitbekommen.
+  audioEl.dispatchEvent(new Event("play"));
+  return true;
+}
+
+/* Seek zurück während der Ausblendphase: Fade + Ghost abbrechen, voller
+   Pegel zurück - sonst liefe der nächste Song mitten im aktuellen los. */
+audioEl.addEventListener("seeked", () => {
+  if (!audioGraphReady || !fadingOut) return;
+  const remaining = (audioEl.duration || 0) - audioEl.currentTime;
+  if (remaining > CROSSFADE_SECONDS + 0.25) {
+    fadingOut = false;
+    cancelCrossfadePrep();
+    const g = activeGain();
+    const now = audioCtx.currentTime;
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(1, now);
+  }
+});
+
+/* Pause/Play während der Überlappung gilt für beide Elemente - sonst
+   spielt der schon angezählte nächste Song alleine weiter. Wichtig:
+   Chrome feuert beim NATÜRLICHEN Songende erst "pause", dann "ended" -
+   dieses End-Pause darf den Ghost nicht stoppen, sonst platzt genau in
+   dem Moment die Übergabe (audioEl.ended unterscheidet die Fälle). */
+audioEl.addEventListener("pause", () => {
+  if (crossfadePrepared && !audioEl.ended) otherAudioEl().pause();
+});
+audioEl.addEventListener("play", () => {
+  if (crossfadePrepared) otherAudioEl().play().catch(() => {});
+});
 
 /* ===== Media Session API =====
    Wires the lock screen / notification shade / Windows media overlay to
@@ -2071,6 +2285,18 @@ function setCrossfadeEnabled(enabled) {
   localStorage.setItem(CROSSFADE_ENABLED_KEY, enabled ? "1" : "0");
   crossfadeToggleSwitch.classList.toggle("active", enabled);
   crossfadeToggleSwitch.setAttribute("aria-checked", String(enabled));
+  if (!enabled) {
+    // Mitten in einer laufenden Überblendung abgeschaltet: Ghost stoppen
+    // und den aktiven Song sofort auf vollen Pegel zurückholen.
+    cancelCrossfadePrep();
+    fadingOut = false;
+    if (audioGraphReady) {
+      const g = activeGain();
+      const now = audioCtx.currentTime;
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(1, now);
+    }
+  }
 }
 
 crossfadeToggleSwitch.addEventListener("click", () => setCrossfadeEnabled(!crossfadeEnabled));
