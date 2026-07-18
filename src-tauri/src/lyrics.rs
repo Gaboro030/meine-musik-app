@@ -189,22 +189,26 @@ pub async fn fetch_lyrics(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let mut hit = lrclib_get(&client, &title, &artist, duration).await;
-    if let Some(h) = &hit {
-        if !candidate_ok(&title, &artist, &h.track_name, &h.artist_name) {
-            hit = None;
-        }
-    }
-    if hit.is_none() {
-        hit = lrclib_search(&client, &title, &artist).await;
-    }
+    // Alle drei Quellen gleichzeitig anfragen statt nacheinander (get ->
+    // search -> ovh) - die Wartezeit ist dann die der langsamsten Quelle,
+    // nicht die Summe aller drei. Kostet ein paar unnoetige Requests wenn
+    // die erste Quelle schon einen Treffer liefert, spart dafuer im
+    // Normalfall spuerbar Zeit bis die Lyrics im Overlay stehen.
+    let (get_hit, search_hit, ovh_hit) = tokio::join!(
+        lrclib_get(&client, &title, &artist, duration),
+        lrclib_search(&client, &title, &artist),
+        lyrics_ovh(&client, &title, &artist),
+    );
+
+    let get_hit = get_hit.filter(|h| candidate_ok(&title, &artist, &h.track_name, &h.artist_name));
+    let hit = get_hit.or(search_hit);
 
     let (synced, mut plain) = match hit {
         Some(h) => (h.synced, h.plain),
         None => (None, None),
     };
     if plain.is_none() && synced.is_none() {
-        plain = lyrics_ovh(&client, &title, &artist).await;
+        plain = ovh_hit;
     }
 
     if synced.is_some() || plain.is_some() {
@@ -246,6 +250,14 @@ fn lyrics_sidecar_path(music_root: &std::path::Path, playlist: &str, file: &str)
 /// download) resolves straight from disk with zero network requests.
 /// `playlist`/`file` are optional (empty when playing a not-yet-downloaded
 /// guest-queue entry) - lookups still work then, just without caching.
+///
+/// A "nicht gefunden" Ergebnis wird NICHT auf die Platte geschrieben - sonst
+/// bleibt ein Song, bei dem lrclib mal kurz down war oder der Titel eine
+/// ungluecklich formatierte Variante hatte, fuer immer auf "keine Lyrics"
+/// haengen, obwohl ein spaeterer Versuch klappen wuerde. Stattdessen wird
+/// bei jedem `found:false` einfach beim naechsten Abspielen automatisch neu
+/// versucht. `force=true` (Retry-Button im Lyrics-Overlay) ignoriert einen
+/// vorhandenen Cache-Treffer zusaetzlich und fragt garantiert frisch an.
 #[tauri::command]
 pub async fn get_lyrics_cached(
     state: tauri::State<'_, crate::commands::AppState>,
@@ -254,19 +266,24 @@ pub async fn get_lyrics_cached(
     title: String,
     artist: String,
     duration: Option<f64>,
+    force: Option<bool>,
 ) -> Result<LyricsResult, String> {
     let sidecar = lyrics_sidecar_path(&state.music_root, &playlist, &file);
-    if let Some(path) = &sidecar {
-        if let Ok(text) = std::fs::read_to_string(path) {
-            if let Ok(cached) = serde_json::from_str::<LyricsResult>(&text) {
-                return Ok(cached);
+    if !force.unwrap_or(false) {
+        if let Some(path) = &sidecar {
+            if let Ok(text) = std::fs::read_to_string(path) {
+                if let Ok(cached) = serde_json::from_str::<LyricsResult>(&text) {
+                    return Ok(cached);
+                }
             }
         }
     }
     let result = fetch_lyrics(title, artist, duration).await?;
-    if let Some(path) = &sidecar {
-        if let Ok(json) = serde_json::to_string(&result) {
-            let _ = std::fs::write(path, json);
+    if result.found {
+        if let Some(path) = &sidecar {
+            if let Ok(json) = serde_json::to_string(&result) {
+                let _ = std::fs::write(path, json);
+            }
         }
     }
     Ok(result)

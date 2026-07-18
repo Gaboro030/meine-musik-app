@@ -342,6 +342,23 @@
             </div>
             <button type="button" id="crossfadeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
           </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Crossfade-Dauer</div>
+              <div class="settings-row-desc">Wie lange sich zwei Songs beim Wechsel überlappen</div>
+            </div>
+          </div>
+          <div class="settings-slider-row">
+            <input type="range" id="crossfadeSecondsSlider" min="1" max="10" step="1" value="4" />
+            <span id="crossfadeSecondsReadout" class="pbtools-readout">4s</span>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Mini-Player (Picture-in-Picture)</div>
+              <div class="settings-row-desc">Beim Minimieren schwebt ein kleines Player-Fenster über allen anderen Programmen</div>
+            </div>
+            <button type="button" id="pipToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
+          </div>
         </div>
         <div class="settings-section">
           <div class="settings-section-title">Cache &amp; Speicher</div>
@@ -488,6 +505,24 @@
     </div>
 
     <div class="player-bar-right">
+      <div class="eq-wrap">
+        <button id="pbToolsToggleBtn" class="pb-vol-icon eq-toggle-btn" title="Geschwindigkeit &amp; A-B-Loop">⏱️</button>
+        <div id="pbToolsPopover" class="eq-popover pbtools-popover hidden">
+          <div class="eq-popover-title">Geschwindigkeit</div>
+          <div class="pbtools-speed-row">
+            <input type="range" id="playbackRateSlider" min="0.5" max="2" step="0.05" value="1" />
+            <span id="playbackRateReadout" class="pbtools-readout">1.00x</span>
+          </div>
+          <button type="button" id="playbackRateResetBtn" class="btn-secondary pbtools-reset-btn">Zurücksetzen</button>
+          <div class="eq-popover-title pbtools-section-title">A-B-Loop</div>
+          <div class="pbtools-abloop-row">
+            <button type="button" id="abLoopSetABtn" class="btn-secondary">A setzen</button>
+            <button type="button" id="abLoopSetBBtn" class="btn-secondary">B setzen</button>
+            <button type="button" id="abLoopClearBtn" class="btn-secondary">Löschen</button>
+          </div>
+          <div id="abLoopStatus" class="pbtools-abloop-status">Kein Loop aktiv</div>
+        </div>
+      </div>
       <div class="eq-wrap">
         <button id="eqToggleBtn" class="pb-vol-icon eq-toggle-btn" title="Equalizer">🎚️</button>
         <div id="eqPopover" class="eq-popover hidden">

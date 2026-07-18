@@ -152,6 +152,7 @@
         title: q.get("title") || "",
         artist: q.get("artist") || "",
         duration: durRaw ? Number(durRaw) : null,
+        force: q.get("force") === "1",
       });
       return jsonResponse(data);
     }

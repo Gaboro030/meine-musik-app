@@ -1132,6 +1132,7 @@ function playTrack(index, opts = {}) {
   if (!opts.handoff) {
     resetFadeForNewTrack();
     playCountedForTrack = null; // frischer Start - auch bei sofortigem Replay wieder zählbar
+    clearAbLoop();
     audioEl.src = track.stream_url;
     audioEl.play().catch(() => {});
     // Weiter hören: nur bei langen Tracks (Mixes/Sets), und erst sobald die
@@ -2152,6 +2153,89 @@ document.addEventListener("click", (e) => {
   }
 });
 
+/* ===== Wiedergabegeschwindigkeit + A-B-Loop ===== */
+const pbToolsToggleBtn = document.getElementById("pbToolsToggleBtn");
+const pbToolsPopover = document.getElementById("pbToolsPopover");
+const playbackRateSlider = document.getElementById("playbackRateSlider");
+const playbackRateReadout = document.getElementById("playbackRateReadout");
+const playbackRateResetBtn = document.getElementById("playbackRateResetBtn");
+const abLoopSetABtn = document.getElementById("abLoopSetABtn");
+const abLoopSetBBtn = document.getElementById("abLoopSetBBtn");
+const abLoopClearBtn = document.getElementById("abLoopClearBtn");
+const abLoopStatus = document.getElementById("abLoopStatus");
+
+pbToolsToggleBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  pbToolsPopover.classList.toggle("hidden");
+  pbToolsToggleBtn.classList.toggle("active", !pbToolsPopover.classList.contains("hidden"));
+});
+document.addEventListener("click", (e) => {
+  if (!pbToolsPopover.classList.contains("hidden") && !pbToolsPopover.contains(e.target) && e.target !== pbToolsToggleBtn) {
+    pbToolsPopover.classList.add("hidden");
+    pbToolsToggleBtn.classList.remove("active");
+  }
+});
+
+// playbackRate ist eine Eigenschaft des <audio>-Elements selbst, nicht der
+// geladenen Datei - einmal auf beide Crossfade-Elemente gesetzt, bleibt sie
+// über jeden folgenden Songwechsel (src-Wechsel) hinweg automatisch erhalten.
+const PLAYBACK_RATE_KEY = "playbackRate";
+let playbackRate = Number(localStorage.getItem(PLAYBACK_RATE_KEY)) || 1;
+function setPlaybackRate(rate) {
+  playbackRate = Math.min(Math.max(rate, 0.5), 2);
+  localStorage.setItem(PLAYBACK_RATE_KEY, String(playbackRate));
+  audioElA.playbackRate = playbackRate;
+  audioElB.playbackRate = playbackRate;
+  playbackRateReadout.textContent = `${playbackRate.toFixed(2)}x`;
+  playbackRateSlider.value = String(playbackRate);
+}
+setPlaybackRate(playbackRate);
+playbackRateSlider.addEventListener("input", () => setPlaybackRate(Number(playbackRateSlider.value)));
+playbackRateResetBtn.addEventListener("click", () => setPlaybackRate(1));
+
+// A-B-Loop: zwei Zeitpunkte im aktuellen Track, zwischen denen wiederholt
+// wird - zum Mitsingen/Üben eines Abschnitts. Wird bei jedem echten
+// Songwechsel zurückgesetzt (siehe playTrack/playQueuedEntry).
+let loopPointA = null;
+let loopPointB = null;
+function updateAbLoopStatus() {
+  if (loopPointA != null && loopPointB != null) {
+    abLoopStatus.textContent = `Loop: ${fmtTime(loopPointA)} – ${fmtTime(loopPointB)}`;
+  } else if (loopPointA != null) {
+    abLoopStatus.textContent = `A bei ${fmtTime(loopPointA)} – jetzt B setzen`;
+  } else {
+    abLoopStatus.textContent = "Kein Loop aktiv";
+  }
+}
+function clearAbLoop() {
+  loopPointA = null;
+  loopPointB = null;
+  updateAbLoopStatus();
+}
+abLoopSetABtn.addEventListener("click", () => {
+  loopPointA = audioEl.currentTime;
+  if (loopPointB != null && loopPointB <= loopPointA) loopPointB = null;
+  updateAbLoopStatus();
+});
+abLoopSetBBtn.addEventListener("click", () => {
+  if (loopPointA == null) {
+    showToast("Erst Punkt A setzen.");
+    return;
+  }
+  if (audioEl.currentTime <= loopPointA) {
+    showToast("B muss nach A liegen.");
+    return;
+  }
+  loopPointB = audioEl.currentTime;
+  updateAbLoopStatus();
+});
+abLoopClearBtn.addEventListener("click", clearAbLoop);
+audioEl.addEventListener("timeupdate", () => {
+  if (loopPointA != null && loopPointB != null && audioEl.currentTime >= loopPointB) {
+    audioEl.currentTime = loopPointA;
+  }
+});
+
 /* ===== Echtes Dual-Audio-Crossfade =====
    In den letzten CROSSFADE_SECONDS eines Songs startet das INAKTIVE
    <audio>-Element den nächsten Titel bereits überlappend (sein Gain rampt
@@ -2160,15 +2244,29 @@ document.addEventListener("click", (e) => {
    keine Lücke. Kennt der Player keinen nächsten Titel, bleibt es beim
    weichen Ausblenden wie bisher. Manuelle Aktionen (Klick auf anderen
    Song, next/prev, Seek zurück) brechen die Vorbereitung sauber ab. */
-const CROSSFADE_SECONDS = 4;
+const CROSSFADE_SECONDS_KEY = "crossfadeSeconds";
+let crossfadeSeconds = Number(localStorage.getItem(CROSSFADE_SECONDS_KEY)) || 4;
+function setCrossfadeSeconds(seconds) {
+  crossfadeSeconds = Math.min(Math.max(seconds, 1), 10);
+  localStorage.setItem(CROSSFADE_SECONDS_KEY, String(crossfadeSeconds));
+}
+// Gapless (Crossfade AUS): der naechste Titel wird trotzdem schon kurz vor
+// Songende im Hintergrund geladen/gepuffert, damit "ended" -> Start ohne
+// Netzwerk-/Buffering-Luecke moeglich ist - nur eben ohne hoerbaren Fade.
+const GAPLESS_PRELOAD_SECONDS = 3;
 const FADE_IN_SECONDS = 1.2;
 const FADE_FLOOR = 0.02;
 let fadingOut = false;
 let crossfadePrepared = null; // {kind: "user"|"guest"|"playlist", entry?, index?, streamUrl}
+// true nur waehrend das Ghost-Element WIRKLICH ueberlappend mitspielt
+// (echter Crossfade) - unterscheidet das vom Gapless-Fall, wo der Ghost nur
+// vorab geladen, aber noch stumm/pausiert ist (siehe pause/play-Listener).
+let crossfadeOverlapActive = false;
 
 function cancelCrossfadePrep() {
   if (!crossfadePrepared) return;
   crossfadePrepared = null;
+  crossfadeOverlapActive = false;
   const o = otherAudioEl();
   o.pause();
   if (audioGraphReady) {
@@ -2221,11 +2319,28 @@ function peekNextEntry() {
 }
 
 function maybeStartFadeOut() {
-  if (!crossfadeEnabled || !audioGraphReady || fadingOut) return;
+  if (!audioGraphReady || fadingOut) return;
   if (repeatMode === "one") return;
   if (!audioEl.duration || !isFinite(audioEl.duration)) return;
   const remaining = audioEl.duration - audioEl.currentTime;
-  if (remaining <= CROSSFADE_SECONDS && remaining > 0) {
+
+  if (!crossfadeEnabled) {
+    // Gapless: kein hoerbarer Fade, aber der naechste Titel wird trotzdem
+    // rechtzeitig vorgeladen (nur src+load, noch stumm/pausiert), damit
+    // "ended" den Ghost ohne Netzwerk-Luecke sofort starten kann.
+    if (crossfadePrepared || remaining > GAPLESS_PRELOAD_SECONDS || remaining <= 0) return;
+    const next = peekNextEntry();
+    if (!next || !next.streamUrl) return;
+    const o = otherAudioEl();
+    o.pause();
+    o.src = next.streamUrl;
+    o.currentTime = 0;
+    o.load();
+    crossfadePrepared = next;
+    return;
+  }
+
+  if (remaining <= crossfadeSeconds && remaining > 0) {
     fadingOut = true;
     const now = audioCtx.currentTime;
     const g = activeGain();
@@ -2246,6 +2361,7 @@ function maybeStartFadeOut() {
       o.play()
         .then(() => {
           crossfadePrepared = next;
+          crossfadeOverlapActive = true;
         })
         .catch(() => {
           // Ghost konnte nicht starten (Ladefehler o.ä.) - ended-Event
@@ -2265,11 +2381,21 @@ function completeCrossfadeHandoff() {
   if (!prepared) return false;
   crossfadePrepared = null;
   const ghost = otherAudioEl();
-  if (ghost.paused || !ghost.getAttribute("src")) return false;
+  if (!ghost.getAttribute("src")) return false;
+
+  if (ghost.paused) {
+    // Gapless-Vorbereitung (Crossfade aus): Ghost war nur vorgeladen, noch
+    // nicht gestartet - jetzt sofort starten. War rechtzeitig gepuffert,
+    // also faktisch ohne Verzoegerung. Gain wird gleich unten (nach dem
+    // Rollentausch) ohnehin hart auf 1 gesetzt, kein Fade noetig.
+    ghost.currentTime = 0;
+    ghost.play().catch(() => {});
+  }
 
   const old = audioEl;
   audioEl = ghost;
   fadingOut = false;
+  crossfadeOverlapActive = false;
   if (audioGraphReady) {
     const now = audioCtx.currentTime;
     activeGain().gain.cancelScheduledValues(now);
@@ -2304,7 +2430,7 @@ function completeCrossfadeHandoff() {
 audioEl.addEventListener("seeked", () => {
   if (!audioGraphReady || !fadingOut) return;
   const remaining = (audioEl.duration || 0) - audioEl.currentTime;
-  if (remaining > CROSSFADE_SECONDS + 0.25) {
+  if (remaining > crossfadeSeconds + 0.25) {
     fadingOut = false;
     cancelCrossfadePrep();
     const g = activeGain();
@@ -2315,15 +2441,18 @@ audioEl.addEventListener("seeked", () => {
 });
 
 /* Pause/Play während der Überlappung gilt für beide Elemente - sonst
-   spielt der schon angezählte nächste Song alleine weiter. Wichtig:
-   Chrome feuert beim NATÜRLICHEN Songende erst "pause", dann "ended" -
-   dieses End-Pause darf den Ghost nicht stoppen, sonst platzt genau in
-   dem Moment die Übergabe (audioEl.ended unterscheidet die Fälle). */
+   spielt der schon angezählte nächste Song alleine weiter. Nur bei
+   crossfadeOverlapActive (Ghost spielt schon wirklich mit) - ein nur fürs
+   Gapless-Preload vorgeladener, noch pausierter Ghost darf hier NICHT
+   angestoßen werden, sonst liefen zwei Titel gleichzeitig. Wichtig: Chrome
+   feuert beim NATÜRLICHEN Songende erst "pause", dann "ended" - dieses
+   End-Pause darf den Ghost nicht stoppen, sonst platzt genau in dem Moment
+   die Übergabe (audioEl.ended unterscheidet die Fälle). */
 audioEl.addEventListener("pause", () => {
-  if (crossfadePrepared && !audioEl.ended) otherAudioEl().pause();
+  if (crossfadeOverlapActive && !audioEl.ended) otherAudioEl().pause();
 });
 audioEl.addEventListener("play", () => {
-  if (crossfadePrepared) otherAudioEl().play().catch(() => {});
+  if (crossfadeOverlapActive) otherAudioEl().play().catch(() => {});
 });
 
 /* ===== Media Session API =====
@@ -2558,6 +2687,109 @@ function setCrossfadeEnabled(enabled) {
 crossfadeToggleSwitch.addEventListener("click", () => setCrossfadeEnabled(!crossfadeEnabled));
 crossfadeToggleSwitch.classList.toggle("active", crossfadeEnabled);
 crossfadeToggleSwitch.setAttribute("aria-checked", String(crossfadeEnabled));
+
+const crossfadeSecondsSlider = document.getElementById("crossfadeSecondsSlider");
+const crossfadeSecondsReadout = document.getElementById("crossfadeSecondsReadout");
+crossfadeSecondsSlider.value = String(crossfadeSeconds);
+crossfadeSecondsReadout.textContent = `${crossfadeSeconds}s`;
+crossfadeSecondsSlider.addEventListener("input", () => {
+  setCrossfadeSeconds(Number(crossfadeSecondsSlider.value));
+  crossfadeSecondsReadout.textContent = `${crossfadeSeconds}s`;
+});
+
+/* ===== Mini-Player (Document Picture-in-Picture) =====
+   Nur Chromium-WebViews (Windows/Linux via WebView2/webkitgtk+Chromium)
+   unterstuetzen documentPictureInPicture - Toggle bleibt in Settings
+   einfach wirkungslos/versteckt, wenn die API fehlt. */
+const pipToggleSwitch = document.getElementById("pipToggleSwitch");
+const PIP_ENABLED_KEY = "pipOnMinimize";
+let pipEnabled = localStorage.getItem(PIP_ENABLED_KEY) === "1";
+const pipSupported = "documentPictureInPicture" in window;
+if (!pipSupported) {
+  pipToggleSwitch.disabled = true;
+  pipToggleSwitch.title = "Nicht unterstützt auf diesem System";
+}
+function setPipEnabled(enabled) {
+  pipEnabled = enabled && pipSupported;
+  localStorage.setItem(PIP_ENABLED_KEY, pipEnabled ? "1" : "0");
+  pipToggleSwitch.classList.toggle("active", pipEnabled);
+  pipToggleSwitch.setAttribute("aria-checked", String(pipEnabled));
+}
+pipToggleSwitch.addEventListener("click", () => {
+  if (!pipSupported) return;
+  setPipEnabled(!pipEnabled);
+});
+setPipEnabled(pipEnabled);
+
+let pipWindow = null;
+async function openMiniPlayer() {
+  if (!pipSupported || pipWindow) return;
+  try {
+    pipWindow = await window.documentPictureInPicture.requestWindow({ width: 320, height: 130 });
+  } catch (_) {
+    pipWindow = null;
+    return;
+  }
+  const style = pipWindow.document.createElement("style");
+  style.textContent = `
+    body { margin: 0; background: #101014; color: #fff; font-family: inherit; display: flex; align-items: center; gap: 12px; padding: 14px; box-sizing: border-box; height: 100%; }
+    img { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+    .mp-info { min-width: 0; flex: 1; }
+    .mp-title { font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mp-artist { font-size: 0.8rem; opacity: 0.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mp-controls { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+    button { background: none; border: none; color: #fff; font-size: 1.4rem; cursor: pointer; padding: 4px; }
+    button:hover { opacity: 0.7; }
+  `;
+  pipWindow.document.head.appendChild(style);
+  const cover = pipWindow.document.createElement("img");
+  const info = pipWindow.document.createElement("div");
+  info.className = "mp-info";
+  const titleEl = pipWindow.document.createElement("div");
+  titleEl.className = "mp-title";
+  const artistEl = pipWindow.document.createElement("div");
+  artistEl.className = "mp-artist";
+  info.append(titleEl, artistEl);
+  const controls = pipWindow.document.createElement("div");
+  controls.className = "mp-controls";
+  const prevBtn = pipWindow.document.createElement("button");
+  prevBtn.textContent = "⏮";
+  const playBtn = pipWindow.document.createElement("button");
+  const nextBtn = pipWindow.document.createElement("button");
+  nextBtn.textContent = "⏭";
+  controls.append(prevBtn, playBtn, nextBtn);
+  pipWindow.document.body.append(cover, info, controls);
+
+  function refresh() {
+    cover.src = pbCover.src;
+    titleEl.textContent = pbTitle.textContent;
+    artistEl.textContent = pbArtist.textContent;
+    playBtn.textContent = audioEl.paused ? "▶" : "⏸";
+  }
+  refresh();
+  prevBtn.addEventListener("click", () => pbPrev.click());
+  nextBtn.addEventListener("click", () => pbNext.click());
+  playBtn.addEventListener("click", () => pbPlay.click());
+  audioEl.addEventListener("play", refresh);
+  audioEl.addEventListener("pause", refresh);
+  const metaTimer = setInterval(refresh, 1000);
+
+  pipWindow.addEventListener("pagehide", () => {
+    clearInterval(metaTimer);
+    pipWindow = null;
+  });
+}
+function closeMiniPlayer() {
+  if (pipWindow) pipWindow.close();
+  pipWindow = null;
+}
+window.addEventListener("blur", () => {
+  if (pipEnabled && nowPlayingMeta && document.visibilityState === "hidden") openMiniPlayer();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && pipEnabled && nowPlayingMeta) openMiniPlayer();
+  else if (document.visibilityState === "visible") closeMiniPlayer();
+});
 
 /* ===== Settings: Handy-Sync beim Start ===== */
 const SYNC_AUTO_START_KEY = "syncAutoStart";
@@ -3102,9 +3334,12 @@ function lyricsCacheKey(playlist, file, title, artist) {
   return file ? `${playlist}\u0000${file}` : `${title}\u0000${artist}`;
 }
 
-async function fetchLyricsData(playlist, file, title, artist, duration) {
+async function fetchLyricsData(playlist, file, title, artist, duration, force = false) {
   const key = lyricsCacheKey(playlist, file, title, artist);
-  if (lyricsMemCache.has(key)) return lyricsMemCache.get(key);
+  // force=true (Retry-Button) ignoriert einen im-Memory gecachten
+  // "nicht gefunden"-Treffer bewusst und fragt garantiert frisch an -
+  // sonst wuerde dieselbe alte Antwort einfach nochmal zurueckgegeben.
+  if (!force && lyricsMemCache.has(key)) return lyricsMemCache.get(key);
   const promise = (async () => {
     const params = new URLSearchParams({
       playlist: playlist || "",
@@ -3113,6 +3348,7 @@ async function fetchLyricsData(playlist, file, title, artist, duration) {
       artist: artist || "",
     });
     if (duration && isFinite(duration) && duration > 0) params.set("duration", Math.round(duration));
+    if (force) params.set("force", "1");
     const res = await fetch(`/api/lyrics?${params.toString()}`);
     return res.json();
   })();
@@ -3395,11 +3631,22 @@ function renderSyncedLyrics(lines) {
   updateLyricsHighlight();
 }
 
-function renderStaticLyrics(text) {
+function renderStaticLyrics(text, onRetry) {
   lyricsSyncLines = null;
   lyricsActiveIdx = -1;
   lyricsBody.classList.add("static");
-  lyricsBody.textContent = text;
+  lyricsBody.textContent = "";
+  const textEl = document.createElement("div");
+  textEl.textContent = text;
+  lyricsBody.appendChild(textEl);
+  if (onRetry) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "lyrics-retry-btn";
+    btn.textContent = "🔄 Erneut versuchen";
+    btn.addEventListener("click", onRetry);
+    lyricsBody.appendChild(btn);
+  }
 }
 
 /* Karaoke wipe: the active line's text fill sweeps left-to-right in real
@@ -3464,7 +3711,7 @@ function stopLyricsLoop() {
   }
 }
 
-async function openLyrics() {
+async function openLyrics(force = false) {
   if (!nowPlayingMeta) {
     showToast("Gerade wird kein Titel abgespielt.");
     return;
@@ -3477,9 +3724,9 @@ async function openLyrics() {
   lyricsArtist.textContent = meta.artist || "Unbekannter Interpret";
   lyricsSyncOffset = loadLyricsSyncOffsetFor(meta.title, meta.artist);
   updateLyricsSyncReadout();
-  renderStaticLyrics("Lade Songtext …");
+  renderStaticLyrics(force ? "Suche erneut …" : "Lade Songtext …");
   try {
-    const data = await fetchLyricsData(meta.playlist, meta.file, meta.title, meta.artist, audioEl.duration);
+    const data = await fetchLyricsData(meta.playlist, meta.file, meta.title, meta.artist, audioEl.duration, force);
     if (token !== lyricsRequestToken) return; // a newer track's request superseded this one
     if (data.synced) {
       const lines = parseLrc(data.synced);
@@ -3488,9 +3735,13 @@ async function openLyrics() {
         return;
       }
     }
-    renderStaticLyrics(data.lyrics || `${meta.title}\n\nKeine Lyrics gefunden.`);
+    if (data.found) {
+      renderStaticLyrics(data.lyrics);
+    } else {
+      renderStaticLyrics(`${meta.title}\n\nKeine Lyrics gefunden.`, () => openLyrics(true));
+    }
   } catch (err) {
-    if (token === lyricsRequestToken) renderStaticLyrics("Songtext konnte nicht geladen werden.");
+    if (token === lyricsRequestToken) renderStaticLyrics("Songtext konnte nicht geladen werden.", () => openLyrics(true));
   }
 }
 

@@ -1908,6 +1908,21 @@ body.has-dynamic-colors .playlist-hero {
   mask-image: none;
 }
 
+.lyrics-retry-btn {
+  margin-top: 18px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sp-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.lyrics-retry-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.lyrics-retry-btn:active { transform: scale(0.97); }
+
 .lyrics-line {
   position: relative;
   font-size: 1.75rem;
@@ -2058,6 +2073,19 @@ body.has-dynamic-colors .playlist-hero {
   cursor: pointer;
 }
 .eq-slider-label { font-size: 0.72rem; color: var(--sp-muted); }
+
+.pbtools-popover { width: 220px; }
+.pbtools-section-title { margin-top: 16px; }
+.pbtools-speed-row { display: flex; align-items: center; gap: 10px; }
+.pbtools-speed-row input[type="range"] { flex: 1; accent-color: var(--sp-green); cursor: pointer; }
+.pbtools-readout { font-size: 0.82rem; font-weight: 700; color: var(--sp-text); min-width: 44px; text-align: right; }
+.pbtools-reset-btn { width: 100%; margin-top: 8px; padding: 6px 12px; font-size: 0.78rem; }
+.pbtools-abloop-row { display: flex; gap: 6px; }
+.pbtools-abloop-row .btn-secondary { flex: 1; padding: 6px 8px; font-size: 0.74rem; white-space: nowrap; }
+.pbtools-abloop-status { margin-top: 10px; font-size: 0.76rem; color: var(--sp-muted); text-align: center; }
+
+.settings-slider-row { display: flex; align-items: center; gap: 10px; padding: 0 0 10px; }
+.settings-slider-row input[type="range"] { flex: 1; accent-color: var(--sp-green); cursor: pointer; }
 
 /* ========= SHUFFLE / REPEAT ICONS ========= */
 /* 🔀/🔁/🔂 are full-color emoji on Windows (Segoe UI Emoji) and Android -
