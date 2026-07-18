@@ -13,10 +13,12 @@ mkdirSync(distApp, { recursive: true });
 // Both the Windows and Linux CI jobs call this script identically via
 // `npm run build` (no arg) - so the file-prefix can't be a fixed "desktop"
 // literal, or Windows and Linux artifacts collide/mismatch the CI upload
-// step's per-OS "dist-app/windows-*" / "dist-app/linux-*" path filter.
+// step's per-OS "dist-app/windows-*" / "dist-app/ubuntu-*" path filter.
 // Deriving it from process.platform makes each runner tag its own output
-// correctly without the workflow having to pass anything in.
-const platformPrefix = { win32: "windows", linux: "linux", darwin: "macos" }[process.platform] || "desktop";
+// correctly without the workflow having to pass anything in. "ubuntu" (not
+// generic "linux") because the bundle only produces a .deb now - a real
+// Ubuntu/Debian package, not a distro-agnostic AppImage anymore.
+const platformPrefix = { win32: "windows", linux: "ubuntu", darwin: "macos" }[process.platform] || "desktop";
 const mode = process.argv[2] === "android" ? "android" : platformPrefix;
 
 function walk(dir, exts) {

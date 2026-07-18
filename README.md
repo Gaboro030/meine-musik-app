@@ -55,7 +55,7 @@ Keine Cloud, kein Konto, keine Werbung. Deine Musik gehört dir.
 | Plattform | Artifact | Installation |
 |---|---|---|
 | 🪟 Windows | `dist-app-windows` | ZIP entpacken → `.exe`-Installer starten |
-| 🐧 Linux | `dist-app-linux` | `.deb` installieren oder `.AppImage` ausführbar machen |
+| 🐧 Ubuntu/Debian | `dist-app-ubuntu` | `.deb` installieren: `sudo dpkg -i *.deb` |
 | 🤖 Android | `dist-app-android` | ZIP entpacken → `MeineMusik.apk` aufs Handy → antippen → installieren |
 
 > **Android:** Beim ersten Mal fragt das Handy nach „Unbekannte Apps installieren" — einmal erlauben, fertig.
