@@ -1398,6 +1398,7 @@ function playTrack(index, opts = {}) {
   prefetchLyrics(peekNextTrack());
   prefetchedNextForTrack = -1;
   updateNextUpPreview();
+  updateVideoButtonVisibility();
 }
 
 /* Plays a track handed over from a queue (own "Als nächstes"-Warteschlange
@@ -1444,6 +1445,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
     fetch(`/api/queue/${entry.id}`, { method: "DELETE" }).catch(() => {});
     showToast(`👥 Aus der Warteschlange: „${entry.title}"`);
   }
+  updateVideoButtonVisibility();
   renderQueuePanel();
 }
 
@@ -2994,6 +2996,51 @@ visualizerOverlay.addEventListener("click", (e) => {
 });
 window.addEventListener("resize", () => {
   if (!visualizerOverlay.classList.contains("hidden")) resizeVisualizerCanvas();
+});
+
+/* ===== Video-Ansicht fuer mp4-Downloads =====
+   Normalerweise laeuft auch ein mp4-Download einfach ueber das <audio>-
+   Element (Browser koennen die Audiospur eines Videos problemlos darueber
+   abspielen) - nur ohne sichtbares Bild. Diese Ansicht schaltet kurz auf
+   ein eigenes <video>-Element um (Position uebernommen, audioEl pausiert,
+   damit nicht beides gleichzeitig Ton ausgibt) und beim Schliessen wieder
+   zurueck. */
+const pbVideo = document.getElementById("pbVideo");
+const videoOverlay = document.getElementById("videoOverlay");
+const videoPlayerEl = document.getElementById("videoPlayerEl");
+const videoCloseBtn = document.getElementById("videoCloseBtn");
+let videoWasPlaying = false;
+
+function isCurrentTrackVideo() {
+  return !!(nowPlayingMeta && nowPlayingMeta.file && nowPlayingMeta.file.toLowerCase().endsWith(".mp4"));
+}
+function updateVideoButtonVisibility() {
+  pbVideo.classList.toggle("hidden", !isCurrentTrackVideo());
+}
+
+function openVideoView() {
+  if (!isCurrentTrackVideo()) return;
+  videoWasPlaying = !audioEl.paused;
+  audioEl.pause();
+  videoPlayerEl.src = nowPlayingMeta.stream_url;
+  videoPlayerEl.currentTime = audioEl.currentTime;
+  videoOverlay.classList.remove("hidden");
+  videoPlayerEl.play().catch(() => {});
+}
+
+function closeVideoView() {
+  audioEl.currentTime = videoPlayerEl.currentTime;
+  videoPlayerEl.pause();
+  videoPlayerEl.removeAttribute("src");
+  videoPlayerEl.load();
+  videoOverlay.classList.add("hidden");
+  if (videoWasPlaying) audioEl.play().catch(() => {});
+}
+
+pbVideo.addEventListener("click", openVideoView);
+videoCloseBtn.addEventListener("click", closeVideoView);
+videoOverlay.addEventListener("click", (e) => {
+  if (e.target === videoOverlay) closeVideoView();
 });
 
 /* ===== Settings: Crossfade toggle ===== */

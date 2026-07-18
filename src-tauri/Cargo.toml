@@ -50,6 +50,10 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # jpeg+png (Decode) noetig - reine Rust-Codecs, kein System-libjpeg, damit
 # unkritisch fuers Android-NDK-Cross-Compile.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# Komplett-Bibliotheks-Export/Import als ZIP (Backup). "deflate" statt der
+# default-Features, damit kein bzip2/zstd-C-Code mitkompiliert wird (siehe
+# Cross-Compile-Vorsicht bei den anderen Abhaengigkeiten hier).
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

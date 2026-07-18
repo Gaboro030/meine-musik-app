@@ -420,6 +420,37 @@
           </div>
         </div>
         <div class="settings-section">
+          <div class="settings-section-title">Backup</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Einstellungen sichern</div>
+              <div class="settings-row-desc">Themes, Play-Verlauf & Co. als kleine Datei speichern (z.B. in einen Cloud-Ordner)</div>
+            </div>
+            <button type="button" id="exportSettingsBtn" class="btn-secondary">Sichern</button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Einstellungen wiederherstellen</div>
+              <div class="settings-row-desc">Aus einer zuvor gesicherten Datei zurückspielen</div>
+            </div>
+            <button type="button" id="importSettingsBtn" class="btn-secondary">Wiederherstellen</button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Komplette Bibliothek exportieren</div>
+              <div class="settings-row-desc">Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern</div>
+            </div>
+            <button type="button" id="exportZipBtn" class="btn-secondary">Als ZIP exportieren</button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Bibliothek aus ZIP wiederherstellen</div>
+              <div class="settings-row-desc">Fehlende Titel aus einem ZIP-Backup ergänzen (vorhandene Dateien bleiben unangetastet)</div>
+            </div>
+            <button type="button" id="importZipBtn" class="btn-secondary">Aus ZIP importieren</button>
+          </div>
+        </div>
+        <div class="settings-section">
           <div class="settings-section-title">Sync &amp; Verbindung</div>
           <div class="settings-row">
             <div>
@@ -531,6 +562,7 @@
       </div>
       <button id="pbLike" class="pb-like" title="Merken">♡</button>
       <button id="pbLyrics" class="pb-lyrics" title="Songtext anzeigen">🎤</button>
+      <button id="pbVideo" class="pb-video hidden" title="Video ansehen">🎬</button>
       <button id="pbQueue" class="pb-queue" title="Warteschlange anzeigen"></button>
     </div>
 
@@ -618,6 +650,15 @@
     <button type="button" id="visualizerCloseBtn" class="modal-close visualizer-close">✕</button>
   </div>
 
+  <!-- Video-Ansicht fuer mp4-Downloads - normalerweise laeuft nur die
+       Audiospur ueber das <audio>-Element (siehe player.js), hier wird
+       kurzzeitig auf ein <video>-Element umgeschaltet, damit man das Bild
+       sehen kann (z.B. offline im Flugzeug). -->
+  <div id="videoOverlay" class="video-overlay hidden">
+    <video id="videoPlayerEl" class="video-player-el" controls playsinline></video>
+    <button type="button" id="videoCloseBtn" class="modal-close visualizer-close">✕</button>
+  </div>
+
   <!-- Warteschlangen-Panel: "Als Nächstes" (eigene Queue, umsortierbar),
        "Von Gästen" (Party-Queue) und Vorschau der danach folgenden
        Playlist-Titel. Geöffnet über den Queue-Button in der Player-Bar. -->
@@ -638,6 +679,7 @@
   <script src="themes.js"></script>
   <script src="sync.js"></script>
   <script src="m3u-export.js"></script>
+  <script src="backup.js"></script>
   <script src="mobile-ui.js"></script>
   <script type="module" src="potoken-init.js"></script>
 </body>

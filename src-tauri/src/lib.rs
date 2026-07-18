@@ -1,3 +1,4 @@
+mod backup;
 mod commands;
 mod discovery;
 mod duplicates;
@@ -134,6 +135,8 @@ pub fn run() {
             party::party_remove_participant,
             commands::export_playlist_m3u,
             duplicates::find_duplicates,
+            backup::export_library_zip,
+            backup::import_library_zip,
             party::queue_list,
             party::queue_remove,
             party::party_chat_list,

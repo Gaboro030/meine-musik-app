@@ -1673,6 +1673,13 @@ body.has-dynamic-colors .playlist-hero {
 }
 .pb-lyrics:hover { color: var(--sp-text); }
 .pb-lyrics.active { color: var(--sp-green); }
+.pb-video {
+  font-size: 1.05rem;
+  color: var(--sp-muted);
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+.pb-video:hover { color: var(--sp-text); }
 
 /* Queue-Button: flaches Mask-Icon (Listen-Symbol mit Play-Dreieck),
    gleiche Technik wie SHUFFLE / REPEAT ICONS weiter unten. */
@@ -1900,6 +1907,17 @@ body.has-dynamic-colors .playlist-hero {
   background: rgba(255, 255, 255, 0.08);
 }
 .visualizer-close:hover { background: rgba(255, 255, 255, 0.16); }
+
+.video-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.video-player-el { width: 100%; height: 100%; object-fit: contain; }
 
 /* ========= LYRICS OVERLAY ========= */
 .lyrics-overlay {
