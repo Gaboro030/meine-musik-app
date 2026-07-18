@@ -3308,19 +3308,41 @@ let videoIsPreview = false;
 function isCurrentTrackVideo() {
   return !!(nowPlayingMeta && nowPlayingMeta.file && nowPlayingMeta.file.toLowerCase().endsWith(".mp4"));
 }
+// Button gilt jetzt für JEDEN laufenden Track, nicht nur lokale mp4-
+// Downloads: ohne lokales Video wird stattdessen live nach dem passenden
+// YouTube-Video gesucht (siehe openVideoView) - "auch bei heruntergeladenen
+// [MP3s]" sollte der Button funktionieren, nicht nur verschwinden.
 function updateVideoButtonVisibility() {
-  pbVideo.classList.toggle("hidden", !isCurrentTrackVideo());
+  pbVideo.classList.toggle("hidden", !nowPlayingMeta);
 }
 
-function openVideoView() {
-  if (!isCurrentTrackVideo()) return;
-  videoIsPreview = false;
-  videoWasPlaying = !audioEl.paused;
-  audioEl.pause();
-  videoPlayerEl.src = nowPlayingMeta.stream_url;
-  videoPlayerEl.currentTime = audioEl.currentTime;
-  videoOverlay.classList.remove("hidden");
-  videoPlayerEl.play().catch(() => {});
+/* Bei einem lokalen mp4-Download: sofort umschalten, kein Netzwerk nötig
+   (bestehendes Verhalten). Bei jedem anderen Track (z.B. als MP3
+   heruntergeladen): Titel+Interpret über dieselbe Online-Suche wie die
+   Suchleiste jagen und das erste Ergebnis als Live-Vorschau öffnen -
+   dieselbe Stream-Auflösung wie bei den Discover-/Suchergebnis-Karten. */
+async function openVideoView() {
+  if (!nowPlayingMeta) return;
+  if (isCurrentTrackVideo()) {
+    videoIsPreview = false;
+    videoWasPlaying = !audioEl.paused;
+    audioEl.pause();
+    videoPlayerEl.src = nowPlayingMeta.stream_url;
+    videoPlayerEl.currentTime = audioEl.currentTime;
+    videoOverlay.classList.remove("hidden");
+    videoPlayerEl.play().catch(() => {});
+    return;
+  }
+  try {
+    const q = `${nowPlayingMeta.title} ${nowPlayingMeta.artist || ""}`.trim();
+    const res = await fetch(`/api/library/search-online?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const hit = (data.results || [])[0];
+    if (!hit) throw new Error("Kein passendes Video gefunden.");
+    await openVideoPreview(hit.video_id, nowPlayingMeta.title);
+  } catch (err) {
+    showToast(err.message || "Kein passendes Video gefunden.");
+  }
 }
 
 /* Video direkt aus Suche/Discover ansehen, ohne es vorher über den
