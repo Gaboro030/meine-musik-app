@@ -195,6 +195,7 @@
         <div class="search-bar">
           <span class="search-icon">🔍</span>
           <input type="text" id="searchInput" class="search-input" placeholder="Songs, Playlists, Interpreten suchen…" autocomplete="off" />
+          <div id="searchHistoryDropdown" class="search-history-dropdown hidden"></div>
         </div>
         <a href="downloader.html" class="header-downloader-btn">⬇️ Downloader</a>
       </header>
@@ -247,7 +248,7 @@
         </div>
 
         <div id="playlistView" class="view-section hidden">
-          <div class="playlist-hero" id="playlistDropzone">
+          <div class="playlist-hero">
             <img id="playlistCover" class="playlist-cover" src="" alt="" />
             <div class="playlist-meta">
               <span class="playlist-kind">PLAYLIST</span>
@@ -259,22 +260,31 @@
               </div>
               <div class="playlist-sub">
                 <span id="playlistTrackCount">0 Titel</span>
-                <span class="playlist-drop-hint">— Songs hierher ziehen zum Hinzufügen</span>
+                <span class="playlist-drop-hint">— Songs von überall auf dieser Seite ablegen, um sie hinzuzufügen</span>
               </div>
             </div>
-            <div class="dropzone-overlay" id="playlistDropOverlay">
-              <div class="dropzone-icon">📁</div>
-              <div>Songs hier ablegen</div>
-            </div>
+          </div>
+          <div class="dropzone-overlay" id="playlistDropOverlay">
+            <div class="dropzone-icon">📁</div>
+            <div>Songs hier ablegen</div>
           </div>
 
           <div class="playlist-actions">
             <button id="playAllBtn" class="btn-play-circle" title="Alle abspielen"></button>
             <button id="shuffleAllBtn" class="btn-shuffle-circle" title="Zufallswiedergabe"></button>
             <button id="offlineDownloadBtn" class="btn-offline-circle" title="Offline herunterladen"><span class="btn-icon-download"></span> Offline herunterladen</button>
+            <button id="bulkSelectBtn" type="button" class="btn-secondary" title="Mehrere Titel für Album-/Cover-Änderung auswählen">☑️ Auswählen</button>
           </div>
 
-          <table class="track-table">
+          <div id="bulkEditBar" class="bulk-edit-bar hidden">
+            <span id="bulkEditCount" class="bulk-edit-count">0 ausgewählt</span>
+            <button type="button" id="bulkEditAlbumBtn" class="btn-secondary" disabled>Album ändern</button>
+            <button type="button" id="bulkEditCoverBtn" class="btn-secondary" disabled>Cover ändern</button>
+            <input type="file" id="bulkEditCoverInput" accept="image/*" class="hidden" />
+            <button type="button" id="bulkEditCancelBtn" class="btn-secondary">Fertig</button>
+          </div>
+
+          <table class="track-table" id="trackTable">
             <thead>
               <tr>
                 <th class="col-index">#</th>
@@ -400,6 +410,13 @@
               <div class="settings-row-desc">Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln</div>
             </div>
             <button type="button" id="normalizeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Stille überspringen (Skip-Silence)</div>
+              <div class="settings-row-desc">Leise Anfänge/Enden bei jedem Song automatisch überspringen</div>
+            </div>
+            <button type="button" id="skipSilenceToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
           </div>
           <div class="settings-row">
             <div>

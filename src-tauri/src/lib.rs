@@ -111,6 +111,7 @@ pub fn run() {
             commands::delete_playlist,
             commands::add_track_to_playlist,
             commands::remove_track_from_playlist,
+            commands::bulk_update_tracks,
             commands::upload_track,
             commands::fetch_thumbnail,
             commands::download_track,

@@ -25,12 +25,21 @@ const discoverArtistRows = document.getElementById("discoverArtistRows");
 
 const renamePlaylistBtn = document.getElementById("renamePlaylistBtn");
 const deletePlaylistBtn = document.getElementById("deletePlaylistBtn");
-const playlistDropzone = document.getElementById("playlistDropzone");
+const playlistDropzone = document.getElementById("playlistView");
 const libraryDropzone = document.getElementById("libraryDropzone");
 const libraryFileInput = document.getElementById("libraryFileInput");
 const offlineDownloadBtn = document.getElementById("offlineDownloadBtn");
+const trackTable = document.getElementById("trackTable");
+const bulkSelectBtn = document.getElementById("bulkSelectBtn");
+const bulkEditBar = document.getElementById("bulkEditBar");
+const bulkEditCount = document.getElementById("bulkEditCount");
+const bulkEditAlbumBtn = document.getElementById("bulkEditAlbumBtn");
+const bulkEditCoverBtn = document.getElementById("bulkEditCoverBtn");
+const bulkEditCoverInput = document.getElementById("bulkEditCoverInput");
+const bulkEditCancelBtn = document.getElementById("bulkEditCancelBtn");
 
 const searchInput = document.getElementById("searchInput");
+const searchHistoryDropdown = document.getElementById("searchHistoryDropdown");
 const searchView = document.getElementById("searchView");
 const searchSongsGrid = document.getElementById("searchSongsGrid");
 const searchPlaylistsGrid = document.getElementById("searchPlaylistsGrid");
@@ -790,10 +799,25 @@ function renderDiscoverArtistRows(rows) {
   });
 }
 
+/* Geteilt mit downloader.js über denselben localStorage-Key: die
+   Downloader-Seite ist die einzige Stelle mit echter Format/Qualitäts-
+   Auswahl - diese Schnell-Download-Wege (Discover-⬇, "Zu Playlist
+   hinzufügen" aus der Suche) haben keine eigene UI dafür und übernehmen
+   stattdessen automatisch, was der Nutzer dort zuletzt gewählt hat. */
+const QUALITY_PRESET_KEY = "downloadQualityPreset";
+function getQualityPreset() {
+  try {
+    const p = JSON.parse(localStorage.getItem(QUALITY_PRESET_KEY) || "null");
+    if (p && (p.format === "mp3" || p.format === "mp4")) return p;
+  } catch (_) { /* fällt durch auf Standard */ }
+  return { format: "mp3", bitrate: "320", quality: "best" };
+}
+
 async function downloadDiscoverTrack(rec, btn) {
   btn.disabled = true;
   btn.textContent = "⏳";
   try {
+    const preset = getQualityPreset();
     const res = await fetch("/api/library/download", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -804,6 +828,9 @@ async function downloadDiscoverTrack(rec, btn) {
         duration: rec.duration,
         thumbnail: rec.cover,
         playlist: "Entdeckt",
+        format: preset.format,
+        bitrate: preset.bitrate,
+        quality: preset.quality,
       }),
     });
     const data = await res.json();
@@ -925,6 +952,7 @@ function renderSidebar() {
 function selectPlaylist(idx) {
   currentPlaylist = library[idx];
   if (!currentPlaylist) return;
+  if (bulkSelectMode) setBulkSelectMode(false);
 
   const cameFrom = currentView === "playlist" ? previousView : currentView;
   showView("playlist");
@@ -1151,6 +1179,82 @@ recsRefreshBtn.addEventListener("click", async () => {
   setTimeout(() => recsRefreshBtn.classList.remove("spinning"), 600);
 });
 
+/* ===== Bulk-Edit =====
+   Mehrere Titel markieren, dann Album/Cover für alle auf einmal ändern
+   (statt jeden Track einzeln). Checkboxen leben in der bestehenden
+   .col-index-Zelle jeder Zeile, per CSS nur im Auswahlmodus sichtbar - kein
+   Re-Render der Tabelle beim Umschalten nötig. */
+let bulkSelectMode = false;
+let bulkSelectedFiles = new Set();
+
+function toggleTrackSelection(file, selected) {
+  if (selected) bulkSelectedFiles.add(file);
+  else bulkSelectedFiles.delete(file);
+  updateBulkEditBar();
+}
+
+function updateBulkEditBar() {
+  const count = bulkSelectedFiles.size;
+  bulkEditCount.textContent = `${count} ausgewählt`;
+  bulkEditAlbumBtn.disabled = count === 0;
+  bulkEditCoverBtn.disabled = count === 0;
+}
+
+function setBulkSelectMode(enabled) {
+  bulkSelectMode = enabled;
+  bulkSelectedFiles.clear();
+  trackTable.classList.toggle("bulk-select-active", enabled);
+  bulkSelectBtn.classList.toggle("active", enabled);
+  bulkEditBar.classList.toggle("hidden", !enabled);
+  trackTable.querySelectorAll(".track-select-checkbox").forEach((cb) => { cb.checked = false; });
+  updateBulkEditBar();
+}
+
+async function submitBulkUpdate(payload) {
+  if (!currentPlaylist || !bulkSelectedFiles.size) return;
+  const playlistName = currentPlaylist.name;
+  try {
+    const res = await fetch("/api/library/bulk-update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        playlist_name: playlistName,
+        filenames: [...bulkSelectedFiles],
+        ...payload,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Bulk-Bearbeitung fehlgeschlagen.");
+    const failedNote = data.failed ? `, ${data.failed} fehlgeschlagen` : "";
+    showToast(`✅ ${data.updated} Titel aktualisiert${failedNote}`);
+    setBulkSelectMode(false);
+    await refreshLibrary();
+    const idx = library.findIndex((p) => p.name === playlistName);
+    if (idx !== -1) selectPlaylist(idx);
+  } catch (err) {
+    showToast(err.message || "Bulk-Bearbeitung fehlgeschlagen.");
+  }
+}
+
+bulkSelectBtn.addEventListener("click", () => setBulkSelectMode(!bulkSelectMode));
+bulkEditCancelBtn.addEventListener("click", () => setBulkSelectMode(false));
+bulkEditAlbumBtn.addEventListener("click", () => {
+  const value = window.prompt(`Neues Album für ${bulkSelectedFiles.size} Titel:`, "");
+  if (value === null) return;
+  submitBulkUpdate({ album: value });
+});
+bulkEditCoverBtn.addEventListener("click", () => bulkEditCoverInput.click());
+bulkEditCoverInput.addEventListener("change", async () => {
+  const file = bulkEditCoverInput.files[0];
+  bulkEditCoverInput.value = "";
+  if (!file) return;
+  const buf = await file.arrayBuffer();
+  await submitBulkUpdate({
+    cover_data: Array.from(new Uint8Array(buf)),
+    cover_mime: file.type || "image/jpeg",
+  });
+});
+
 /* ===== Track Table =====
    Lazy-Loading fuer grosse Playlists: der erste Batch rendert synchron
    (Ansicht steht sofort da), der Rest folgt haeppchenweise ueber
@@ -1167,6 +1271,15 @@ function buildTrackRow(t, i) {
     const tdIndex = document.createElement("td");
     tdIndex.className = "col-index";
     tdIndex.innerHTML = `<span class="track-num">${i + 1}</span><span class="track-play-icon">▶</span>`;
+    const selectCb = document.createElement("input");
+    selectCb.type = "checkbox";
+    selectCb.className = "track-select-checkbox";
+    selectCb.checked = bulkSelectedFiles.has(t.file);
+    selectCb.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleTrackSelection(t.file, selectCb.checked);
+    });
+    tdIndex.prepend(selectCb);
 
     const tdTitle = document.createElement("td");
     const cell = document.createElement("div");
@@ -1236,6 +1349,11 @@ function buildTrackRow(t, i) {
 
     tr.append(tdIndex, tdTitle, tdAlbum, tdDuration, tdMore, tdAdd, tdRemove);
     tr.addEventListener("click", () => {
+      if (bulkSelectMode) {
+        selectCb.checked = !selectCb.checked;
+        toggleTrackSelection(t.file, selectCb.checked);
+        return;
+      }
       // Klick auf den bereits laufenden Track: pausieren bzw. fortsetzen
       // statt von vorne zu starten.
       if (i === currentTrackIndex && nowPlayingMeta && nowPlayingMeta.stream_url === t.stream_url) {
@@ -1399,6 +1517,7 @@ function playTrack(index, opts = {}) {
   prefetchedNextForTrack = -1;
   updateNextUpPreview();
   updateVideoButtonVisibility();
+  resetSilenceSkipState();
 }
 
 /* Plays a track handed over from a queue (own "Als nächstes"-Warteschlange
@@ -1446,6 +1565,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
     showToast(`👥 Aus der Warteschlange: „${entry.title}"`);
   }
   updateVideoButtonVisibility();
+  resetSilenceSkipState();
   renderQueuePanel();
 }
 
@@ -2408,6 +2528,87 @@ function setNormalizeEnabled(enabled) {
   applyNormalizerSettings();
 }
 
+/* ===== Skip-Silence =====
+   Leise Anfänge/Enden bei jedem Song automatisch überspringen. Läuft
+   direkt auf visualizerAnalyser (liegt hinter masterGain im Audio-Graph,
+   erfasst also das kombinierte Signal - egal welches der beiden Crossfade-
+   Elemente gerade aktiv ist) - keine Vorab-Analyse der Datei nötig,
+   sondern eine laufende RMS-Prüfung während der Wiedergabe. */
+const SKIP_SILENCE_KEY = "skipSilenceEnabled";
+let skipSilenceEnabled = localStorage.getItem(SKIP_SILENCE_KEY) === "1";
+function setSkipSilenceEnabled(enabled) {
+  skipSilenceEnabled = enabled;
+  localStorage.setItem(SKIP_SILENCE_KEY, enabled ? "1" : "0");
+}
+
+const SILENCE_RMS_THRESHOLD = 0.02;
+const SILENCE_START_WINDOW_SECONDS = 12; // ab Songstart geprüftes Fenster
+const SILENCE_END_LOOKAHEAD_SECONDS = 40; // vor Songende geprüftes Fenster
+let silenceStartStreak = 0;
+let silenceEndStreak = 0;
+let silenceCheckBuf = null;
+
+function currentSignalRms() {
+  if (!visualizerAnalyser) return 1; // kein Audio-Graph (uralter Browser) - lieber normal abspielen
+  if (!silenceCheckBuf) silenceCheckBuf = new Uint8Array(visualizerAnalyser.fftSize);
+  visualizerAnalyser.getByteTimeDomainData(silenceCheckBuf);
+  let sumSq = 0;
+  for (let i = 0; i < silenceCheckBuf.length; i++) {
+    const v = (silenceCheckBuf[i] - 128) / 128;
+    sumSq += v * v;
+  }
+  return Math.sqrt(sumSq / silenceCheckBuf.length);
+}
+
+function resetSilenceSkipState() {
+  silenceStartStreak = 0;
+  silenceEndStreak = 0;
+}
+
+setInterval(() => {
+  if (!skipSilenceEnabled || audioEl.paused || crossfadeOverlapActive) return;
+  const dur = audioEl.duration;
+  if (!isFinite(dur) || dur <= 0) return;
+  const t = audioEl.currentTime;
+  const isSilent = currentSignalRms() < SILENCE_RMS_THRESHOLD;
+
+  if (t < SILENCE_START_WINDOW_SECONDS) {
+    // Solange der Songanfang durchgehend still ist, in 1s-Schritten
+    // vorspulen - stoppt von selbst, sobald echter Ton ankommt.
+    if (isSilent) {
+      silenceStartStreak++;
+      if (silenceStartStreak >= 2) { // ~400ms durchgehend still
+        audioEl.currentTime = Math.min(t + 1, dur - 0.5);
+        silenceStartStreak = 0;
+      }
+    } else {
+      silenceStartStreak = 0;
+    }
+    return;
+  }
+
+  // Songende: nur außerhalb des Crossfade-/Gapless-Übernahmefensters
+  // aktiv - das kümmert sich ab da schon selbst um den nahtlosen Wechsel.
+  // Bei anhaltender Stille direkt an den Rand dieses Fensters springen,
+  // statt tote Luft abzuspielen; Crossfade/Gapless übernimmt den Rest wie
+  // gewohnt.
+  const handoffPoint = crossfadeSeconds + GAPLESS_PRELOAD_SECONDS + 0.5;
+  const remaining = dur - t;
+  if (remaining > handoffPoint && remaining <= SILENCE_END_LOOKAHEAD_SECONDS) {
+    if (isSilent) {
+      silenceEndStreak++;
+      if (silenceEndStreak >= 7) { // ~1.4s durchgehend still
+        audioEl.currentTime = dur - handoffPoint;
+        silenceEndStreak = 0;
+      }
+    } else {
+      silenceEndStreak = 0;
+    }
+  } else {
+    silenceEndStreak = 0;
+  }
+}, 200);
+
 function initAudioGraph() {
   if (audioGraphReady) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -3079,6 +3280,15 @@ normalizeToggleSwitch.addEventListener("click", () => {
   normalizeToggleSwitch.setAttribute("aria-checked", String(normalizeEnabled));
 });
 
+const skipSilenceToggleSwitch = document.getElementById("skipSilenceToggleSwitch");
+skipSilenceToggleSwitch.classList.toggle("active", skipSilenceEnabled);
+skipSilenceToggleSwitch.setAttribute("aria-checked", String(skipSilenceEnabled));
+skipSilenceToggleSwitch.addEventListener("click", () => {
+  setSkipSilenceEnabled(!skipSilenceEnabled);
+  skipSilenceToggleSwitch.classList.toggle("active", skipSilenceEnabled);
+  skipSilenceToggleSwitch.setAttribute("aria-checked", String(skipSilenceEnabled));
+});
+
 const crossfadeSecondsSlider = document.getElementById("crossfadeSecondsSlider");
 const crossfadeSecondsReadout = document.getElementById("crossfadeSecondsReadout");
 crossfadeSecondsSlider.value = String(crossfadeSeconds);
@@ -3391,10 +3601,11 @@ document.addEventListener("click", closeAddMenu);
 
 async function addTrackToPlaylist(targetPlaylist, trackData) {
   try {
+    const preset = trackData.video_id ? getQualityPreset() : null;
     const res = await fetch("/api/playlists/add-track", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target_playlist: targetPlaylist, ...trackData }),
+      body: JSON.stringify({ target_playlist: targetPlaylist, ...trackData, ...(preset || {}) }),
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || "Hinzufügen fehlgeschlagen.");
@@ -3587,6 +3798,92 @@ const searchOnlineGrid = document.getElementById("searchOnlineGrid");
 let onlineSearchTimer = null;
 let onlineSearchToken = 0;
 
+/* ===== Suchverlauf =====
+   Zuletzt gesuchte Begriffe (nicht jeder Tastendruck - erst wenn die
+   Online-Suche wirklich feuert, also der Nutzer beim Tippen kurz
+   innegehalten hat) als Vorschläge, sobald die Suchleiste fokussiert und
+   noch leer ist. */
+const SEARCH_HISTORY_KEY = "searchHistory";
+const SEARCH_HISTORY_MAX = 8;
+
+function getSearchHistory() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveSearchHistoryEntry(q) {
+  const query = q.trim();
+  if (!query) return;
+  let history = getSearchHistory().filter((h) => h.toLowerCase() !== query.toLowerCase());
+  history.unshift(query);
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, SEARCH_HISTORY_MAX)));
+}
+
+function removeSearchHistoryEntry(q) {
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(getSearchHistory().filter((h) => h !== q)));
+  renderSearchHistoryDropdown();
+}
+
+function hideSearchHistoryDropdown() {
+  searchHistoryDropdown.classList.add("hidden");
+}
+
+function renderSearchHistoryDropdown() {
+  const history = getSearchHistory();
+  searchHistoryDropdown.innerHTML = "";
+  if (!history.length) {
+    hideSearchHistoryDropdown();
+    return;
+  }
+  history.forEach((q) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "search-history-item";
+    const icon = document.createElement("span");
+    icon.className = "search-history-icon";
+    icon.textContent = "🕐";
+    const text = document.createElement("span");
+    text.className = "search-history-text";
+    text.textContent = q;
+    const remove = document.createElement("span");
+    remove.className = "search-history-remove";
+    remove.textContent = "✕";
+    remove.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeSearchHistoryEntry(q);
+    });
+    item.append(icon, text, remove);
+    item.addEventListener("click", () => {
+      searchInput.value = q;
+      performSearch();
+      hideSearchHistoryDropdown();
+    });
+    searchHistoryDropdown.appendChild(item);
+  });
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "search-history-clear";
+  clearBtn.textContent = "Suchverlauf löschen";
+  clearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    localStorage.removeItem(SEARCH_HISTORY_KEY);
+    hideSearchHistoryDropdown();
+  });
+  searchHistoryDropdown.appendChild(clearBtn);
+  searchHistoryDropdown.classList.remove("hidden");
+}
+
+searchInput.addEventListener("focus", () => {
+  if (!searchInput.value.trim()) renderSearchHistoryDropdown();
+});
+document.addEventListener("click", (e) => {
+  if (e.target !== searchInput && !searchHistoryDropdown.contains(e.target)) hideSearchHistoryDropdown();
+});
+
 function updateSearchNothingState() {
   const anySectionVisible = !searchSongsSection.classList.contains("hidden") ||
     !searchPlaylistsSection.classList.contains("hidden") ||
@@ -3615,6 +3912,7 @@ async function runOnlineSearch(q, token) {
 
 function performSearch() {
   const q = searchInput.value.trim().toLowerCase();
+  hideSearchHistoryDropdown();
   if (!q) {
     setSearchActive(false);
     clearTimeout(onlineSearchTimer);
@@ -3652,7 +3950,10 @@ function performSearch() {
   updateSearchNothingState();
   clearTimeout(onlineSearchTimer);
   const token = ++onlineSearchToken;
-  onlineSearchTimer = setTimeout(() => runOnlineSearch(searchInput.value.trim(), token), 450);
+  onlineSearchTimer = setTimeout(() => {
+    saveSearchHistoryEntry(searchInput.value.trim());
+    runOnlineSearch(searchInput.value.trim(), token);
+  }, 450);
 }
 
 searchInput.addEventListener("input", performSearch);

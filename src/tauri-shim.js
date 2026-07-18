@@ -76,7 +76,15 @@
         await awaitPoToken();
         const b = jsonBody();
         const playlist = b.playlist || "Entdeckt";
-        await invoke("download_track", { videoId: b.id, playlistName: playlist, title: b.title || "Song", uploader: b.uploader || "" });
+        await invoke("download_track", {
+          videoId: b.id,
+          playlistName: playlist,
+          title: b.title || "Song",
+          uploader: b.uploader || "",
+          format: b.format,
+          bitrate: b.bitrate,
+          quality: b.quality,
+        });
         return jsonResponse({ ok: true, playlist });
       }
       if (parts[2] === "upload" && method === "POST" && body instanceof FormData) {
@@ -120,6 +128,17 @@
           filename: seg(parts[4] || ""),
         });
         return jsonResponse({ ok: true });
+      }
+      if (parts[2] === "bulk-update" && method === "POST") {
+        const b = jsonBody();
+        const result = await invoke("bulk_update_tracks", {
+          playlistName: b.playlist_name,
+          filenames: b.filenames || [],
+          album: b.album || null,
+          coverData: b.cover_data || null,
+          coverMime: b.cover_mime || null,
+        });
+        return jsonResponse({ ok: true, ...result });
       }
     }
 
@@ -172,6 +191,9 @@
           playlistName: b.target_playlist,
           title: b.title || "Song",
           uploader: b.uploader || "",
+          format: b.format,
+          bitrate: b.bitrate,
+          quality: b.quality,
         });
       } else {
         await invoke("add_track_to_playlist", {

@@ -65,6 +65,39 @@ function currentBitrate() { return bitrateSel ? bitrateSel.value : "192"; }
 function currentVideoQuality() { return videoQualitySel ? videoQualitySel.value : "best"; }
 function preferCleanAudio() { return currentFormat === "mp3" && (cleanAudioToggle ? cleanAudioToggle.checked : true); }
 
+/* ===== Qualitäts-Preset =====
+   Zuletzt gewählte Format/Bitrate/Auflösung merken, damit man nicht bei
+   jedem Download erneut auswählen muss - und damit die Schnell-Download-
+   Wege im Player (Discover-Karten, "Zu Playlist hinzufügen" aus der
+   Suche), die selbst keine eigene Qualitätsauswahl haben, dieselbe
+   Präferenz automatisch mitbekommen (siehe player.js: getQualityPreset). */
+const QUALITY_PRESET_KEY = "downloadQualityPreset";
+function saveQualityPreset() {
+  localStorage.setItem(QUALITY_PRESET_KEY, JSON.stringify({
+    format: currentFormat,
+    bitrate: currentBitrate(),
+    quality: currentVideoQuality(),
+  }));
+}
+function applyQualityPreset() {
+  let preset = null;
+  try { preset = JSON.parse(localStorage.getItem(QUALITY_PRESET_KEY) || "null"); } catch (_) { preset = null; }
+  if (!preset) return;
+  if (preset.format === "mp4" || preset.format === "mp3") {
+    currentFormat = preset.format;
+    if (formatToggle) {
+      formatToggle.querySelectorAll(".format-btn").forEach((b) => b.classList.toggle("active", b.dataset.format === preset.format));
+    }
+  }
+  if (preset.bitrate && bitrateSel) bitrateSel.value = preset.bitrate;
+  if (preset.quality && videoQualitySel) videoQualitySel.value = preset.quality;
+  const isMp4 = currentFormat === "mp4";
+  if (bitrateSel) bitrateSel.classList.toggle("hidden", isMp4);
+  if (videoQualitySel) videoQualitySel.classList.toggle("hidden", !isMp4);
+  if (cleanAudioLabel) cleanAudioLabel.classList.toggle("hidden", isMp4);
+}
+applyQualityPreset();
+
 /* ===== Format Toggle (MP3/MP4) ===== */
 if (formatToggle) {
   formatToggle.querySelectorAll(".format-btn").forEach((btn) => {
@@ -80,9 +113,12 @@ if (formatToggle) {
           b.textContent = currentFormat.toUpperCase();
         }
       });
+      saveQualityPreset();
     });
   });
 }
+if (bitrateSel) bitrateSel.addEventListener("change", saveQualityPreset);
+if (videoQualitySel) videoQualitySel.addEventListener("change", saveQualityPreset);
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg || "";

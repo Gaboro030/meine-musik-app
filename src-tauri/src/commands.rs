@@ -178,6 +178,18 @@ pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
             }
         }
     }
+    // Album hat fuer m4a/mp4 gar keinen Tag-Container (id3 kann die Datei
+    // nicht schreiben) - Bulk-Edit legt dafuer denselben Sidecar-Ansatz wie
+    // artist.txt an.
+    if meta.album.is_empty() {
+        let sidecar = path.with_extension("album.txt");
+        if let Ok(text) = std::fs::read_to_string(&sidecar) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                meta.album = trimmed.to_string();
+            }
+        }
+    }
     // id3 only reads tags, not audio structure - mp3-duration walks the
     // actual MP3 frames for the real playing time (what mutagen's
     // audio.info.length did in the Flask backend).
@@ -328,6 +340,95 @@ pub fn remove_track_from_playlist(
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct BulkUpdateResult {
+    pub updated: usize,
+    pub failed: usize,
+}
+
+/// Setzt Album und/oder Cover fuer mehrere ausgewaehlte Tracks auf einmal
+/// (Bulk-Edit). mp3 bekommt das direkt in den ID3-Tag geschrieben; m4a/mp4
+/// haben keinen von id3 beschreibbaren Tag-Container, deshalb dort dieselben
+/// Sidecar-Dateien wie beim Android-Downloader (artist.txt/<name>.jpg,
+/// siehe read_track_meta) - jetzt zusaetzlich album.txt fuers Album.
+#[tauri::command]
+pub fn bulk_update_tracks(
+    state: tauri::State<AppState>,
+    playlist_name: String,
+    filenames: Vec<String>,
+    album: Option<String>,
+    cover_data: Option<Vec<u8>>,
+    cover_mime: Option<String>,
+) -> Result<BulkUpdateResult, String> {
+    let _lock = LIBRARY_LOCK.lock().unwrap();
+    let dir = safe_join(&state.music_root, &safe_filename(&playlist_name))?;
+    if !dir.is_dir() {
+        return Err("Playlist nicht gefunden.".into());
+    }
+    let mime = cover_mime.unwrap_or_else(|| "image/jpeg".to_string());
+
+    let mut updated = 0usize;
+    let mut failed = 0usize;
+    for filename in &filenames {
+        let path = match safe_join(&dir, filename) {
+            Ok(p) if p.is_file() => p,
+            _ => {
+                failed += 1;
+                continue;
+            }
+        };
+        let is_mp3 = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("mp3"))
+            .unwrap_or(false);
+        let ok = if is_mp3 {
+            apply_mp3_tags(&path, album.as_deref(), cover_data.as_deref(), &mime)
+        } else {
+            apply_sidecar_tags(&path, album.as_deref(), cover_data.as_deref())
+        };
+        if ok {
+            if cover_data.is_some() {
+                // Cache invalidieren, sonst zeigt list_playlists weiter das alte
+                // (schon skalierte) Cover, bis der Prozess neu startet.
+                let _ = std::fs::remove_file(path.with_extension("cover_cache.jpg"));
+            }
+            updated += 1;
+        } else {
+            failed += 1;
+        }
+    }
+    Ok(BulkUpdateResult { updated, failed })
+}
+
+fn apply_mp3_tags(path: &Path, album: Option<&str>, cover_data: Option<&[u8]>, mime: &str) -> bool {
+    let mut tag = id3::Tag::read_from_path(path).unwrap_or_default();
+    if let Some(a) = album {
+        tag.set_album(a);
+    }
+    if let Some(data) = cover_data {
+        tag.remove_picture_by_type(id3::frame::PictureType::CoverFront);
+        tag.add_frame(id3::frame::Picture {
+            mime_type: mime.to_string(),
+            picture_type: id3::frame::PictureType::CoverFront,
+            description: String::new(),
+            data: data.to_vec(),
+        });
+    }
+    tag.write_to_path(path, id3::Version::Id3v24).is_ok()
+}
+
+fn apply_sidecar_tags(path: &Path, album: Option<&str>, cover_data: Option<&[u8]>) -> bool {
+    let mut ok = true;
+    if let Some(a) = album {
+        ok &= std::fs::write(path.with_extension("album.txt"), a).is_ok();
+    }
+    if let Some(data) = cover_data {
+        ok &= std::fs::write(path.with_extension("jpg"), data).is_ok();
+    }
+    ok
+}
+
 /// Add one track to a (new or existing) playlist. Two modes, same as the
 /// old Flask /api/playlists/add-track route:
 /// - already local (source_playlist + filename): copies the file, no
@@ -474,6 +575,9 @@ pub async fn download_track(
     playlist_name: String,
     title: String,
     uploader: Option<String>,
+    format: Option<String>,
+    bitrate: Option<String>,
+    quality: Option<String>,
 ) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
 
@@ -484,6 +588,17 @@ pub async fn download_track(
         return Err("Ungueltige Video-ID.".into());
     }
 
+    // Diese Route war lange fest auf MP3 verdrahtet, unabhaengig vom
+    // format-Parameter - Discover-Schnell-Download und "Zu Playlist
+    // hinzufuegen" aus der Suche konnten dadurch NIE ein Video liefern,
+    // selbst wenn der Nutzer eigentlich MP4 wollte (nur die separate
+    // Downloader-Seite mit ihrem eigenen Format-Umschalter konnte das).
+    // Jetzt nutzt auch dieser Pfad die gleiche Qualitaets-Kaskade
+    // (build_attempts/build_ytdlp_args) wie download_track_progress unten.
+    let format = format.unwrap_or_else(|| "mp3".to_string());
+    let bitrate = bitrate.unwrap_or_else(|| "320".to_string());
+    let quality = quality.unwrap_or_else(|| "best".to_string());
+
     // Android: kein yt-dlp-Binary - native Innertube-Implementierung.
     if cfg!(target_os = "android") {
         return crate::innertube::download_progress(
@@ -493,7 +608,7 @@ pub async fn download_track(
             &video_id,
             &title,
             uploader.as_deref().unwrap_or(""),
-            "mp3",
+            &format,
             &playlist_name,
         )
         .await;
@@ -503,26 +618,28 @@ pub async fn download_track(
     let dest_dir = state.music_root.join(&clean_playlist);
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     let safe_title = safe_filename(&title);
-    let out_path = dest_dir.join(format!("{safe_title}.%(ext)s"));
+    let out_template = dest_dir.join(format!("{safe_title}.%(ext)s"));
+    let ext = if format == "mp4" { "mp4" } else { "mp3" };
+    let out_path = dest_dir.join(format!("{safe_title}.{ext}"));
 
     let shell = app.shell();
-    let output = shell
-        .sidecar("yt-dlp")
-        .map_err(|e| e.to_string())?
-        .args([
-            "-f", "bestaudio",
-            "-x", "--audio-format", "mp3",
-            "-o", out_path.to_string_lossy().as_ref(),
-            &format!("https://www.youtube.com/watch?v={video_id}"),
-        ])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
+    let attempts = build_attempts(&format, &bitrate, &quality);
+    let mut last_err = String::new();
 
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    for attempt in &attempts {
+        let args = build_ytdlp_args(&out_template, &video_id, &format, attempt);
+        let output = match shell.sidecar("yt-dlp") {
+            Ok(cmd) => cmd.args(args).output().await.map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match output {
+            Ok(o) if o.status.success() && out_path.is_file() => return Ok(()),
+            Ok(o) => last_err = String::from_utf8_lossy(&o.stderr).to_string(),
+            Err(e) => last_err = e,
+        }
     }
-    Ok(())
+
+    Err(friendly_download_error(&last_err))
 }
 
 /// One try in the download cascade below: which bitrate/resolution to ask
