@@ -88,6 +88,41 @@
       gap: 4px;
     }
     .guest-skip-btn.voted { background: rgba(241,94,108,0.25); color: #ff8a93; }
+    .guest-chat-section { margin-bottom: 16px; }
+    .guest-chat-messages {
+      max-height: 140px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin: 8px 0;
+      padding: 10px;
+      border-radius: var(--radius-md);
+      background: var(--sp-elevated);
+    }
+    .guest-chat-msg { font-size: 0.82rem; line-height: 1.3; }
+    .guest-chat-msg-name { font-weight: 700; color: var(--sp-green); margin-right: 6px; }
+    .guest-chat-msg-text { color: var(--sp-text); word-break: break-word; }
+    .guest-chat-input-row { display: flex; gap: 6px; }
+    .guest-chat-input {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 14px;
+      border-radius: 100px;
+      border: 1px solid var(--sp-border);
+      background: var(--sp-elevated);
+      color: var(--sp-text);
+      font-size: 0.85rem;
+    }
+    .guest-chat-send-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--sp-green);
+      color: #000;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -104,6 +139,15 @@
     </div>
     <button type="button" id="skipVoteBtn" class="guest-skip-btn" title="Für Skip stimmen">⏭ <span id="skipVoteCount"></span></button>
     <button type="button" id="partyToggleBtn" class="guest-party-toggle">Mitfeiern</button>
+  </div>
+
+  <div id="guestChatSection" class="guest-chat-section hidden">
+    <div class="guest-section-title">Chat</div>
+    <div id="guestChatMessages" class="guest-chat-messages"></div>
+    <div class="guest-chat-input-row">
+      <input type="text" id="guestChatInput" class="guest-chat-input" placeholder="Nachricht an alle…" maxlength="200" />
+      <button type="button" id="guestChatSendBtn" class="guest-chat-send-btn" title="Senden">➤</button>
+    </div>
   </div>
 
   <input type="text" id="guestSearch" class="guest-search" placeholder="🔍 Songs suchen und zur Warteschlange hinzufügen…" autocomplete="off" />
@@ -312,6 +356,7 @@
       partyStateReceivedAt = Date.now();
       if (!state || !state.active) {
         partyCard.classList.add("hidden");
+        guestChatSection.classList.add("hidden");
         if (followingParty) {
           partyAudio.pause();
           followingParty = false;
@@ -321,6 +366,7 @@
         return;
       }
       partyCard.classList.remove("hidden");
+      guestChatSection.classList.remove("hidden");
       partyCover.src = state.cover || PLACEHOLDER_COVER;
       partyTitle.textContent = state.title || "—";
       partyArtist.textContent = state.artist || "Unbekannter Interpret";
@@ -355,6 +401,53 @@
         skipVoteBtn.classList.toggle("voted", hasVotedSkip);
         applySkipVotes(data);
       } catch (_) {}
+    });
+
+    /* ===== Chat ===== */
+    const guestChatSection = document.getElementById("guestChatSection");
+    const guestChatMessages = document.getElementById("guestChatMessages");
+    const guestChatInput = document.getElementById("guestChatInput");
+    const guestChatSendBtn = document.getElementById("guestChatSendBtn");
+
+    function appendChatMessage(msg) {
+      const row = document.createElement("div");
+      row.className = "guest-chat-msg";
+      const name = document.createElement("span");
+      name.className = "guest-chat-msg-name";
+      name.textContent = msg.name || "Gast";
+      const text = document.createElement("span");
+      text.className = "guest-chat-msg-text";
+      text.textContent = msg.text || "";
+      row.append(name, text);
+      guestChatMessages.appendChild(row);
+      guestChatMessages.scrollTop = guestChatMessages.scrollHeight;
+    }
+
+    function loadChatHistory() {
+      fetch("/api/party/chat")
+        .then((r) => r.json())
+        .then((data) => {
+          guestChatMessages.innerHTML = "";
+          (data.messages || []).forEach(appendChatMessage);
+        })
+        .catch(() => {});
+    }
+
+    async function sendChatMessage() {
+      const text = guestChatInput.value.trim();
+      if (!text) return;
+      guestChatInput.value = "";
+      try {
+        await fetch("/api/party/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: guestName(), text }),
+        });
+      } catch (_) {}
+    }
+    guestChatSendBtn.addEventListener("click", sendChatMessage);
+    guestChatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendChatMessage();
     });
 
     partyToggleBtn.addEventListener("click", () => {
@@ -429,6 +522,7 @@
         .then(applyPartyState)
         .catch(() => {});
       loadQueue();
+      loadChatHistory();
       joinParty();
     }
 
@@ -450,6 +544,11 @@
       events.addEventListener("party_sync", (e) => {
         try {
           applyPartyState(JSON.parse(e.data));
+        } catch (_) {}
+      });
+      events.addEventListener("chat_message", (e) => {
+        try {
+          appendChatMessage(JSON.parse(e.data));
         } catch (_) {}
       });
       events.addEventListener("skip_votes", (e) => {

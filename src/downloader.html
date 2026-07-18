@@ -44,6 +44,11 @@
       <button id="loadBtn" type="submit">Laden</button>
     </form>
 
+    <form id="lyricsSearchForm" class="search lyrics-search-form">
+      <input id="lyricsSearchInput" type="text" placeholder="🎤 Songtext-Ausschnitt eingeben, um den Song zu finden…" autocomplete="off" />
+      <button id="lyricsSearchBtn" type="submit">Song finden</button>
+    </form>
+
     <label class="clean-audio-toggle" id="cleanAudioLabel">
       <input type="checkbox" id="cleanAudioToggle" checked />
       🎧 Original-Studio-Audio bevorzugen (wie Spotify, ohne Musikvideo-Sound)
@@ -61,6 +66,7 @@
         <span id="gpTitle" class="global-progress-title">Sammel-Download</span>
         <div class="global-progress-stats">
           <span>Fortschritt: <span id="gpPercent" class="val">0%</span></span>
+          <button type="button" id="gpPauseBtn" class="gp-pause-btn" title="Downloads pausieren">⏸</button>
         </div>
       </div>
       <div class="global-progress-bar-wrap">

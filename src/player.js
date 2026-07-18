@@ -4237,8 +4237,25 @@ function renderSkipVotes({ count, needed }) {
 let partyModeActive = false;
 let partyHeartbeatTimer = null;
 
+// Party-Verlauf: welche Titel liefen waehrend dieser Session - rein
+// clientseitig (der Host ist ohnehin die einzige Quelle von Trackwechseln),
+// Grundlage fuer "Verlauf als Playlist speichern" weiter unten.
+let partyHistory = [];
+function trackPartyHistory() {
+  if (!partyModeActive || !nowPlayingMeta || !nowPlayingMeta.file) return;
+  const last = partyHistory[partyHistory.length - 1];
+  if (last && last.playlist === nowPlayingMeta.playlist && last.file === nowPlayingMeta.file) return;
+  partyHistory.push({
+    playlist: nowPlayingMeta.playlist,
+    file: nowPlayingMeta.file,
+    title: nowPlayingMeta.title,
+    artist: nowPlayingMeta.artist,
+  });
+}
+
 function sendPartyHeartbeat() {
   if (!partyModeActive) return;
+  trackPartyHistory();
   fetch("/api/party/state", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -4264,9 +4281,12 @@ function setPartyMode(active) {
   partyStatusText.textContent = active
     ? "Aktiv – alle Geräte im WLAN hören jetzt synchron mit."
     : "Spielt auf allen Geräten im WLAN exakt denselben Song synchron ab.";
+  partyChatSection.classList.toggle("hidden", !active);
 
   clearInterval(partyHeartbeatTimer);
   if (active) {
+    partyHistory = [];
+    loadPartyChat();
     sendPartyHeartbeat();
     partyHeartbeatTimer = setInterval(sendPartyHeartbeat, 2000);
     showToast("🎉 Party-Modus gestartet");
@@ -4279,6 +4299,95 @@ function setPartyMode(active) {
     showToast("🎉 Party-Modus beendet");
   }
 }
+
+/* ===== Party-Chat ===== */
+const partyChatSection = document.getElementById("partyChatSection");
+const partyChatMessages = document.getElementById("partyChatMessages");
+const partyChatInput = document.getElementById("partyChatInput");
+const partyChatSendBtn = document.getElementById("partyChatSendBtn");
+const partySaveHistoryBtn = document.getElementById("partySaveHistoryBtn");
+
+function appendChatMessage(msg) {
+  const row = document.createElement("div");
+  row.className = "party-chat-msg";
+  const name = document.createElement("span");
+  name.className = "party-chat-msg-name";
+  name.textContent = msg.name || "Gast";
+  const text = document.createElement("span");
+  text.className = "party-chat-msg-text";
+  text.textContent = msg.text || "";
+  row.append(name, text);
+  partyChatMessages.appendChild(row);
+  partyChatMessages.scrollTop = partyChatMessages.scrollHeight;
+}
+
+async function loadPartyChat() {
+  partyChatMessages.innerHTML = "";
+  try {
+    const res = await fetch("/api/party/chat");
+    const data = await res.json();
+    (data.messages || []).forEach(appendChatMessage);
+  } catch (_) {}
+}
+
+async function sendPartyChatMessage() {
+  const text = partyChatInput.value.trim();
+  if (!text) return;
+  partyChatInput.value = "";
+  try {
+    await fetch("/api/party/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  } catch (_) {}
+}
+partyChatSendBtn.addEventListener("click", sendPartyChatMessage);
+partyChatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendPartyChatMessage();
+});
+
+/* ===== Party-Verlauf als Playlist speichern =====
+   Kopiert jeden in dieser Session gespielten Track (add_track_to_playlist,
+   dieselbe Kopier-Logik wie beim manuellen "Zu Playlist hinzufügen") in
+   eine neue Playlist - die Originaldateien bleiben unangetastet. */
+async function savePartyHistoryAsPlaylist() {
+  if (!partyHistory.length) {
+    showToast("In dieser Party wurde noch nichts gespielt.");
+    return;
+  }
+  const defaultName = `Party vom ${new Date().toLocaleDateString("de-DE")}`;
+  const name = window.prompt("Name der neuen Playlist:", defaultName);
+  if (!name || !name.trim()) return;
+  const cleanName = name.trim();
+
+  const seen = new Set();
+  const unique = partyHistory.filter((e) => {
+    const key = `${e.playlist}::${e.file}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  let ok = 0;
+  for (const entry of unique) {
+    try {
+      const res = await fetch("/api/playlists/add-track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_playlist: cleanName,
+          source_playlist: entry.playlist,
+          filename: entry.file,
+        }),
+      });
+      if (res.ok) ok++;
+    } catch (_) {}
+  }
+  await refreshLibrary();
+  showToast(`🎉 ${ok} von ${unique.length} Songs in „${cleanName}" gespeichert`);
+}
+partySaveHistoryBtn.addEventListener("click", savePartyHistoryAsPlaylist);
 
 partyModeBtn.addEventListener("click", () => setPartyMode(!partyModeActive));
 // Track changes and pause/play should reach guests immediately, not just
@@ -4349,6 +4458,11 @@ if ("EventSource" in window) {
   // der Gaeste.
   hostEvents.addEventListener("skip_now", () => {
     if (partyModeActive) nextTrack();
+  });
+  hostEvents.addEventListener("chat_message", (e) => {
+    try {
+      appendChatMessage(JSON.parse(e.data));
+    } catch (_) {}
   });
 }
 

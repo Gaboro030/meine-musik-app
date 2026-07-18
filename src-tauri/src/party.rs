@@ -61,6 +61,10 @@ pub struct HubInner {
     // wollen. Wird bei jedem Trackwechsel geleert.
     skip_votes: Mutex<HashSet<String>>,
     skip_votes_for: Mutex<(String, String)>, // (file, title) - gegen dieses Paar zaehlen skip_votes
+    // Party-Chat: kurze Textnachrichten waehrend der Session, auf die
+    // letzten 100 begrenzt (kein Verlauf ueber Neustarts hinweg noetig -
+    // reiner Session-Chat, kein Anspruch auf Persistenz).
+    chat: Mutex<Vec<serde_json::Value>>,
 }
 
 fn default_party_state() -> serde_json::Value {
@@ -87,6 +91,7 @@ impl Hub {
             kicked: Mutex::new(HashSet::new()),
             skip_votes: Mutex::new(HashSet::new()),
             skip_votes_for: Mutex::new((String::new(), String::new())),
+            chat: Mutex::new(Vec::new()),
         }))
     }
 
@@ -274,6 +279,33 @@ fn queue_remove_inner(hub: &Hub, entry_id: &str) -> bool {
     removed
 }
 
+const CHAT_HISTORY_LIMIT: usize = 100;
+
+/// Sanitize + append a chat message, broadcast just the new message (not
+/// the whole history - guests append locally, only a fresh page load needs
+/// the full list via GET /api/party/chat).
+fn add_chat_message(hub: &Hub, sender_name: &str, text: &str) -> serde_json::Value {
+    let name: String = sender_name.trim().chars().take(40).collect();
+    let name = if name.is_empty() { "Gast".to_string() } else { name };
+    let text: String = text.trim().chars().take(200).collect();
+    let msg = json!({
+        "id": uuid::Uuid::new_v4().to_string(),
+        "name": name,
+        "text": text,
+        "sent_at": now_secs(),
+    });
+    {
+        let mut chat = hub.0.chat.lock().unwrap();
+        chat.push(msg.clone());
+        let len = chat.len();
+        if len > CHAT_HISTORY_LIMIT {
+            chat.drain(0..len - CHAT_HISTORY_LIMIT);
+        }
+    }
+    hub.broadcast("chat_message", &msg);
+    msg
+}
+
 /// Best-effort LAN IP for the guest QR code. Doesn't send any traffic -
 /// just asks the OS which local interface it would route an external
 /// address through (same trick as the Flask get_lan_ip()).
@@ -438,6 +470,16 @@ pub fn queue_remove(hub: tauri::State<Hub>, entry_id: String) -> bool {
     queue_remove_inner(&hub, &entry_id)
 }
 
+#[tauri::command]
+pub fn party_chat_list(hub: tauri::State<Hub>) -> Vec<serde_json::Value> {
+    hub.0.chat.lock().unwrap().clone()
+}
+
+#[tauri::command]
+pub fn party_chat_send(hub: tauri::State<Hub>, text: String) -> serde_json::Value {
+    add_chat_message(&hub, "Host", &text)
+}
+
 // --- LAN HTTP server (guest side) -------------------------------------------
 
 pub async fn run_server(hub: Hub) {
@@ -454,6 +496,7 @@ pub async fn run_server(hub: Hub) {
         .route("/api/party/heartbeat", post(api_party_heartbeat))
         .route("/api/party/participants", get(api_party_participants))
         .route("/api/party/skip-vote", post(api_party_skip_vote))
+        .route("/api/party/chat", get(api_party_chat_list).post(api_party_chat_send))
         .route("/api/events", get(api_events))
         .route("/stream/:playlist/:file", get(api_stream))
         // Handy-Sync (sync.rs): peer devices POST files straight into this
@@ -673,6 +716,22 @@ async fn api_party_participants(State(hub): State<Hub>) -> Json<serde_json::Valu
         broadcast_participants(&hub, &list);
     }
     Json(json!({ "participants": list }))
+}
+
+async fn api_party_chat_list(State(hub): State<Hub>) -> Json<serde_json::Value> {
+    Json(json!({ "messages": hub.0.chat.lock().unwrap().clone() }))
+}
+
+async fn api_party_chat_send(
+    State(hub): State<Hub>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let name = body.get("name").and_then(|x| x.as_str()).unwrap_or("Gast");
+    let text = body.get("text").and_then(|x| x.as_str()).unwrap_or("").trim();
+    if text.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Leere Nachricht." }))).into_response();
+    }
+    Json(json!({ "ok": true, "message": add_chat_message(&hub, name, text) })).into_response()
 }
 
 async fn api_party_post(

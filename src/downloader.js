@@ -34,6 +34,7 @@ const gpTitle = document.getElementById("gpTitle");
 const gpPercent = document.getElementById("gpPercent");
 const gpTrackName = document.getElementById("gpTrackName");
 const gpTrackCount = document.getElementById("gpTrackCount");
+const gpPauseBtn = document.getElementById("gpPauseBtn");
 
 let currentTitle = "playlist";
 let currentFormat = "mp3";
@@ -164,6 +165,61 @@ loadForm.addEventListener("submit", async (e) => {
   } finally {
     loadBtn.disabled = false;
     loadBtn.textContent = "Laden";
+  }
+});
+
+/* ===== Songtext-Suche als Download-Quelle =====
+   Kein eigener Lyrics-Suchdienst - nutzt einfach die bestehende YouTube-
+   Suche (search_online, sonst fuer die Home-Suche im Player benutzt) mit
+   dem eingetippten Songtext-Ausschnitt als Query. Funktioniert in der
+   Praxis erstaunlich gut, weil YouTube-Video-Titel/Beschreibungen oft
+   Textzeilen enthalten. */
+const lyricsSearchForm = document.getElementById("lyricsSearchForm");
+const lyricsSearchInput = document.getElementById("lyricsSearchInput");
+const lyricsSearchBtn = document.getElementById("lyricsSearchBtn");
+
+lyricsSearchForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const query = lyricsSearchInput.value.trim();
+  if (!query) return;
+
+  lyricsSearchBtn.disabled = true;
+  lyricsSearchBtn.textContent = "Suche …";
+  setStatus("Suche nach passendem Song …");
+  results.classList.add("hidden");
+  globalProgress.classList.add("hidden");
+  trackList.innerHTML = "";
+
+  try {
+    await awaitPoToken();
+    const tracks = await invoke("search_online", { query });
+    if (!tracks.length) {
+      setStatus("Kein Song zu diesem Songtext gefunden.", true);
+      showToast("Nichts gefunden - anderen Ausschnitt versuchen.", "error");
+      return;
+    }
+    currentTitle = "Songtext-Suche";
+    plTitle.textContent = "Songtext-Suche";
+    plCount.textContent = `${tracks.length} Treffer`;
+    renderTracks(
+      tracks.map((t) => ({
+        id: t.video_id,
+        title: t.title,
+        uploader: t.artist,
+        duration: t.duration,
+        thumbnail: t.cover,
+        url: t.url,
+      }))
+    );
+    results.classList.remove("hidden");
+    setStatus("");
+  } catch (err) {
+    const msg = String(err);
+    setStatus(msg, true);
+    showToast(msg, "error");
+  } finally {
+    lyricsSearchBtn.disabled = false;
+    lyricsSearchBtn.textContent = "Song finden";
   }
 });
 
@@ -326,6 +382,23 @@ selectAll.addEventListener("change", () => {
 /* ===== Batch download - all selected tracks straight into the library
    playlist named after the loaded playlist/album (no .zip file - this is
    a native library-first app, so "download" just means "add to library"). */
+// Pausiert nur das ANSTOSSEN neuer Downloads zwischen zwei Titeln - ein
+// bereits laufender yt-dlp-Download liesse sich nicht ohne Weiteres mitten
+// im Datenstrom anhalten, ohne die fertigen Bytes wegzuwerfen. "Pause"
+// heisst hier also: laufende Downloads werden noch fertig, aber keine
+// neuen starten mehr, bis wieder fortgesetzt wird.
+let downloadPaused = false;
+function setDownloadPaused(paused) {
+  downloadPaused = paused;
+  gpPauseBtn.textContent = paused ? "▶" : "⏸";
+  gpPauseBtn.title = paused ? "Downloads fortsetzen" : "Downloads pausieren";
+  gpPauseBtn.classList.toggle("paused", paused);
+}
+gpPauseBtn.addEventListener("click", () => setDownloadPaused(!downloadPaused));
+async function waitWhilePaused() {
+  while (downloadPaused) await new Promise((r) => setTimeout(r, 300));
+}
+
 zipBtn.addEventListener("click", async () => {
   const checked = [...trackList.querySelectorAll('input[type="checkbox"]:checked')];
   if (!checked.length) {
@@ -338,6 +411,7 @@ zipBtn.addEventListener("click", async () => {
   zipBtn.textContent = "Wird geladen …";
   zipReportBtn.classList.add("hidden");
   const skippedList = [];
+  setDownloadPaused(false);
 
   globalProgress.classList.remove("hidden");
   gpBar.style.width = "0%";
@@ -365,11 +439,16 @@ zipBtn.addEventListener("click", async () => {
     gpBar.style.width = `${pct}%`;
     gpPercent.textContent = `${Math.round(pct)}%`;
     gpTrackCount.textContent = `${completed} / ${checked.length}`;
-    gpTrackName.textContent = active.size ? `🎵 ${[...active].join(" · ")}` : "Vorbereitung …";
+    if (downloadPaused && !active.size) {
+      gpTrackName.textContent = "⏸ Pausiert";
+    } else {
+      gpTrackName.textContent = active.size ? `🎵 ${[...active].join(" · ")}` : "Vorbereitung …";
+    }
   }
 
   async function worker() {
     while (nextIndex < checked.length) {
+      await waitWhilePaused();
       const i = nextIndex++;
       const cb = checked[i];
       const title = cb.dataset.title || cb.dataset.id;

@@ -136,6 +136,8 @@ pub fn run() {
             duplicates::find_duplicates,
             party::queue_list,
             party::queue_remove,
+            party::party_chat_list,
+            party::party_chat_send,
             innertube::set_po_token,
             innertube::set_po_token_error,
             innertube::bg_fetch,

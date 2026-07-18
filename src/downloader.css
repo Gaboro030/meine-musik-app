@@ -143,6 +143,7 @@ h1 {
   outline: none;
   transition: border-color var(--transition), box-shadow var(--transition);
 }
+.lyrics-search-form { margin-top: -6px; }
 .search input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
@@ -457,6 +458,18 @@ button.primary:hover, .search button:hover {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+.gp-pause-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gp-pause-btn.paused { background: var(--accent-glow); color: var(--accent); }
 .global-progress-bar-wrap {
   height: 8px;
   background: rgba(255,255,255,0.05);

@@ -201,6 +201,12 @@
       if (parts[2] === "participants") {
         return jsonResponse({ participants: await invoke("party_participants") });
       }
+      if (parts[2] === "chat" && method === "POST") {
+        return jsonResponse({ ok: true, message: await invoke("party_chat_send", { text: jsonBody().text || "" }) });
+      }
+      if (parts[2] === "chat") {
+        return jsonResponse({ messages: await invoke("party_chat_list") });
+      }
       if (method === "POST") {
         await invoke("party_set_state", { state: jsonBody() });
         return jsonResponse({ ok: true });
