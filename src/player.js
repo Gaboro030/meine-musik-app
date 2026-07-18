@@ -41,6 +41,10 @@ const searchNothingAtAll = document.getElementById("searchNothingAtAll");
 
 const trashView = document.getElementById("trashView");
 const trashTableBody = document.getElementById("trashTableBody");
+const duplicatesView = document.getElementById("duplicatesView");
+const duplicatesList = document.getElementById("duplicatesList");
+const duplicatesEmpty = document.getElementById("duplicatesEmpty");
+const statsView = document.getElementById("statsView");
 const trashEmpty = document.getElementById("trashEmpty");
 
 const qrToggleBtn = document.getElementById("qrToggleBtn");
@@ -226,6 +230,26 @@ audioEl.addEventListener("timeupdate", () => {
   }
 });
 
+/* ===== Hörzeit gesamt (für die Statistik-Seite) =====
+   Summiert echte Wiedergabezeit, nicht Wanduhrzeit - "timeupdate" feuert
+   nur während tatsächlich abgespielt wird (nicht während Pause), und ein
+   Delta > 2s (Seek/Trackwechsel) wird verworfen statt mitgezählt. */
+const LISTEN_TIME_KEY = "totalListenSeconds";
+let lastListenTick = null;
+audioEl.addEventListener("timeupdate", () => {
+  if (audioEl.paused) return;
+  if (lastListenTick !== null) {
+    const delta = audioEl.currentTime - lastListenTick;
+    if (delta > 0 && delta < 2) {
+      const total = Number(localStorage.getItem(LISTEN_TIME_KEY)) || 0;
+      localStorage.setItem(LISTEN_TIME_KEY, String(total + delta));
+    }
+  }
+  lastListenTick = audioEl.currentTime;
+});
+audioEl.addEventListener("pause", () => { lastListenTick = null; });
+audioEl.addEventListener("seeked", () => { lastListenTick = audioEl.currentTime; });
+
 /* ===== Weiter hören =====
    Lange Tracks (Mixes/DJ-Sets/Podcast-artige Downloads) sollen beim
    erneuten Öffnen dort fortsetzen, wo man aufgehört hat, statt bei 0 neu
@@ -326,15 +350,19 @@ async function loadLibrary() {
 
 /* ===== View Switching ===== */
 function showView(view) {
-  // Trash must stay reachable even with an empty library (everything
-  // could be sitting in the trash) - every other view still needs at
-  // least one real playlist to show.
-  if (!library.length && view !== "trash") {
+  // Trash/Duplikate/Statistik müssen auch bei leerer Bibliothek erreichbar
+  // bleiben (Trash: alles könnte im Papierkorb liegen; Statistik/Duplikate:
+  // sollen einfach "nichts da" anzeigen statt hinter dem Empty-State
+  // verschwinden).
+  const alwaysReachable = view === "trash" || view === "duplicates" || view === "stats";
+  if (!library.length && !alwaysReachable) {
     emptyState.classList.remove("hidden");
     homeView.classList.add("hidden");
     libraryView.classList.add("hidden");
     playlistView.classList.add("hidden");
     trashView.classList.add("hidden");
+    duplicatesView.classList.add("hidden");
+    statsView.classList.add("hidden");
     navBackBtn.disabled = true;
     return;
   }
@@ -344,6 +372,8 @@ function showView(view) {
   libraryView.classList.toggle("hidden", view !== "library");
   playlistView.classList.toggle("hidden", view !== "playlist");
   trashView.classList.toggle("hidden", view !== "trash");
+  duplicatesView.classList.toggle("hidden", view !== "duplicates");
+  statsView.classList.toggle("hidden", view !== "stats");
 
   document.querySelectorAll(".nav-item[data-view]").forEach((el) => {
     el.classList.toggle("active", el.dataset.view === view);
@@ -355,6 +385,8 @@ function showView(view) {
   }
   navBackBtn.disabled = view !== "playlist";
   if (view === "trash") loadTrash();
+  if (view === "duplicates") loadDuplicates();
+  if (view === "stats") renderStats();
 
   currentView = view;
 }
@@ -421,6 +453,7 @@ function renderHome() {
   });
 
   renderDailyMix();
+  renderMoodSection();
   loadDiscover();
   loadDiscoverArtistRows();
 }
@@ -481,6 +514,172 @@ function renderDailyMix() {
     card.append(coverWrap, title, sub);
     card.addEventListener("click", () => playTrackIn(plIdx, trackIdx));
     dailyMixGrid.appendChild(card);
+  });
+}
+
+/* ===== Statistik-Seite =====
+   Nutzt dieselben lokalen Play-Counts wie Daily Mix (loadPlayCounts) plus
+   die kumulierte Hörzeit (LISTEN_TIME_KEY, siehe oben) - keine eigene
+   Datenquelle, nur eine andere Aufbereitung derselben Zahlen. */
+function fmtListenTime(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}min`;
+  return `${m}min`;
+}
+
+function findTrackByPlayCountKey(key) {
+  const sep = key.lastIndexOf("::");
+  const plName = key.slice(0, sep);
+  const file = key.slice(sep + 2);
+  const pl = library.find((p) => p.name === plName);
+  const track = pl && pl.tracks.find((t) => t.file === file);
+  return track || null;
+}
+
+function renderStatsList(el, rows) {
+  el.innerHTML = "";
+  if (!rows.length) {
+    el.innerHTML = '<div class="card-sub" style="padding:8px 0;">Noch keine Wiedergaben.</div>';
+    return;
+  }
+  rows.forEach(([label, count], i) => {
+    const row = document.createElement("div");
+    row.className = "stats-list-row";
+    const rank = document.createElement("span");
+    rank.className = "stats-list-rank";
+    rank.textContent = `${i + 1}.`;
+    const labelEl = document.createElement("span");
+    labelEl.className = "stats-list-label";
+    labelEl.textContent = label;
+    const countEl = document.createElement("span");
+    countEl.className = "stats-list-count";
+    countEl.textContent = `${count}×`;
+    row.append(rank, labelEl, countEl);
+    el.appendChild(row);
+  });
+}
+
+function renderStats() {
+  const totalSeconds = Number(localStorage.getItem(LISTEN_TIME_KEY)) || 0;
+  document.getElementById("statsTotalListenTime").textContent = fmtListenTime(totalSeconds);
+
+  const counts = loadPlayCounts();
+  const withTracks = Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([key, count]) => ({ track: findTrackByPlayCountKey(key), count }))
+    .filter((e) => e.track);
+
+  document.getElementById("statsTotalPlays").textContent = String(
+    withTracks.reduce((sum, e) => sum + e.count, 0)
+  );
+
+  const topSongs = withTracks
+    .slice()
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+    .map((e) => [`${e.track.title} — ${e.track.artist || "Unbekannter Interpret"}`, e.count]);
+  renderStatsList(document.getElementById("statsTopSongs"), topSongs);
+
+  const artistCounts = new Map();
+  withTracks.forEach((e) => {
+    const artist = e.track.artist || "Unbekannter Interpret";
+    artistCounts.set(artist, (artistCounts.get(artist) || 0) + e.count);
+  });
+  const topArtists = [...artistCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  renderStatsList(document.getElementById("statsTopArtists"), topArtists);
+}
+
+/* ===== Mood-Playlists (Home) =====
+   Keine echte Audio-Analyse (BPM/Energy) - würde einen schweren Decoder
+   als neue Rust-Abhängigkeit brauchen (Cross-Compile-Risiko, siehe
+   Kommentar bei normalizerCompressor). Stattdessen: Titel/Album-Text nach
+   Stimmungs-Stichworten durchsucht, alles ohne Treffer wird deterministisch
+   (Hash des Dateinamens, kein Zufall bei jedem Rendern) gleichmäßig auf
+   die drei Stimmungen verteilt, damit jede Stimmung auch bei einer
+   Bibliothek ohne passende Stichworte im Titel gefüllt ist. */
+const MOOD_DEFS = [
+  { id: "chill", label: "😌 Chill", keywords: ["chill", "acoustic", "lofi", "lo-fi", "slowed", "piano", "ballad", "unplugged", "relax", "calm", "sad"] },
+  { id: "workout", label: "💪 Workout", keywords: ["workout", "gym", "pump", "hardstyle", "phonk", "hard", "energy", "hype", "bass boosted"] },
+  { id: "party", label: "🎉 Party", keywords: ["party", "dance", "club", "remix", "edm", "banger", "hits"] },
+];
+
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function buildMoodBuckets() {
+  const buckets = { chill: [], workout: [], party: [] };
+  const unmatched = [];
+  library.forEach((pl, plIdx) => {
+    pl.tracks.forEach((t, trackIdx) => {
+      const text = `${t.title} ${t.album || ""}`.toLowerCase();
+      const hit = MOOD_DEFS.find((m) => m.keywords.some((kw) => text.includes(kw)));
+      const entry = { track: t, plIdx, trackIdx };
+      if (hit) buckets[hit.id].push(entry);
+      else unmatched.push(entry);
+    });
+  });
+  unmatched.forEach((entry) => {
+    const mood = MOOD_DEFS[hashStr(entry.track.file) % MOOD_DEFS.length];
+    buckets[mood.id].push(entry);
+  });
+  return buckets;
+}
+
+function playMoodPlaylist(entries) {
+  if (!entries.length) return;
+  const shuffled = entries.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const [first, ...rest] = shuffled;
+  playTrackIn(first.plIdx, first.trackIdx);
+  userQueue = rest.map((e) => queueEntryForTrack(e.track, library[e.plIdx].name));
+  renderQueuePanel();
+}
+
+// queueEntryFor() (siehe Warteschlange weiter unten) geht von currentPlaylist
+// aus - hier kommen die Tracks aber potenziell aus VIELEN verschiedenen
+// Playlists, deshalb eine eigene kleine Variante mit explizitem Playlist-Namen.
+function queueEntryForTrack(track, playlistName) {
+  return {
+    title: track.title,
+    artist: track.artist || "",
+    cover: track.cover || "",
+    stream_url: track.stream_url,
+    playlist: playlistName,
+    file: track.file || "",
+  };
+}
+
+function renderMoodSection() {
+  const grid = document.getElementById("moodGrid");
+  const section = document.getElementById("moodSection");
+  if (!grid || !section) return;
+  const buckets = buildMoodBuckets();
+  const hasAny = MOOD_DEFS.some((m) => buckets[m.id].length);
+  section.classList.toggle("hidden", !hasAny);
+  if (!hasAny) return;
+
+  grid.innerHTML = "";
+  MOOD_DEFS.forEach((m) => {
+    const entries = buckets[m.id];
+    if (!entries.length) return;
+    const card = document.createElement("div");
+    card.className = `mood-card mood-card-${m.id}`;
+    const title = document.createElement("div");
+    title.className = "mood-card-title";
+    title.textContent = m.label;
+    const count = document.createElement("div");
+    count.className = "mood-card-count";
+    count.textContent = `${entries.length} Songs`;
+    card.append(title, count);
+    card.addEventListener("click", () => playMoodPlaylist(entries));
+    grid.appendChild(card);
   });
 }
 
@@ -952,10 +1151,15 @@ recsRefreshBtn.addEventListener("click", async () => {
   setTimeout(() => recsRefreshBtn.classList.remove("spinning"), 600);
 });
 
-/* ===== Track Table ===== */
-function renderTrackTable() {
-  trackTableBody.innerHTML = "";
-  currentPlaylist.tracks.forEach((t, i) => {
+/* ===== Track Table =====
+   Lazy-Loading fuer grosse Playlists: der erste Batch rendert synchron
+   (Ansicht steht sofort da), der Rest folgt haeppchenweise ueber
+   requestAnimationFrame statt den Main-Thread mit tausenden DOM-Knoten +
+   Event-Listenern am Stueck zu blockieren. Fuer normal grosse Playlists
+   (< CHUNK_SIZE Titel) unveraendertes Verhalten - ein einziger Batch. */
+const TRACK_TABLE_CHUNK_SIZE = 150;
+
+function buildTrackRow(t, i) {
     const tr = document.createElement("tr");
     tr.className = "track-row";
     tr.dataset.index = i;
@@ -1040,9 +1244,27 @@ function renderTrackTable() {
         playTrack(i);
       }
     });
-    trackTableBody.appendChild(tr);
-  });
-  highlightPlayingRow();
+    return tr;
+}
+
+let trackTableRenderToken = 0;
+function renderTrackTable() {
+  trackTableBody.innerHTML = "";
+  const tracks = currentPlaylist.tracks;
+  const token = ++trackTableRenderToken; // Playlist-Wechsel mitten im Chunking bricht den alten Lauf sauber ab
+  let i = 0;
+  function renderChunk() {
+    if (token !== trackTableRenderToken) return;
+    const end = Math.min(i + TRACK_TABLE_CHUNK_SIZE, tracks.length);
+    const fragment = document.createDocumentFragment();
+    for (; i < end; i++) {
+      fragment.appendChild(buildTrackRow(tracks[i], i));
+    }
+    trackTableBody.appendChild(fragment);
+    highlightPlayingRow();
+    if (i < tracks.length) requestAnimationFrame(renderChunk);
+  }
+  renderChunk();
 }
 
 function highlightPlayingRow() {
@@ -1175,6 +1397,7 @@ function playTrack(index, opts = {}) {
   prefetchLyrics(track);
   prefetchLyrics(peekNextTrack());
   prefetchedNextForTrack = -1;
+  updateNextUpPreview();
 }
 
 /* Plays a track handed over from a queue (own "Als nächstes"-Warteschlange
@@ -1718,6 +1941,66 @@ function upcomingPlaylistTracks(maxCount) {
 
 let dragQIndex = null;
 
+/* Ähnliche Songs: alles vom selben Interpreten in der GESAMTEN Bibliothek
+   (nicht nur der aktuellen Playlist), reiner Client-Abgleich gegen die
+   schon geladene `library` - kein Server-Request nötig. Bewusst simpel
+   (nur Interpret-Gleichheit) statt eines eigenen Empfehlungs-Backends. */
+function similarTracks(maxCount) {
+  if (!nowPlayingMeta || !nowPlayingMeta.artist) return [];
+  const artist = nowPlayingMeta.artist.trim().toLowerCase();
+  if (!artist) return [];
+  const out = [];
+  for (const pl of library) {
+    for (let trackIdx = 0; trackIdx < pl.tracks.length; trackIdx++) {
+      if (out.length >= maxCount) return out;
+      const t = pl.tracks[trackIdx];
+      if ((t.artist || "").trim().toLowerCase() !== artist) continue;
+      if (pl.name === nowPlayingMeta.playlist && t.file === nowPlayingMeta.file) continue;
+      const plIdx = library.indexOf(pl);
+      out.push({ track: t, plIdx, trackIdx });
+    }
+  }
+  return out;
+}
+
+/* Kompakte "Als nächstes"-Vorschau in der Player-Leiste, ohne dafür das
+   Queue-Panel öffnen zu müssen - spiegelt exakt peekNextEntry() (siehe
+   Crossfade weiter unten), zeigt also immer denselben Titel, der bei
+   Songende auch tatsächlich als nächstes drankäme. */
+const pbNextUp = document.getElementById("pbNextUp");
+function updateNextUpPreview() {
+  if (!pbNextUp) return;
+  const next = peekNextEntry();
+  let title = "";
+  let artist = "";
+  if (next && next.kind === "playlist") {
+    const t = currentPlaylist && currentPlaylist.tracks[next.index];
+    if (t) {
+      title = t.title;
+      artist = t.artist;
+    }
+  } else if (next && next.entry) {
+    title = next.entry.title;
+    artist = next.entry.artist;
+  }
+  if (!title) {
+    pbNextUp.textContent = "";
+    pbNextUp.classList.add("hidden");
+    return;
+  }
+  pbNextUp.textContent = `Weiter: ${title}${artist ? " – " + artist : ""}`;
+  pbNextUp.classList.remove("hidden");
+}
+
+function isTrackAvailableLocally(title, artist) {
+  const t = (title || "").trim().toLowerCase();
+  if (!t) return false;
+  const a = (artist || "").trim().toLowerCase();
+  return library.some((pl) =>
+    pl.tracks.some((tr) => (tr.title || "").trim().toLowerCase() === t && (tr.artist || "").trim().toLowerCase() === a)
+  );
+}
+
 function queueSectionHeading(text) {
   const h = document.createElement("div");
   h.className = "queue-section-title";
@@ -1746,6 +2029,7 @@ function queueRowBase(entry) {
 }
 
 function renderQueuePanel() {
+  updateNextUpPreview();
   if (!queuePanelBody) return;
   queuePanelBody.innerHTML = "";
 
@@ -1828,6 +2112,15 @@ function renderQueuePanel() {
     queuePanelBody.appendChild(queueSectionHeading(`Von Gästen (${liveQueue.length})`));
     liveQueue.forEach((entry) => {
       const row = queueRowBase(entry);
+      // Offline-Indikator: liegt der Song schon lokal in der Bibliothek
+      // (spielt sofort ohne Netzwerk) oder muss er von der Quelle des
+      // Gasts gestreamt werden (braucht eine Verbindung)?
+      const local = isTrackAvailableLocally(entry.title, entry.artist);
+      const badge = document.createElement("span");
+      badge.className = "queue-row-source-badge";
+      badge.textContent = local ? "📀" : "🌐";
+      badge.title = local ? "Bereits in deiner Bibliothek - spielt lokal" : "Nicht lokal vorhanden - wird gestreamt";
+      row.appendChild(badge);
       const actions = document.createElement("div");
       actions.className = "queue-row-actions";
       const del = document.createElement("button");
@@ -1854,6 +2147,21 @@ function renderQueuePanel() {
     upcoming.forEach((t) => {
       const row = queueRowBase({ title: t.title, artist: t.artist, cover: coverFor(t) });
       row.classList.add("queue-row-upcoming");
+      queuePanelBody.appendChild(row);
+    });
+  }
+
+  // --- Ähnliche Songs (gleicher Interpret, ganze Bibliothek) ---
+  const similar = similarTracks(8);
+  if (similar.length) {
+    queuePanelBody.appendChild(queueSectionHeading("Ähnliche Songs"));
+    similar.forEach(({ track, plIdx, trackIdx }) => {
+      const row = queueRowBase({ title: track.title, artist: track.artist, cover: coverFor(track) });
+      row.classList.add("queue-row-clickable");
+      row.addEventListener("click", () => {
+        playTrackIn(plIdx, trackIdx);
+        closeQueuePanel();
+      });
       queuePanelBody.appendChild(row);
     });
   }
@@ -2069,6 +2377,35 @@ const eqSettings = { bass: 0, mid: 0, treble: 0 };
 const activeGain = () => (audioEl === audioElA ? gainA : gainB);
 const otherGain = () => (audioEl === audioElA ? gainB : gainA);
 
+/* Lautstärke-Normalisierung zwischen Tracks: echtes per-Track-ReplayGain
+   (vorab die ganze Datei analysieren) würde einen schweren Audio-Decoder
+   als neue Rust-Abhängigkeit brauchen (Cross-Compile-Risiko fürs Android-
+   NDK, siehe Cargo.toml-Kommentare zu reqwest/rustls-tls). Der schon
+   vorhandene DynamicsCompressorNode (broadcast-artiges Leveling in
+   Echtzeit) liefert denselben praktischen Nutzen - Downloads aus
+   unterschiedlichsten YouTube-Quellen klingen nicht mehr sprunghaft
+   lauter/leiser - ganz ohne Vorab-Analyse. Standardmäßig an (war vorher
+   fest verdrahtet, jetzt nur zusätzlich abschaltbar).*/
+const NORMALIZE_ENABLED_KEY = "loudnessNormalize";
+let normalizeEnabled = localStorage.getItem(NORMALIZE_ENABLED_KEY) !== "0";
+function applyNormalizerSettings() {
+  if (!normalizerCompressor) return;
+  if (normalizeEnabled) {
+    normalizerCompressor.threshold.value = -24;
+    normalizerCompressor.knee.value = 30;
+    normalizerCompressor.ratio.value = 12;
+  } else {
+    normalizerCompressor.threshold.value = 0;
+    normalizerCompressor.knee.value = 0;
+    normalizerCompressor.ratio.value = 1;
+  }
+}
+function setNormalizeEnabled(enabled) {
+  normalizeEnabled = enabled;
+  localStorage.setItem(NORMALIZE_ENABLED_KEY, enabled ? "1" : "0");
+  applyNormalizerSettings();
+}
+
 function initAudioGraph() {
   if (audioGraphReady) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -2103,11 +2440,9 @@ function initAudioGraph() {
   // ride the volume knob per song - fairly aggressive "broadcast leveling"
   // settings so quiet tracks get pulled up close to loud ones.
   normalizerCompressor = audioCtx.createDynamicsCompressor();
-  normalizerCompressor.threshold.value = -24;
-  normalizerCompressor.knee.value = 30;
-  normalizerCompressor.ratio.value = 12;
   normalizerCompressor.attack.value = 0.003;
   normalizerCompressor.release.value = 0.25;
+  applyNormalizerSettings();
 
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 1;
@@ -2688,6 +3023,15 @@ crossfadeToggleSwitch.addEventListener("click", () => setCrossfadeEnabled(!cross
 crossfadeToggleSwitch.classList.toggle("active", crossfadeEnabled);
 crossfadeToggleSwitch.setAttribute("aria-checked", String(crossfadeEnabled));
 
+const normalizeToggleSwitch = document.getElementById("normalizeToggleSwitch");
+normalizeToggleSwitch.classList.toggle("active", normalizeEnabled);
+normalizeToggleSwitch.setAttribute("aria-checked", String(normalizeEnabled));
+normalizeToggleSwitch.addEventListener("click", () => {
+  setNormalizeEnabled(!normalizeEnabled);
+  normalizeToggleSwitch.classList.toggle("active", normalizeEnabled);
+  normalizeToggleSwitch.setAttribute("aria-checked", String(normalizeEnabled));
+});
+
 const crossfadeSecondsSlider = document.getElementById("crossfadeSecondsSlider");
 const crossfadeSecondsReadout = document.getElementById("crossfadeSecondsReadout");
 crossfadeSecondsSlider.value = String(crossfadeSeconds);
@@ -3098,7 +3442,7 @@ if ("serviceWorker" in navigator) {
    entering search just hides those sections and shows searchView, leaving
    `currentView` untouched so clearing the query can restore it exactly. */
 function setSearchActive(active) {
-  [emptyState, homeView, libraryView, playlistView, trashView].forEach((el) => {
+  [emptyState, homeView, libraryView, playlistView, trashView, duplicatesView, statsView].forEach((el) => {
     if (active) el.classList.add("hidden");
   });
   searchView.classList.toggle("hidden", !active);
@@ -4093,6 +4437,65 @@ async function restoreTrashEntry(id) {
   } catch (err) {
     showToast(err.message || "Wiederherstellen fehlgeschlagen.");
   }
+}
+
+/* ===== Duplikat-Erkennung =====
+   find_duplicates (Rust) gruppiert alle Tracks der ganzen Bibliothek nach
+   normalisiertem Titel+Interpret - z.B. derselbe Song, der versehentlich in
+   zwei Playlists gelandet ist. Löschen nutzt denselben Weg wie ein
+   normales Entfernen aus einer Playlist (Papierkorb, kein Hard-Delete). */
+async function loadDuplicates() {
+  let groups = [];
+  try {
+    const res = await fetch("/api/duplicates");
+    const data = await res.json();
+    groups = data.groups || [];
+  } catch (_) {
+    groups = [];
+  }
+  renderDuplicates(groups);
+}
+
+function renderDuplicates(groups) {
+  duplicatesList.innerHTML = "";
+  duplicatesEmpty.classList.toggle("hidden", groups.length > 0);
+  groups.forEach((group) => {
+    const card = document.createElement("div");
+    card.className = "duplicate-group-card";
+    const heading = document.createElement("div");
+    heading.className = "duplicate-group-heading";
+    heading.textContent = `${group.label} (${group.tracks.length}×)`;
+    card.appendChild(heading);
+
+    group.tracks.forEach((t, i) => {
+      const row = document.createElement("div");
+      row.className = "duplicate-track-row";
+      const info = document.createElement("div");
+      info.className = "duplicate-track-info";
+      info.textContent = `${i === 0 ? "★ " : ""}${t.playlist} — ${t.file}`;
+      const delBtn = document.createElement("button");
+      delBtn.className = "trash-delete-btn";
+      delBtn.textContent = "🗑";
+      delBtn.title = "In den Papierkorb verschieben";
+      delBtn.addEventListener("click", async () => {
+        try {
+          const res = await fetch(
+            `/api/library/track/${encodeURIComponent(t.playlist)}/${encodeURIComponent(t.file)}`,
+            { method: "DELETE" }
+          );
+          if (!res.ok) throw new Error("Löschen fehlgeschlagen.");
+          showToast("🗑 In den Papierkorb verschoben");
+          await refreshLibrary();
+          await loadDuplicates();
+        } catch (err) {
+          showToast(err.message || "Löschen fehlgeschlagen.");
+        }
+      });
+      row.append(info, delBtn);
+      card.appendChild(row);
+    });
+    duplicatesList.appendChild(card);
+  });
 }
 
 async function deleteTrashEntryForever(id) {

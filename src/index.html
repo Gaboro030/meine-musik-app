@@ -30,6 +30,12 @@
         <button type="button" class="nav-item" data-view="trash">
           <span class="nav-icon">🗑️</span> Papierkorb
         </button>
+        <button type="button" class="nav-item" data-view="duplicates">
+          <span class="nav-icon">🧬</span> Duplikate
+        </button>
+        <button type="button" class="nav-item" data-view="stats">
+          <span class="nav-icon">📊</span> Statistik
+        </button>
       </nav>
 
       <div class="sidebar-divider"></div>
@@ -202,6 +208,10 @@
             <h2 class="home-section-title">📻 Daily Mix</h2>
             <div class="card-grid" id="dailyMixGrid"></div>
           </section>
+          <section class="home-section hidden" id="moodSection">
+            <h2 class="home-section-title">Stimmungen</h2>
+            <div class="mood-grid" id="moodGrid"></div>
+          </section>
           <section class="home-section">
             <h2 class="home-section-title">Zuletzt hinzugefügt</h2>
             <div class="card-grid" id="recentGrid"></div>
@@ -312,6 +322,30 @@
           </table>
           <div id="trashEmpty" class="card-sub hidden" style="padding: 20px 0;">Papierkorb ist leer.</div>
         </div>
+
+        <div id="duplicatesView" class="view-section hidden">
+          <h1 class="library-heading">Duplikate</h1>
+          <div id="duplicatesEmpty" class="card-sub hidden" style="padding: 20px 0;">Keine Duplikate gefunden.</div>
+          <div id="duplicatesList" class="duplicates-list"></div>
+        </div>
+
+        <div id="statsView" class="view-section hidden">
+          <h1 class="library-heading">Statistik</h1>
+          <div class="stats-summary-row">
+            <div class="stats-card">
+              <div id="statsTotalListenTime" class="stats-card-value">0h</div>
+              <div class="stats-card-label">Hörzeit gesamt</div>
+            </div>
+            <div class="stats-card">
+              <div id="statsTotalPlays" class="stats-card-value">0</div>
+              <div class="stats-card-label">Songs abgespielt</div>
+            </div>
+          </div>
+          <h2 class="stats-section-heading">Top-Songs</h2>
+          <div id="statsTopSongs" class="stats-list"></div>
+          <h2 class="stats-section-heading">Top-Interpreten</h2>
+          <div id="statsTopArtists" class="stats-list"></div>
+        </div>
       </div>
     </main>
   </div>
@@ -351,6 +385,13 @@
           <div class="settings-slider-row">
             <input type="range" id="crossfadeSecondsSlider" min="1" max="10" step="1" value="4" />
             <span id="crossfadeSecondsReadout" class="pbtools-readout">4s</span>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Lautstärke-Normalisierung</div>
+              <div class="settings-row-desc">Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln</div>
+            </div>
+            <button type="button" id="normalizeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
           </div>
           <div class="settings-row">
             <div>
@@ -478,6 +519,7 @@
       <div class="pb-info">
         <div id="pbTitle" class="pb-title">Kein Titel ausgewählt</div>
         <div id="pbArtist" class="pb-artist">—</div>
+        <div id="pbNextUp" class="pb-next-up hidden"></div>
       </div>
       <button id="pbLike" class="pb-like" title="Merken">♡</button>
       <button id="pbLyrics" class="pb-lyrics" title="Songtext anzeigen">🎤</button>

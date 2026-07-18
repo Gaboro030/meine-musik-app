@@ -138,6 +138,11 @@
       }
     }
 
+    // --- duplicates ------------------------------------------------------------
+    if (parts[1] === "duplicates") {
+      return jsonResponse({ groups: await invoke("find_duplicates") });
+    }
+
     // --- lyrics --------------------------------------------------------------
     // get_lyrics_cached reads a <file>.lyrics.json sidecar next to the
     // track first (playlist/file identify it) - zero network once a

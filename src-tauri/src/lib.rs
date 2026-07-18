@@ -1,5 +1,6 @@
 mod commands;
 mod discovery;
+mod duplicates;
 mod hotkeys;
 mod innertube;
 mod lyrics;
@@ -132,6 +133,7 @@ pub fn run() {
             party::party_participants,
             party::party_remove_participant,
             commands::export_playlist_m3u,
+            duplicates::find_duplicates,
             party::queue_list,
             party::queue_remove,
             innertube::set_po_token,

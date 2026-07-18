@@ -42,6 +42,12 @@ pub fn move_to_trash(
     let id = uuid::Uuid::new_v4().to_string();
     let dest = state.trash_dir.join(format!("{id}.mp3"));
     std::fs::rename(src_path, &dest).map_err(|e| e.to_string())?;
+    // Verwaisten Cover-Cache-Sidecar mit aufraeumen - sonst wuerde ein
+    // spaeter neu hinzugefuegter Track mit demselben Dateinamen (gleiche
+    // Playlist) faelschlich das alte, alte Cover serviert bekommen
+    // (compressed_cover in commands.rs liest den Cache rein dateinamen-
+    // basiert, ohne den Inhalt zu kennen).
+    let _ = std::fs::remove_file(src_path.with_extension("cover_cache.jpg"));
 
     let mut entries = load_index(&state.trash_index_file);
     let trashed_at = SystemTime::now()

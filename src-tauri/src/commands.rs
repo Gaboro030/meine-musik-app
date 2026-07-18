@@ -100,6 +100,33 @@ pub(crate) fn safe_filename(name: &str) -> String {
     }
 }
 
+/// Rechnet Cover-Art auf max. 320px herunter und cached das Ergebnis als
+/// JPEG-Sidecar neben dem Track (`<file>.cover_cache.jpg`) - eingebettete
+/// ID3-Bilder/YouTube-Thumbnails sind oft 500px-1000px+ und wurden vorher
+/// roh (Original-Groesse) bei JEDEM list_playlists-Aufruf per Base64 durch
+/// die IPC-Bruecke geschickt. Re-Encoding passiert nur beim ersten Scan
+/// eines Tracks, danach liest es den Cache direkt von der Platte.
+fn compressed_cover(path: &Path, raw: &[u8], fallback_mime: &str) -> Option<String> {
+    let cache_path = path.with_extension("cover_cache.jpg");
+    if let Ok(cached) = std::fs::read(&cache_path) {
+        return Some(format!("data:image/jpeg;base64,{}", BASE64.encode(&cached)));
+    }
+    let Ok(img) = image::load_from_memory(raw) else {
+        // Unbekanntes/nicht dekodierbares Format - lieber das Original
+        // durchreichen als das Cover komplett zu verlieren.
+        return Some(format!("data:{};base64,{}", fallback_mime, BASE64.encode(raw)));
+    };
+    let resized = img.thumbnail(320, 320);
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    if resized.write_to(&mut cursor, image::ImageFormat::Jpeg).is_ok() {
+        let bytes = cursor.into_inner();
+        let _ = std::fs::write(&cache_path, &bytes);
+        Some(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)))
+    } else {
+        Some(format!("data:{};base64,{}", fallback_mime, BASE64.encode(raw)))
+    }
+}
+
 pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
     let file_name = path
         .file_name()
@@ -129,8 +156,7 @@ pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
             meta.album = album.to_string();
         }
         if let Some(pic) = tag.pictures().next() {
-            let encoded = BASE64.encode(&pic.data);
-            meta.cover = Some(format!("data:{};base64,{}", pic.mime_type, encoded));
+            meta.cover = compressed_cover(path, &pic.data, &pic.mime_type);
         }
     }
     // m4a-Dateien (Android-Downloads) haben keine ID3-Frames fürs Cover -
@@ -138,7 +164,7 @@ pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
     if meta.cover.is_none() {
         let sidecar = path.with_extension("jpg");
         if let Ok(bytes) = std::fs::read(&sidecar) {
-            meta.cover = Some(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)));
+            meta.cover = compressed_cover(path, &bytes, "image/jpeg");
         }
     }
     // Same story for the artist - m4a downloads (Android) have no ID3 frame

@@ -44,6 +44,12 @@ futures-util = "0.3"
 # SVG QR code for the guest URL, no image/PNG dependency needed (same
 # pure-vector approach as the Flask app's qrcode SvgImage factory).
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+# Cover-Art auf vernuenftige Groesse herunterrechnen statt die oft riesigen
+# original YouTube-Thumbnails/ID3-Bilder roh durch jedes list_playlists zu
+# schicken (siehe read_track_meta/compressed_cover in commands.rs). Nur
+# jpeg+png (Decode) noetig - reine Rust-Codecs, kein System-libjpeg, damit
+# unkritisch fuers Android-NDK-Cross-Compile.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
