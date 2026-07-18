@@ -116,6 +116,7 @@ pub fn run() {
             commands::fetch_thumbnail,
             commands::download_track,
             commands::download_track_progress,
+            commands::get_stream_url,
             commands::clear_lyrics_cache,
             commands::get_app_version,
             playlist::resolve_playlist,

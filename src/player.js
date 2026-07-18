@@ -33,6 +33,7 @@ const trackTable = document.getElementById("trackTable");
 const bulkSelectBtn = document.getElementById("bulkSelectBtn");
 const bulkEditBar = document.getElementById("bulkEditBar");
 const bulkEditCount = document.getElementById("bulkEditCount");
+const bulkEditSelectAllBtn = document.getElementById("bulkEditSelectAllBtn");
 const bulkEditAlbumBtn = document.getElementById("bulkEditAlbumBtn");
 const bulkEditCoverBtn = document.getElementById("bulkEditCoverBtn");
 const bulkEditCoverInput = document.getElementById("bulkEditCoverInput");
@@ -733,7 +734,15 @@ function buildDiscoverCard(rec) {
     e.stopPropagation();
     downloadDiscoverTrack(rec, dlBtn);
   });
-  coverWrap.append(img, dlBtn);
+  const watchBtn = document.createElement("button");
+  watchBtn.className = "card-watch-btn";
+  watchBtn.textContent = "▶";
+  watchBtn.title = "Video direkt ansehen (ohne Download)";
+  watchBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openVideoPreview(rec.video_id, rec.title);
+  });
+  coverWrap.append(img, watchBtn, dlBtn);
   attachAddButton(coverWrap, {
     video_id: rec.video_id,
     title: rec.title,
@@ -1186,10 +1195,29 @@ recsRefreshBtn.addEventListener("click", async () => {
    Re-Render der Tabelle beim Umschalten nötig. */
 let bulkSelectMode = false;
 let bulkSelectedFiles = new Set();
+let lastBulkClickedIndex = -1;
 
 function toggleTrackSelection(file, selected) {
   if (selected) bulkSelectedFiles.add(file);
   else bulkSelectedFiles.delete(file);
+  updateBulkEditBar();
+}
+
+// Shift-Klick: alle Zeilen zwischen dem zuletzt angeklickten Index und dem
+// aktuellen markieren - die naheliegendste Antwort auf "wie wähle ich
+// mehrere aus", ohne jede Zeile einzeln anklicken zu müssen.
+function selectTrackRange(fromIndex, toIndex) {
+  if (!currentPlaylist) return;
+  const [lo, hi] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex];
+  for (let i = lo; i <= hi; i++) {
+    const t = currentPlaylist.tracks[i];
+    if (t) bulkSelectedFiles.add(t.file);
+  }
+  trackTable.querySelectorAll(".track-row").forEach((row) => {
+    const i = Number(row.dataset.index);
+    const cb = row.querySelector(".track-select-checkbox");
+    if (cb && i >= lo && i <= hi) cb.checked = true;
+  });
   updateBulkEditBar();
 }
 
@@ -1198,17 +1226,33 @@ function updateBulkEditBar() {
   bulkEditCount.textContent = `${count} ausgewählt`;
   bulkEditAlbumBtn.disabled = count === 0;
   bulkEditCoverBtn.disabled = count === 0;
+  const total = currentPlaylist ? currentPlaylist.tracks.length : 0;
+  bulkEditSelectAllBtn.textContent = total > 0 && count >= total ? "Auswahl aufheben" : "Alle auswählen";
 }
 
 function setBulkSelectMode(enabled) {
   bulkSelectMode = enabled;
   bulkSelectedFiles.clear();
+  lastBulkClickedIndex = -1;
   trackTable.classList.toggle("bulk-select-active", enabled);
   bulkSelectBtn.classList.toggle("active", enabled);
   bulkEditBar.classList.toggle("hidden", !enabled);
   trackTable.querySelectorAll(".track-select-checkbox").forEach((cb) => { cb.checked = false; });
   updateBulkEditBar();
 }
+
+bulkEditSelectAllBtn.addEventListener("click", () => {
+  if (!currentPlaylist) return;
+  const allSelected = bulkSelectedFiles.size >= currentPlaylist.tracks.length;
+  if (allSelected) {
+    bulkSelectedFiles.clear();
+    trackTable.querySelectorAll(".track-select-checkbox").forEach((cb) => { cb.checked = false; });
+  } else {
+    currentPlaylist.tracks.forEach((t) => bulkSelectedFiles.add(t.file));
+    trackTable.querySelectorAll(".track-select-checkbox").forEach((cb) => { cb.checked = true; });
+  }
+  updateBulkEditBar();
+});
 
 async function submitBulkUpdate(payload) {
   if (!currentPlaylist || !bulkSelectedFiles.size) return;
@@ -1277,7 +1321,13 @@ function buildTrackRow(t, i) {
     selectCb.checked = bulkSelectedFiles.has(t.file);
     selectCb.addEventListener("click", (e) => {
       e.stopPropagation();
-      toggleTrackSelection(t.file, selectCb.checked);
+      if (e.shiftKey && lastBulkClickedIndex !== -1) {
+        selectCb.checked = true;
+        selectTrackRange(lastBulkClickedIndex, i);
+      } else {
+        toggleTrackSelection(t.file, selectCb.checked);
+      }
+      lastBulkClickedIndex = i;
     });
     tdIndex.prepend(selectCb);
 
@@ -1348,10 +1398,15 @@ function buildTrackRow(t, i) {
     tdRemove.appendChild(removeBtn);
 
     tr.append(tdIndex, tdTitle, tdAlbum, tdDuration, tdMore, tdAdd, tdRemove);
-    tr.addEventListener("click", () => {
+    tr.addEventListener("click", (e) => {
       if (bulkSelectMode) {
-        selectCb.checked = !selectCb.checked;
-        toggleTrackSelection(t.file, selectCb.checked);
+        if (e.shiftKey && lastBulkClickedIndex !== -1) {
+          selectTrackRange(lastBulkClickedIndex, i);
+        } else {
+          selectCb.checked = !selectCb.checked;
+          toggleTrackSelection(t.file, selectCb.checked);
+        }
+        lastBulkClickedIndex = i;
         return;
       }
       // Klick auf den bereits laufenden Track: pausieren bzw. fortsetzen
@@ -1475,6 +1530,7 @@ function playTrack(index, opts = {}) {
     clearAbLoop();
     audioEl.src = track.stream_url;
     audioEl.play().catch(() => {});
+    applySkipSilenceStart(track.stream_url);
     // Weiter hören: nur bei langen Tracks (Mixes/Sets), und erst sobald die
     // Metadaten da sind - currentTime vor loadedmetadata zu setzen wird von
     // manchen Browsern schlicht ignoriert.
@@ -1537,6 +1593,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
     playCountedForTrack = null;
     audioEl.src = entry.stream_url;
     audioEl.play().catch(() => {});
+    applySkipSilenceStart(entry.stream_url);
   }
 
   pbCover.src = entry.cover || PLACEHOLDER_COVER;
@@ -2529,11 +2586,19 @@ function setNormalizeEnabled(enabled) {
 }
 
 /* ===== Skip-Silence =====
-   Leise Anfänge/Enden bei jedem Song automatisch überspringen. Läuft
-   direkt auf visualizerAnalyser (liegt hinter masterGain im Audio-Graph,
-   erfasst also das kombinierte Signal - egal welches der beiden Crossfade-
-   Elemente gerade aktiv ist) - keine Vorab-Analyse der Datei nötig,
-   sondern eine laufende RMS-Prüfung während der Wiedergabe. */
+   Leise Anfänge/Enden bei jedem Song automatisch überspringen.
+
+   Anfang: EIN sauberer Sprung statt laufendem Stottern. Die alte Version
+   pollte live und rückte bei anhaltender Stille alle ~400ms um 1s vor -
+   hörte sich wie ein hakender Plattenspieler an ("skippt immer nur so 2
+   Sekunden"). Jetzt wird beim Songstart einmalig ein kleines Stück vom
+   Dateianfang geholt (Byte-Range, Datei liegt eh lokal), offline decodiert
+   und die erste nicht-stille Stelle direkt angesprungen - ein Sprung,
+   fertig, bevor man's überhaupt hört.
+
+   Ende: laufende RMS-Prüfung bleibt nötig (wo der Song endet, weiß man erst
+   während der Wiedergabe), springt aber ebenfalls in einem Schritt an den
+   Rand des Crossfade-/Gapless-Übernahmefensters statt schrittweise. */
 const SKIP_SILENCE_KEY = "skipSilenceEnabled";
 let skipSilenceEnabled = localStorage.getItem(SKIP_SILENCE_KEY) === "1";
 function setSkipSilenceEnabled(enabled) {
@@ -2542,11 +2607,10 @@ function setSkipSilenceEnabled(enabled) {
 }
 
 const SILENCE_RMS_THRESHOLD = 0.02;
-const SILENCE_START_WINDOW_SECONDS = 12; // ab Songstart geprüftes Fenster
 const SILENCE_END_LOOKAHEAD_SECONDS = 40; // vor Songende geprüftes Fenster
-let silenceStartStreak = 0;
 let silenceEndStreak = 0;
 let silenceCheckBuf = null;
+let silenceStartSkipToken = 0;
 
 function currentSignalRms() {
   if (!visualizerAnalyser) return 1; // kein Audio-Graph (uralter Browser) - lieber normal abspielen
@@ -2561,8 +2625,49 @@ function currentSignalRms() {
 }
 
 function resetSilenceSkipState() {
-  silenceStartStreak = 0;
   silenceEndStreak = 0;
+}
+
+/* Holt nur die ersten ~1MB der Datei (reicht für mehrere Sekunden Audio in
+   jeder gängigen Bitrate) und decodiert sie in einem eigenen, kurzlebigen
+   OfflineAudioContext - berührt die eigentliche Wiedergabe nicht, liefert
+   nur die Startzeit des ersten echten Tons. */
+async function findAudioStartOffset(streamUrl) {
+  try {
+    const res = await fetch(streamUrl, { headers: { Range: "bytes=0-1048575" } });
+    const buf = await res.arrayBuffer();
+    const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Ctx) return 0;
+    const scratchCtx = new Ctx(2, 44100 * 30, 44100);
+    const decoded = await scratchCtx.decodeAudioData(buf);
+    const data = decoded.getChannelData(0);
+    const sr = decoded.sampleRate;
+    const windowSize = Math.max(1, Math.floor(sr * 0.05)); // 50ms-Fenster
+    for (let i = 0; i < data.length - windowSize; i += windowSize) {
+      let sumSq = 0;
+      for (let j = 0; j < windowSize; j++) sumSq += data[i + j] * data[i + j];
+      if (Math.sqrt(sumSq / windowSize) > SILENCE_RMS_THRESHOLD) {
+        const t = i / sr;
+        return t > 0.4 ? Math.max(0, t - 0.2) : 0; // kleiner Puffer vor dem Einsatz
+      }
+    }
+    return 0; // ganzes Prefix still (oder Decode fehlgeschlagen) - lieber nichts tun
+  } catch (_) {
+    return 0;
+  }
+}
+
+async function applySkipSilenceStart(streamUrl) {
+  if (!skipSilenceEnabled) return;
+  const token = ++silenceStartSkipToken;
+  const offset = await findAudioStartOffset(streamUrl);
+  // Falls der Track inzwischen gewechselt hat (Token) oder schon weiter
+  // ist (z.B. "Weiter hören" sprang schon auf eine spätere Position) -
+  // nicht rückwärts springen, nur vorwärts über echte Stille hinweg.
+  if (token !== silenceStartSkipToken || offset <= 0) return;
+  if (audioEl.src === streamUrl && audioEl.currentTime < offset) {
+    audioEl.currentTime = offset;
+  }
 }
 
 setInterval(() => {
@@ -2570,32 +2675,15 @@ setInterval(() => {
   const dur = audioEl.duration;
   if (!isFinite(dur) || dur <= 0) return;
   const t = audioEl.currentTime;
-  const isSilent = currentSignalRms() < SILENCE_RMS_THRESHOLD;
 
-  if (t < SILENCE_START_WINDOW_SECONDS) {
-    // Solange der Songanfang durchgehend still ist, in 1s-Schritten
-    // vorspulen - stoppt von selbst, sobald echter Ton ankommt.
-    if (isSilent) {
-      silenceStartStreak++;
-      if (silenceStartStreak >= 2) { // ~400ms durchgehend still
-        audioEl.currentTime = Math.min(t + 1, dur - 0.5);
-        silenceStartStreak = 0;
-      }
-    } else {
-      silenceStartStreak = 0;
-    }
-    return;
-  }
-
-  // Songende: nur außerhalb des Crossfade-/Gapless-Übernahmefensters
-  // aktiv - das kümmert sich ab da schon selbst um den nahtlosen Wechsel.
-  // Bei anhaltender Stille direkt an den Rand dieses Fensters springen,
-  // statt tote Luft abzuspielen; Crossfade/Gapless übernimmt den Rest wie
-  // gewohnt.
+  // Nur außerhalb des Crossfade-/Gapless-Übernahmefensters aktiv - das
+  // kümmert sich ab da schon selbst um den nahtlosen Wechsel. Bei
+  // anhaltender Stille direkt an den Rand dieses Fensters springen, statt
+  // tote Luft abzuspielen; Crossfade/Gapless übernimmt den Rest wie gewohnt.
   const handoffPoint = crossfadeSeconds + GAPLESS_PRELOAD_SECONDS + 0.5;
   const remaining = dur - t;
   if (remaining > handoffPoint && remaining <= SILENCE_END_LOOKAHEAD_SECONDS) {
-    if (isSilent) {
+    if (currentSignalRms() < SILENCE_RMS_THRESHOLD) {
       silenceEndStreak++;
       if (silenceEndStreak >= 7) { // ~1.4s durchgehend still
         audioEl.currentTime = dur - handoffPoint;
@@ -3211,6 +3299,11 @@ const videoOverlay = document.getElementById("videoOverlay");
 const videoPlayerEl = document.getElementById("videoPlayerEl");
 const videoCloseBtn = document.getElementById("videoCloseBtn");
 let videoWasPlaying = false;
+// true waehrend ein Video aus der Suche/Discover ohne Download angesehen
+// wird (openVideoPreview) - dann gehoert videoPlayerEl zu keinem lokalen
+// Track, closeVideoView() darf currentTime also NICHT auf audioEl
+// zurueckschreiben (wuerde die Position des laufenden Songs verstellen).
+let videoIsPreview = false;
 
 function isCurrentTrackVideo() {
   return !!(nowPlayingMeta && nowPlayingMeta.file && nowPlayingMeta.file.toLowerCase().endsWith(".mp4"));
@@ -3221,6 +3314,7 @@ function updateVideoButtonVisibility() {
 
 function openVideoView() {
   if (!isCurrentTrackVideo()) return;
+  videoIsPreview = false;
   videoWasPlaying = !audioEl.paused;
   audioEl.pause();
   videoPlayerEl.src = nowPlayingMeta.stream_url;
@@ -3229,13 +3323,40 @@ function openVideoView() {
   videoPlayerEl.play().catch(() => {});
 }
 
+/* Video direkt aus Suche/Discover ansehen, ohne es vorher über den
+   Downloader herunterzuladen: holt sich eine kurzlebige, direkt
+   abspielbare Stream-URL von yt-dlp (-g, kein Download) und spielt sie im
+   selben Overlay wie lokale mp4-Tracks ab. Desktop-only (siehe
+   get_stream_url in commands.rs). */
+async function openVideoPreview(videoId, title) {
+  showToast(`⏳ Lade Video „${title}" …`);
+  try {
+    const res = await fetch("/api/library/video-stream-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ video_id: videoId }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || "Video konnte nicht geladen werden.");
+    videoIsPreview = true;
+    videoWasPlaying = !audioEl.paused;
+    audioEl.pause();
+    videoPlayerEl.src = data.url;
+    videoOverlay.classList.remove("hidden");
+    videoPlayerEl.play().catch(() => {});
+  } catch (err) {
+    showToast(err.message || "Video konnte nicht geladen werden.");
+  }
+}
+
 function closeVideoView() {
-  audioEl.currentTime = videoPlayerEl.currentTime;
+  if (!videoIsPreview) audioEl.currentTime = videoPlayerEl.currentTime;
   videoPlayerEl.pause();
   videoPlayerEl.removeAttribute("src");
   videoPlayerEl.load();
   videoOverlay.classList.add("hidden");
   if (videoWasPlaying) audioEl.play().catch(() => {});
+  videoIsPreview = false;
 }
 
 pbVideo.addEventListener("click", openVideoView);
@@ -4203,17 +4324,26 @@ function textWeight(text) {
 }
 
 /* lrclib only ever gives one timestamp per LINE, never per word - true
-   "wort für wort" sync data doesn't exist here to read. This estimates a
-   time window per word instead, distributing [lineStart, lineEnd]
-   proportional to each word's estimated syllable count.
+   "wort für wort" sync data doesn't exist here to read (kein kostenloser
+   Anbieter liefert das; Musixmatch RichSync o.ä. wäre kostenpflichtig).
+   Das hier ist die bestmögliche Annäherung ohne solche Daten: Zeitfenster
+   pro Wort, proportional zur geschätzten Silbenzahl verteilt.
 
    Wichtige Korrektur ("kommt manchmal nicht richtig hinterher"): bei einer
    grossen Lücke zwischen zwei Zeilen (Instrumental-Teil) wurde das LETZTE
-   Wort bisher auf die GESAMTE Lücke gestreckt und "kroch" quälend langsam
+   Wort früher auf die GESAMTE Lücke gestreckt und "kroch" quälend langsam
    bis zur nächsten Zeile. Jetzt wird eine plausible Sprechdauer aus der
    Silbenzahl geschätzt (~0.32s/Silbe) - ist die tatsächliche Lücke deutlich
-   größer, endet das letzte Wort dort und nicht erst an der nächsten Zeile. */
+   größer, endet das letzte Wort dort statt erst an der nächsten Zeile.
+
+   "wenn er ein Wort lang zieht, soll's auch im Text lang gezogen werden":
+   gehaltene Töne liegen musikalisch so gut wie immer auf dem LETZTEN Wort
+   einer Zeile - bleibt nach der geschätzten Sprechdauer noch Luft bis zur
+   nächsten Zeile, bekommt genau dieses letzte Wort einen begrenzten Bonus
+   (max. 60% seiner Zeile bzw. 2.5s), statt die Lücke entweder zu ignorieren
+   oder (der alte Bug) komplett draufzuschlagen. */
 const SECONDS_PER_SYLLABLE_WEIGHT = 0.32;
+const HELD_WORD_MAX_BONUS_SECONDS = 2.5;
 
 function wordTimeWindows(text, lineStart, lineEnd) {
   const words = text.split(/(\s+)/).filter((w) => w !== "");
@@ -4222,13 +4352,23 @@ function wordTimeWindows(text, lineStart, lineEnd) {
   const rawSpan = Math.max(lineEnd - lineStart, 0.3);
   const naturalSpan = totalWeight * SECONDS_PER_SYLLABLE_WEIGHT;
   const duration = Math.min(rawSpan, Math.max(naturalSpan, 0.3));
+  const slack = rawSpan - duration;
+  const heldWordBonus = Math.max(0, Math.min(slack, duration * 0.6, HELD_WORD_MAX_BONUS_SECONDS));
+
   let acc = 0;
-  return words.map((w, i) => {
+  const windows = words.map((w, i) => {
     const start = lineStart + (acc / totalWeight) * duration;
     acc += weights[i];
     const end = lineStart + (acc / totalWeight) * duration;
     return { text: w, isSpace: /\s/.test(w), start, end };
   });
+  for (let i = windows.length - 1; i >= 0; i--) {
+    if (!windows[i].isSpace) {
+      windows[i].end += heldWordBonus;
+      break;
+    }
+  }
+  return windows;
 }
 
 /* Klammer-Ad-Libs ("(hold my hand)") nicht mehr inline in Klammern zeigen,

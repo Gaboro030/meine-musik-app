@@ -559,6 +559,54 @@ pub async fn fetch_thumbnail(url: String) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Löst eine YouTube-Video-ID zu einer temporären, direkt abspielbaren
+/// Stream-URL auf (yt-dlp `-g`, druckt nur die URL statt herunterzuladen) -
+/// fürs "Video direkt aus der Suche ansehen" ohne vorherigen Download über
+/// den separaten Downloader. Die URL ist von YouTube signiert und läuft
+/// nach einer Weile ab, wird hier also bewusst nicht gespeichert.
+#[tauri::command]
+pub async fn get_stream_url(app: tauri::AppHandle, video_id: String) -> Result<String, String> {
+    use tauri_plugin_shell::ShellExt;
+
+    if !video_id.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        || video_id.len() < 6
+        || video_id.len() > 20
+    {
+        return Err("Ungueltige Video-ID.".into());
+    }
+    if cfg!(target_os = "android") {
+        return Err("Video-Vorschau ist auf Android noch nicht verfuegbar - bitte ueber den Downloader herunterladen.".into());
+    }
+
+    let output = app
+        .shell()
+        .sidecar("yt-dlp")
+        .map_err(|e| e.to_string())?
+        .args([
+            "-f",
+            "best[ext=mp4]/best",
+            "-g",
+            &format!("https://www.youtube.com/watch?v={video_id}"),
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(friendly_download_error(&String::from_utf8_lossy(&output.stderr)));
+    }
+    let url = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if url.is_empty() {
+        return Err("Kein Video-Stream gefunden.".into());
+    }
+    Ok(url)
+}
+
 // --- YouTube download: shell out to yt-dlp --------------------------------
 // No mature Rust equivalent of yt-dlp/ytmusicapi exists - re-implementing a
 // YouTube extractor in Rust is its own multi-year project. The pragmatic,

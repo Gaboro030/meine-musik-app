@@ -87,6 +87,12 @@
         });
         return jsonResponse({ ok: true, playlist });
       }
+      if (parts[2] === "video-stream-url" && method === "POST") {
+        await awaitPoToken();
+        const b = jsonBody();
+        const url = await invoke("get_stream_url", { videoId: b.video_id });
+        return jsonResponse({ url });
+      }
       if (parts[2] === "upload" && method === "POST" && body instanceof FormData) {
         const playlist = String(body.get("playlist") || "Neue Playlist");
         const files = body.getAll("files");

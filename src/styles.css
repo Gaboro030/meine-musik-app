@@ -974,6 +974,27 @@ body.has-dynamic-colors .playlist-hero {
 .card:hover .card-add-btn { opacity: 1; transform: translateY(0); }
 .card-add-btn:hover { background: var(--sp-elevated-hover); transform: scale(1.06); }
 
+.card-watch-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.65);
+  color: var(--sp-text);
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(-8px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.15s ease;
+}
+.card:hover .card-watch-btn { opacity: 1; transform: translateY(0); }
+.card-watch-btn:hover { background: var(--sp-green); color: #000; transform: scale(1.06); }
+
 /* ========= ADD-TO-PLAYLIST MENU ========= */
 .add-to-playlist-menu {
   position: fixed;
