@@ -153,9 +153,17 @@ let audioEl = audioElA;
   const wrapMap = new Map();
   const bindBoth = function (type, fn, opts) {
     if (typeof fn !== "function") return;
+    // {once:true}-Listener (z.B. der "weiter hören"-Resume-Seek in
+    // playTrack, jedes Mal eine neue Closure bei langen Tracks) entfernt
+    // der Browser nach dem Feuern selbststaendig von den echten Elementen -
+    // ruft dabei aber nie removeBoth() auf, also blieb der fn->wrapped-
+    // Eintrag hier fuer immer in der Map (Leak über eine lange Session).
+    // Bei jedem Feuern eines once-Listeners sich also selbst austragen.
+    const isOnce = !!(opts && typeof opts === "object" && opts.once);
     let wrapped = wrapMap.get(fn);
     if (!wrapped) {
       wrapped = function (e) {
+        if (isOnce) wrapMap.delete(fn);
         if (e.currentTarget !== audioEl) return;
         return fn.call(e.currentTarget, e);
       };
@@ -169,6 +177,7 @@ let audioEl = audioElA;
     if (!wrapped) return;
     origRemA(type, wrapped, opts);
     origRemB(type, wrapped, opts);
+    wrapMap.delete(fn);
   };
   audioElA.addEventListener = bindBoth;
   audioElB.addEventListener = bindBoth;
@@ -1101,9 +1110,12 @@ async function deleteTrack(index) {
       audioEl.pause();
       audioEl.removeAttribute("src");
       currentTrackIndex = -1;
+      nowPlayingMeta = null;
       updatePlayButton(false);
       pbTitle.textContent = "Kein Titel ausgewählt";
       pbArtist.textContent = "—";
+      updateVideoButtonVisibility();
+      closeVideoViewIfOpenForTrackChange();
     } else if (index < currentTrackIndex) {
       currentTrackIndex -= 1; // still-playing track shifted down by one
     }
@@ -1522,12 +1534,15 @@ function playTrack(index, opts = {}) {
   const track = currentPlaylist.tracks[index];
 
   initAudioGraph();
+  // A-B-Loop gehört an die Zeitachse EINES Songs - bei jedem Trackwechsel
+  // (auch per Crossfade-Handoff, sonst erbt der neue Song die alten Punkte
+  // und springt scheinbar zufällig zurück) muss er verworfen werden.
+  clearAbLoop();
   // handoff = Crossfade-Rollentausch: das Element spielt den Titel schon
   // mit vollem Pegel - nur UI/Metadaten nachziehen, nicht neu laden.
   if (!opts.handoff) {
     resetFadeForNewTrack();
     playCountedForTrack = null; // frischer Start - auch bei sofortigem Replay wieder zählbar
-    clearAbLoop();
     audioEl.src = track.stream_url;
     audioEl.play().catch(() => {});
     applySkipSilenceStart(track.stream_url);
@@ -1571,9 +1586,15 @@ function playTrack(index, opts = {}) {
   prefetchLyrics(track);
   prefetchLyrics(peekNextTrack());
   prefetchedNextForTrack = -1;
-  updateNextUpPreview();
+  // ruft intern auch updateNextUpPreview() auf - hält "Danach"/"Ähnliche
+  // Songs" im Queue-Panel aktuell, falls es beim normalen Trackwechsel
+  // (nicht nur beim Abspielen aus der Warteschlange) offen bleibt.
+  renderQueuePanel();
   updateVideoButtonVisibility();
   resetSilenceSkipState();
+  closeVideoViewIfOpenForTrackChange();
+  refreshLyricsIfOpen();
+  refreshVisualizerIfOpen();
 }
 
 /* Plays a track handed over from a queue (own "Als nächstes"-Warteschlange
@@ -1587,6 +1608,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
   if (currentTrackIndex >= 0) queueResumeIndex = currentTrackIndex;
 
   initAudioGraph();
+  clearAbLoop(); // siehe playTrack - Loop-Punkte gehören nie zu einem neuen Song
   // handoff: siehe playTrack - Element spielt schon, nichts neu laden.
   if (!opts.handoff) {
     resetFadeForNewTrack();
@@ -1623,7 +1645,10 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
   }
   updateVideoButtonVisibility();
   resetSilenceSkipState();
+  closeVideoViewIfOpenForTrackChange();
   renderQueuePanel();
+  refreshLyricsIfOpen();
+  refreshVisualizerIfOpen();
 }
 
 function updatePlayButton(playing) {
@@ -3256,18 +3281,30 @@ function resizeVisualizerCanvas() {
   visualizerCanvas.height = visualizerCanvas.clientHeight * (window.devicePixelRatio || 1);
 }
 
+function setVisualizerMeta() {
+  visualizerTitle.textContent = nowPlayingMeta.title;
+  visualizerArtist.textContent = nowPlayingMeta.artist || "Unbekannter Interpret";
+  visualizerCover.src = coverFor({ cover: nowPlayingMeta.cover });
+}
+
 function openVisualizer() {
   if (!nowPlayingMeta) {
     showToast("Gerade wird kein Titel abgespielt.");
     return;
   }
   initAudioGraph();
-  visualizerTitle.textContent = nowPlayingMeta.title;
-  visualizerArtist.textContent = nowPlayingMeta.artist || "Unbekannter Interpret";
-  visualizerCover.src = coverFor({ cover: nowPlayingMeta.cover });
+  setVisualizerMeta();
   visualizerOverlay.classList.remove("hidden");
   resizeVisualizerCanvas();
   if (visualizerRafId === null) visualizerRafId = requestAnimationFrame(drawVisualizerFrame);
+}
+
+// Songwechsel bei offenem Vollbild-Visualizer - die Balken laufen (Analyser
+// ist live) weiter, aber Titel/Interpret/Cover blieben bisher auf dem Song
+// stehen, der beim Öffnen lief. Gleicher Fix wie beim Songtext-Overlay.
+function refreshVisualizerIfOpen() {
+  if (visualizerOverlay.classList.contains("hidden") || !nowPlayingMeta) return;
+  setVisualizerMeta();
 }
 
 function closeVisualizer() {
@@ -3381,6 +3418,21 @@ function closeVideoView() {
   videoIsPreview = false;
 }
 
+// Songwechsel bei offener Video-Ansicht (lokales mp4 ODER Live-Vorschau aus
+// der Suche) - das Overlay zeigte bisher stur das alte Video weiter, und ein
+// spaeteres Schliessen haette sogar closeVideoView()'s
+// "audioEl.currentTime = videoPlayerEl.currentTime" die Position des NEUEN,
+// laengst eigenstaendig laufenden Tracks mit der alten Video-Abspielzeit
+// ueberschrieben. Einfach schliessen, ohne audioEl anzufassen.
+function closeVideoViewIfOpenForTrackChange() {
+  if (videoOverlay.classList.contains("hidden")) return;
+  videoPlayerEl.pause();
+  videoPlayerEl.removeAttribute("src");
+  videoPlayerEl.load();
+  videoOverlay.classList.add("hidden");
+  videoIsPreview = false;
+}
+
 pbVideo.addEventListener("click", openVideoView);
 videoCloseBtn.addEventListener("click", closeVideoView);
 videoOverlay.addEventListener("click", (e) => {
@@ -3466,14 +3518,35 @@ pipToggleSwitch.addEventListener("click", () => {
 setPipEnabled(pipEnabled);
 
 let pipWindow = null;
+// Schutz gegen doppeltes Oeffnen: blur UND visibilitychange koennen beide
+// feuern, bevor das await unten aufgeloest und pipWindow zugewiesen ist -
+// der simple "pipWindow"-Check allein greift da zu spaet.
+let pipOpening = false;
+// Entfernt die play/pause-Listener + den Refresh-Timer von genau DIESEM
+// PiP-Fenster - vorher wurden bei jedem Minimieren/Zurueckholen neue
+// Listener auf audioEl gehaengt, ohne die alten je zu entfernen (Leak bei
+// haeufigem Alt-Tab). Auf null gesetzt nach Ausfuehrung, damit ein
+// doppelter Aufruf (closeMiniPlayer() UND das eigene pagehide) harmlos ist.
+let pipCleanup = null;
 async function openMiniPlayer() {
-  if (!pipSupported || pipWindow) return;
+  if (!pipSupported || pipWindow || pipOpening) return;
+  pipOpening = true;
+  let win;
   try {
-    pipWindow = await window.documentPictureInPicture.requestWindow({ width: 320, height: 130 });
+    win = await window.documentPictureInPicture.requestWindow({ width: 320, height: 130 });
   } catch (_) {
-    pipWindow = null;
+    pipOpening = false;
     return;
   }
+  pipOpening = false;
+  if (pipWindow) {
+    // Waehrend des awaits ist schon ein anderes PiP-Fenster entstanden -
+    // dieses hier sofort wieder schliessen statt zwei parallel laufen zu
+    // lassen.
+    win.close();
+    return;
+  }
+  pipWindow = win;
   const style = pipWindow.document.createElement("style");
   style.textContent = `
     body { margin: 0; background: #101014; color: #fff; font-family: inherit; display: flex; align-items: center; gap: 12px; padding: 14px; box-sizing: border-box; height: 100%; }
@@ -3518,12 +3591,19 @@ async function openMiniPlayer() {
   audioEl.addEventListener("pause", refresh);
   const metaTimer = setInterval(refresh, 1000);
 
-  pipWindow.addEventListener("pagehide", () => {
+  pipCleanup = () => {
+    audioEl.removeEventListener("play", refresh);
+    audioEl.removeEventListener("pause", refresh);
     clearInterval(metaTimer);
+    pipCleanup = null;
+  };
+  pipWindow.addEventListener("pagehide", () => {
+    if (pipCleanup) pipCleanup();
     pipWindow = null;
   });
 }
 function closeMiniPlayer() {
+  if (pipCleanup) pipCleanup();
   if (pipWindow) pipWindow.close();
   pipWindow = null;
 }
@@ -4266,6 +4346,7 @@ audioEl.addEventListener("timeupdate", () => {
 let lyricsSyncLines = null; // [{t, el, words:[{start,end,el}]}] sorted by t, or null when unsynced
 let lyricsActiveIdx = -1;
 let lyricsRequestToken = 0; // drops stale responses after a quick track change
+let lyricsShownForKey = null; // playlist::file, das das offene Overlay gerade zeigt
 
 /* ===== Manuelle Sync-Justierung =====
    lrclib-Zeitstempel sind community-eingereicht und nicht immer exakt auf
@@ -4571,6 +4652,7 @@ async function openLyrics(force = false) {
     return;
   }
   const meta = nowPlayingMeta;
+  lyricsShownForKey = `${meta.playlist || ""}::${meta.file || ""}`;
   const token = ++lyricsRequestToken;
   lyricsOverlay.classList.remove("hidden");
   startLyricsLoop();
@@ -4604,17 +4686,21 @@ function closeLyrics() {
   stopLyricsLoop();
   lyricsSyncLines = null;
   lyricsActiveIdx = -1;
+  lyricsShownForKey = null;
 }
 
-// Track changed while the overlay is open (autoplay, next/prev, queue) -
-// reload lyrics for the new song instead of highlighting stale lines.
-// loadedmetadata fires exactly once per new src, not on seeks.
-audioEl.addEventListener("loadedmetadata", () => {
-  if (!lyricsOverlay.classList.contains("hidden") && nowPlayingMeta &&
-      lyricsTitle.textContent !== nowPlayingMeta.title) {
-    openLyrics();
-  }
-});
+/* Bei JEDEM Trackwechsel aufgerufen (direkter Wechsel UND Crossfade-
+   Handoff) - reicht ein offenes Songtext-Overlay auf den neuen Song durch,
+   statt die alten Zeilen weiter hervorzuheben. Ein "loadedmetadata"-Listener
+   allein reicht dafür NICHT: beim Crossfade-Handoff wurde das Ghost-Element
+   schon lange VOR dem Rollentausch (während es noch der leise vorbereitete
+   "nächste Song" war) geladen - das Event feuerte da längst und nie wieder,
+   das war der eigentliche Bug ("Songtext komplett kaputt beim neuen Song"). */
+function refreshLyricsIfOpen() {
+  if (lyricsOverlay.classList.contains("hidden") || !nowPlayingMeta) return;
+  const key = `${nowPlayingMeta.playlist || ""}::${nowPlayingMeta.file || ""}`;
+  if (key !== lyricsShownForKey) openLyrics();
+}
 
 pbLyrics.addEventListener("click", openLyrics);
 lyricsCloseBtn.addEventListener("click", closeLyrics);
@@ -5109,6 +5195,22 @@ function renderDuplicates(groups) {
           );
           if (!res.ok) throw new Error("Löschen fehlgeschlagen.");
           showToast("🗑 In den Papierkorb verschoben");
+          // Duplikate-Ansicht ist nicht an currentPlaylist/currentTrackIndex
+          // gebunden (kann aus jeder Playlist loeschen) - deshalb hier extra
+          // gegen nowPlayingMeta pruefen, statt wie in deleteTrack() gegen
+          // den Index. Sonst zeigt der Player weiter auf eine gerade
+          // verschobene Datei.
+          if (nowPlayingMeta && nowPlayingMeta.playlist === t.playlist && nowPlayingMeta.file === t.file) {
+            audioEl.pause();
+            audioEl.removeAttribute("src");
+            currentTrackIndex = -1;
+            nowPlayingMeta = null;
+            updatePlayButton(false);
+            pbTitle.textContent = "Kein Titel ausgewählt";
+            pbArtist.textContent = "—";
+            updateVideoButtonVisibility();
+            closeVideoViewIfOpenForTrackChange();
+          }
           await refreshLibrary();
           await loadDuplicates();
         } catch (err) {
