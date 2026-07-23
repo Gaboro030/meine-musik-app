@@ -1615,7 +1615,7 @@ function playTrack(index, opts = {}) {
   closeVideoViewIfOpenForTrackChange();
   refreshLyricsIfOpen();
   refreshVisualizerIfOpen();
-  loadWaveform(track.stream_url);
+  analyzeCurrentTrackAudio(track.stream_url);
 }
 
 /* Plays a track handed over from a queue (own "Als nächstes"-Warteschlange
@@ -1670,7 +1670,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
   renderQueuePanel();
   refreshLyricsIfOpen();
   refreshVisualizerIfOpen();
-  loadWaveform(entry.stream_url);
+  analyzeCurrentTrackAudio(entry.stream_url);
 }
 
 function updatePlayButton(playing) {
@@ -2454,6 +2454,14 @@ let waveformPeaks = null; // Float32Array[0..1] pro Bucket, oder null solange ni
 let waveformToken = 0;
 const waveformCtx = pbWaveformCanvas.getContext("2d");
 
+// BPM-/Beatraster-Erkennung fuer DJ-Beat-Uebergaenge (siehe maybeStartFadeOut
+// weiter unten) - {bpm, beatIntervalSec, firstBeatSec} des GERADE laufenden
+// Tracks, oder null (Analyse noch nicht fertig/fehlgeschlagen -> normales
+// Crossfade-Verhalten). beatInfoCache verhindert erneutes Decodieren, wenn
+// derselbe Track spaeter nochmal gespielt wird.
+let currentTrackBeatInfo = null;
+const beatInfoCache = new Map();
+
 function resizeWaveformCanvas() {
   const rect = pbWaveformCanvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
@@ -2494,14 +2502,108 @@ function drawWaveform() {
   }
 }
 
+/* Einfache Onset-basierte BPM-/Beatraster-Schaetzung fuer die DJ-Beat-
+   Uebergaenge (siehe maybeStartFadeOut): Energie in 10ms-Fenstern, lokalen
+   gleitenden Schnitt abziehen (sonst dominieren nur laute Songabschnitte
+   statt echter Schlaege), Peaks picken, dann ueber alle Peak-Paare ein BPM-
+   Histogramm bilden (robuster als nur benachbarte Peaks). Kein Anspruch auf
+   professionelle Beat-Detection - reicht aber, um einen Uebergang auf einen
+   ungefaehren Beat statt einen beliebigen Zeitpunkt zu legen. */
+function detectBeatInfo(channelData, sampleRate) {
+  const hop = Math.floor(sampleRate * 0.01);
+  const numWindows = Math.floor(channelData.length / hop);
+  if (numWindows < 100) return null;
+
+  const energy = new Float32Array(numWindows);
+  for (let i = 0; i < numWindows; i++) {
+    let sum = 0;
+    const start = i * hop;
+    const end = Math.min(start + hop, channelData.length);
+    for (let j = start; j < end; j++) sum += channelData[j] * channelData[j];
+    energy[i] = sum;
+  }
+
+  const smoothWindow = 43; // ~430ms
+  const onset = new Float32Array(numWindows);
+  for (let i = 0; i < numWindows; i++) {
+    let localSum = 0;
+    let count = 0;
+    for (let k = Math.max(0, i - smoothWindow); k < Math.min(numWindows, i + smoothWindow); k++) {
+      localSum += energy[k];
+      count++;
+    }
+    onset[i] = Math.max(0, energy[i] - localSum / count);
+  }
+
+  let onsetAvg = 0;
+  for (let i = 0; i < numWindows; i++) onsetAvg += onset[i];
+  onsetAvg /= numWindows;
+  const threshold = onsetAvg * 1.5;
+
+  const minGapWindows = Math.floor(0.25 / 0.01); // min. 250ms zwischen Schlaegen (~max 240 BPM)
+  const peaks = [];
+  let lastPeak = -minGapWindows;
+  for (let i = 1; i < numWindows - 1; i++) {
+    if (onset[i] > threshold && onset[i] >= onset[i - 1] && onset[i] >= onset[i + 1] && i - lastPeak >= minGapWindows) {
+      peaks.push(i);
+      lastPeak = i;
+    }
+  }
+  if (peaks.length < 6) return null; // zu wenig erkannte Schlaege fuer eine verlaessliche Schaetzung
+
+  const bpmVotes = new Map();
+  for (let i = 0; i < peaks.length - 1; i++) {
+    for (let j = i + 1; j < Math.min(i + 9, peaks.length); j++) {
+      const intervalSec = ((peaks[j] - peaks[i]) * hop) / sampleRate;
+      if (intervalSec <= 0) continue;
+      let bpm = 60 / intervalSec;
+      // Halbes/doppeltes Tempo ist eine bekannte Mehrdeutigkeit dieses simplen
+      // Verfahrens - in den ueblichen Musik-Bereich falten statt z.B. 70 BPM
+      // als "140" zu werten.
+      while (bpm < 70) bpm *= 2;
+      while (bpm > 180) bpm /= 2;
+      const bucket = Math.round(bpm);
+      bpmVotes.set(bucket, (bpmVotes.get(bucket) || 0) + 1);
+    }
+  }
+  let bestBpm = null;
+  let bestVotes = 0;
+  for (const [bpm, votes] of bpmVotes) {
+    if (votes > bestVotes) {
+      bestVotes = votes;
+      bestBpm = bpm;
+    }
+  }
+  if (!bestBpm) return null;
+
+  return {
+    bpm: bestBpm,
+    beatIntervalSec: 60 / bestBpm,
+    firstBeatSec: (peaks[0] * hop) / sampleRate,
+  };
+}
+
+/* Naechster Beat-Zeitpunkt zum gegebenen Ziel, ausgehend vom erkannten
+   Beat-Raster (firstBeatSec + n*beatIntervalSec). Ohne Beat-Info (Analyse
+   noch nicht fertig/fehlgeschlagen) einfach das Ziel selbst - identisch zum
+   bisherigen Verhalten. */
+function nearestBeatTime(beatInfo, targetSec) {
+  if (!beatInfo) return targetSec;
+  const beatsFromFirst = Math.round((targetSec - beatInfo.firstBeatSec) / beatInfo.beatIntervalSec);
+  return beatInfo.firstBeatSec + beatsFromFirst * beatInfo.beatIntervalSec;
+}
+
 /* Laedt+decodiert den KOMPLETTEN Track (nicht nur ein Prefix wie Skip-
-   Silence) fuer eine akkurate Wellenform ueber die gesamte Laenge. Ein
-   Token-Guard verhindert, dass ein spaeter abgeschlossener Decode-Vorgang
-   eines VORHERIGEN Tracks die Wellenform des inzwischen neuen Tracks
-   ueberschreibt (gleiche Idee wie bei den Lyrics). */
-async function loadWaveform(streamUrl) {
+   Silence) fuer eine akkurate Wellenform ueber die gesamte Laenge UND (bei
+   aktivierten DJ-Beat-Uebergaengen) die BPM-/Beatraster-Schaetzung - beides
+   aus demselben Decode, um den Track nicht zweimal laden+decodieren zu
+   muessen. Ein Token-Guard verhindert, dass ein spaeter abgeschlossener
+   Decode-Vorgang eines VORHERIGEN Tracks die Anzeige des inzwischen neuen
+   Tracks ueberschreibt (gleiche Idee wie bei den Lyrics). */
+async function analyzeCurrentTrackAudio(streamUrl) {
   const token = ++waveformToken;
   waveformPeaks = null;
+  currentTrackBeatInfo = beatInfoCache.has(streamUrl) ? beatInfoCache.get(streamUrl) : null;
   drawWaveform();
   try {
     const resp = await fetch(streamUrl);
@@ -2513,6 +2615,7 @@ async function loadWaveform(streamUrl) {
     const decoded = await new OfflineCtx(1, 1, 44100).decodeAudioData(buf);
     if (token !== waveformToken) return;
     const data = decoded.getChannelData(0);
+
     const bucketSize = Math.max(1, Math.floor(data.length / WAVEFORM_BUCKETS));
     const peaks = new Float32Array(WAVEFORM_BUCKETS);
     for (let i = 0; i < WAVEFORM_BUCKETS; i++) {
@@ -2532,8 +2635,15 @@ async function loadWaveform(streamUrl) {
       waveformPeaks = peaks;
       drawWaveform();
     }
+
+    if (!beatInfoCache.has(streamUrl)) {
+      const info = detectBeatInfo(data, decoded.sampleRate);
+      beatInfoCache.set(streamUrl, info);
+      if (token === waveformToken) currentTrackBeatInfo = info;
+    }
   } catch (_) {
-    // Bleibt beim Flach-Platzhalter - rein kosmetisch, kein Fehler-Toast noetig.
+    // Bleibt beim Flach-Platzhalter/ohne Beat-Info - rein kosmetisch bzw.
+    // faellt auf normalen Crossfade zurueck, kein Fehler-Toast noetig.
   }
 }
 
@@ -3162,7 +3272,18 @@ function maybeStartFadeOut() {
     return;
   }
 
-  if (remaining <= crossfadeSeconds && remaining > 0) {
+  // DJ-Beat-Uebergaenge: statt strikt "crossfadeSeconds vor Schluss" den
+  // Uebergang auf den naechstgelegenen erkannten Beat des laufenden Tracks
+  // legen - weicht maximal ein halbes Beat-Intervall vom bisherigen
+  // Zeitpunkt ab, faengt sich aber merklich "im Takt" an statt an einem
+  // beliebigen Punkt. Ohne Beat-Info (Analyse noch nicht fertig/
+  // fehlgeschlagen) oder abgeschaltet: exakt das bisherige Verhalten.
+  const naiveFadeStart = audioEl.duration - crossfadeSeconds;
+  const fadeStart = djBeatmatchEnabled && currentTrackBeatInfo
+    ? Math.min(Math.max(nearestBeatTime(currentTrackBeatInfo, naiveFadeStart), 0), audioEl.duration - 0.1)
+    : naiveFadeStart;
+
+  if (audioEl.currentTime >= fadeStart && remaining > 0) {
     fadingOut = true;
     const now = audioCtx.currentTime;
     const g = activeGain();
@@ -3636,6 +3757,20 @@ function setCrossfadeEnabled(enabled) {
 crossfadeToggleSwitch.addEventListener("click", () => setCrossfadeEnabled(!crossfadeEnabled));
 crossfadeToggleSwitch.classList.toggle("active", crossfadeEnabled);
 crossfadeToggleSwitch.setAttribute("aria-checked", String(crossfadeEnabled));
+
+/* ===== Settings: DJ-Beat-Uebergaenge toggle ===== */
+const DJ_BEATMATCH_ENABLED_KEY = "djBeatmatchEnabled";
+let djBeatmatchEnabled = localStorage.getItem(DJ_BEATMATCH_ENABLED_KEY) === "1";
+const djBeatmatchToggleSwitch = document.getElementById("djBeatmatchToggleSwitch");
+function setDjBeatmatchEnabled(enabled) {
+  djBeatmatchEnabled = enabled;
+  localStorage.setItem(DJ_BEATMATCH_ENABLED_KEY, enabled ? "1" : "0");
+  djBeatmatchToggleSwitch.classList.toggle("active", enabled);
+  djBeatmatchToggleSwitch.setAttribute("aria-checked", String(enabled));
+}
+djBeatmatchToggleSwitch.addEventListener("click", () => setDjBeatmatchEnabled(!djBeatmatchEnabled));
+djBeatmatchToggleSwitch.classList.toggle("active", djBeatmatchEnabled);
+djBeatmatchToggleSwitch.setAttribute("aria-checked", String(djBeatmatchEnabled));
 
 const normalizeToggleSwitch = document.getElementById("normalizeToggleSwitch");
 normalizeToggleSwitch.classList.toggle("active", normalizeEnabled);
