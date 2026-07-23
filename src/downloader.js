@@ -55,8 +55,9 @@ function awaitPoToken(timeoutMs = 6000) {
    Hinweis-Banner erklärt nur noch diesen Unterschied. */
 const androidNotice = document.getElementById("androidDownloadNotice");
 if (/android/i.test(navigator.userAgent) && androidNotice) {
-  androidNotice.textContent =
-    "ℹ️ Auf Android wird Audio als M4A gespeichert (statt MP3) und Videos in Standard-Qualität - Abspielen funktioniert ganz normal.";
+  androidNotice.textContent = t(
+    "ℹ️ Auf Android wird Audio als M4A gespeichert (statt MP3) und Videos in Standard-Qualität - Abspielen funktioniert ganz normal."
+  );
   androidNotice.classList.remove("hidden");
 }
 
@@ -175,8 +176,8 @@ loadForm.addEventListener("submit", async (e) => {
   if (!url) return;
 
   loadBtn.disabled = true;
-  loadBtn.textContent = "Laden …";
-  setStatus("Lade Playlist …");
+  loadBtn.textContent = t("Laden …");
+  setStatus(t("Lade Playlist …"));
   results.classList.add("hidden");
   globalProgress.classList.add("hidden");
   trackList.innerHTML = "";
@@ -186,21 +187,21 @@ loadForm.addEventListener("submit", async (e) => {
     const data = await invoke("resolve_playlist", { url });
     currentTitle = data.title || "playlist";
     plTitle.textContent = data.title;
-    plCount.textContent = `${data.count} Titel`;
+    plCount.textContent = t("{count} Titel", { count: data.count });
     if (data.unmatched) {
-      showToast(`${data.unmatched} Spotify-Titel ohne YouTube-Treffer übersprungen.`, "info");
+      showToast(t("{count} Spotify-Titel ohne YouTube-Treffer übersprungen.", { count: data.unmatched }), "info");
     }
     renderTracks(data.entries);
     results.classList.remove("hidden");
     setStatus("");
-    showToast(`${data.count} Titel geladen`, "success");
+    showToast(t("{count} Titel geladen", { count: data.count }), "success");
   } catch (err) {
     const msg = String(err);
     setStatus(msg, true);
     showToast(msg, "error");
   } finally {
     loadBtn.disabled = false;
-    loadBtn.textContent = "Laden";
+    loadBtn.textContent = t("Laden");
   }
 });
 
@@ -220,8 +221,8 @@ lyricsSearchForm.addEventListener("submit", async (e) => {
   if (!query) return;
 
   lyricsSearchBtn.disabled = true;
-  lyricsSearchBtn.textContent = "Suche …";
-  setStatus("Suche nach passendem Song …");
+  lyricsSearchBtn.textContent = t("Suche …");
+  setStatus(t("Suche nach passendem Song …"));
   results.classList.add("hidden");
   globalProgress.classList.add("hidden");
   trackList.innerHTML = "";
@@ -230,21 +231,21 @@ lyricsSearchForm.addEventListener("submit", async (e) => {
     await awaitPoToken();
     const tracks = await invoke("search_online", { query });
     if (!tracks.length) {
-      setStatus("Kein Song zu diesem Songtext gefunden.", true);
-      showToast("Nichts gefunden - anderen Ausschnitt versuchen.", "error");
+      setStatus(t("Kein Song zu diesem Songtext gefunden."), true);
+      showToast(t("Nichts gefunden - anderen Ausschnitt versuchen."), "error");
       return;
     }
-    currentTitle = "Songtext-Suche";
-    plTitle.textContent = "Songtext-Suche";
-    plCount.textContent = `${tracks.length} Treffer`;
+    currentTitle = t("Songtext-Suche");
+    plTitle.textContent = t("Songtext-Suche");
+    plCount.textContent = t("{count} Treffer", { count: tracks.length });
     renderTracks(
-      tracks.map((t) => ({
-        id: t.video_id,
-        title: t.title,
-        uploader: t.artist,
-        duration: t.duration,
-        thumbnail: t.cover,
-        url: t.url,
+      tracks.map((hit) => ({
+        id: hit.video_id,
+        title: hit.title,
+        uploader: hit.artist,
+        duration: hit.duration,
+        thumbnail: hit.cover,
+        url: hit.url,
       }))
     );
     results.classList.remove("hidden");
@@ -255,43 +256,43 @@ lyricsSearchForm.addEventListener("submit", async (e) => {
     showToast(msg, "error");
   } finally {
     lyricsSearchBtn.disabled = false;
-    lyricsSearchBtn.textContent = "Song finden";
+    lyricsSearchBtn.textContent = t("Song finden");
   }
 });
 
 /* ===== Track Rendering ===== */
 function renderTracks(entries) {
   trackList.innerHTML = "";
-  for (const t of entries) {
+  for (const entry of entries) {
     const li = document.createElement("li");
     li.className = "track";
-    li.dataset.videoId = t.id;
+    li.dataset.videoId = entry.id;
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = true;
-    cb.dataset.id = t.id;
-    cb.dataset.title = t.title;
-    cb.dataset.uploader = t.uploader || "";
-    cb.dataset.duration = t.duration || "";
-    cb.dataset.thumbnail = t.thumbnail || "";
+    cb.dataset.id = entry.id;
+    cb.dataset.title = entry.title;
+    cb.dataset.uploader = entry.uploader || "";
+    cb.dataset.duration = entry.duration || "";
+    cb.dataset.thumbnail = entry.thumbnail || "";
 
     const img = document.createElement("img");
     img.className = "thumb";
     img.alt = "";
     img.loading = "lazy";
-    img.src = t.thumbnail || `https://i.ytimg.com/vi/${t.id}/mqdefault.jpg`;
+    img.src = entry.thumbnail || `https://i.ytimg.com/vi/${entry.id}/mqdefault.jpg`;
 
     const info = document.createElement("div");
     info.className = "info";
     const title = document.createElement("div");
     title.className = "t-title";
-    title.textContent = t.title;
+    title.textContent = entry.title;
     const sub = document.createElement("div");
     sub.className = "t-sub";
     const parts = [];
-    if (t.uploader) parts.push(t.uploader);
-    const dur = fmtDuration(t.duration);
+    if (entry.uploader) parts.push(entry.uploader);
+    const dur = fmtDuration(entry.duration);
     if (dur) parts.push(dur);
     sub.textContent = parts.join(" · ");
     info.append(title, sub);
@@ -299,21 +300,21 @@ function renderTracks(entries) {
     const playBtn = document.createElement("button");
     playBtn.className = "dl-btn play-btn";
     playBtn.textContent = "▶";
-    playBtn.title = "Auf YouTube ansehen";
-    playBtn.addEventListener("click", () => window.open(t.url || `https://www.youtube.com/watch?v=${t.id}`, "_blank", "noopener"));
+    playBtn.title = t("Auf YouTube ansehen");
+    playBtn.addEventListener("click", () => window.open(entry.url || `https://www.youtube.com/watch?v=${entry.id}`, "_blank", "noopener"));
 
     const btn = document.createElement("button");
     btn.className = "dl-btn fmt-btn";
     btn.textContent = currentFormat.toUpperCase();
     btn.addEventListener("click", () => {
       if (btn.dataset.failReason) {
-        showReportModal([{ title: t.title, reason: btn.dataset.failReason }]);
+        showReportModal([{ title: entry.title, reason: btn.dataset.failReason }]);
         delete btn.dataset.failReason;
         btn.classList.remove("report-btn");
         btn.textContent = currentFormat.toUpperCase();
         return;
       }
-      downloadOne(t.id, btn, li);
+      downloadOne(entry.id, btn, li);
     });
 
     li.append(cb, img, info, playBtn, btn);
@@ -360,13 +361,13 @@ async function downloadOne(id, btn, trackEl) {
     bar.style.width = `${pct}%`;
     pctEl.textContent = `${Math.round(pct)}%`;
     if (d.phase === "retrying") {
-      etaEl.textContent = d.note || "Erneuter Versuch …";
+      etaEl.textContent = d.note || t("Erneuter Versuch …");
     } else if (d.phase === "converting") {
-      etaEl.textContent = "Konvertiere …";
+      etaEl.textContent = t("Konvertiere …");
     } else {
       const parts = [];
       if (d.speed) parts.push(d.speed);
-      if (d.eta) parts.push(`noch ${d.eta}`);
+      if (d.eta) parts.push(t("noch {eta}", { eta: d.eta }));
       etaEl.textContent = parts.join(" · ");
     }
   });
@@ -392,14 +393,14 @@ async function downloadOne(id, btn, trackEl) {
     btn.textContent = `✓ ${currentFormat.toUpperCase()}`;
     btn.classList.add("done");
     btn.disabled = false;
-    showToast(`„${cb ? cb.dataset.title : id}" in Bibliothek gespeichert`, "success");
+    showToast(t('„{title}" in Bibliothek gespeichert', { title: cb ? cb.dataset.title : id }), "success");
     setTimeout(() => { progressWrap.style.display = "none"; progressInfo.style.display = "none"; bar.style.width = "0%"; }, 1500);
     setTimeout(() => { btn.textContent = currentFormat.toUpperCase(); btn.classList.remove("done"); }, 3000);
   } catch (err) {
-    const msg = String(err) || "Download fehlgeschlagen.";
+    const msg = String(err) || t("Download fehlgeschlagen.");
     setStatus(msg, true);
     showToast(msg, "error");
-    btn.textContent = "Fehlerbericht";
+    btn.textContent = t("Fehlerbericht");
     btn.classList.add("report-btn");
     btn.disabled = false;
     btn.dataset.failReason = msg;
@@ -427,7 +428,7 @@ let downloadPaused = false;
 function setDownloadPaused(paused) {
   downloadPaused = paused;
   gpPauseBtn.textContent = paused ? "▶" : "⏸";
-  gpPauseBtn.title = paused ? "Downloads fortsetzen" : "Downloads pausieren";
+  gpPauseBtn.title = paused ? t("Downloads fortsetzen") : t("Downloads pausieren");
   gpPauseBtn.classList.toggle("paused", paused);
 }
 gpPauseBtn.addEventListener("click", () => setDownloadPaused(!downloadPaused));
@@ -438,13 +439,13 @@ async function waitWhilePaused() {
 zipBtn.addEventListener("click", async () => {
   const checked = [...trackList.querySelectorAll('input[type="checkbox"]:checked')];
   if (!checked.length) {
-    showToast("Bitte mindestens einen Titel auswählen.", "error");
+    showToast(t("Bitte mindestens einen Titel auswählen."), "error");
     return;
   }
 
   zipBtn.disabled = true;
   const origText = zipBtn.textContent;
-  zipBtn.textContent = "Wird geladen …";
+  zipBtn.textContent = t("Wird geladen …");
   zipReportBtn.classList.add("hidden");
   const skippedList = [];
   setDownloadPaused(false);
@@ -452,9 +453,9 @@ zipBtn.addEventListener("click", async () => {
   globalProgress.classList.remove("hidden");
   gpBar.style.width = "0%";
   gpPercent.textContent = "0%";
-  gpTrackName.textContent = "Vorbereitung …";
+  gpTrackName.textContent = t("Vorbereitung …");
   gpTrackCount.textContent = `0 / ${checked.length}`;
-  gpTitle.textContent = "Sammel-Download";
+  gpTitle.textContent = t("Sammel-Download");
 
   await awaitPoToken();
 
@@ -476,9 +477,9 @@ zipBtn.addEventListener("click", async () => {
     gpPercent.textContent = `${Math.round(pct)}%`;
     gpTrackCount.textContent = `${completed} / ${checked.length}`;
     if (downloadPaused && !active.size) {
-      gpTrackName.textContent = "⏸ Pausiert";
+      gpTrackName.textContent = t("⏸ Pausiert");
     } else {
-      gpTrackName.textContent = active.size ? `🎵 ${[...active].join(" · ")}` : "Vorbereitung …";
+      gpTrackName.textContent = active.size ? `🎵 ${[...active].join(" · ")}` : t("Vorbereitung …");
     }
   }
 
@@ -505,8 +506,8 @@ zipBtn.addEventListener("click", async () => {
           playlistName: currentTitle,
         });
       } catch (err) {
-        skippedList.push({ title, reason: String(err) || "Unbekannter Fehler." });
-        showToast(`Übersprungen: ${title}`, "error");
+        skippedList.push({ title, reason: String(err) || t("Unbekannter Fehler.") });
+        showToast(t("Übersprungen: {title}", { title }), "error");
       }
       active.delete(title);
       completed++;
@@ -516,15 +517,15 @@ zipBtn.addEventListener("click", async () => {
 
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, checked.length) }, worker));
 
-  gpTrackName.textContent = "✅ Fertig!";
+  gpTrackName.textContent = t("✅ Fertig!");
   const ok = checked.length - skippedList.length;
   if (skippedList.length) {
-    showToast(`${ok} Titel geladen, ${skippedList.length} übersprungen.`, "info");
+    showToast(t("{ok} Titel geladen, {skipped} übersprungen.", { ok, skipped: skippedList.length }), "info");
     zipReportBtn.classList.remove("hidden");
-    zipReportBtn.textContent = `Fehlerbericht (${skippedList.length})`;
+    zipReportBtn.textContent = t("Fehlerbericht ({count})", { count: skippedList.length });
     zipReportBtn.onclick = () => showReportModal(skippedList);
   } else {
-    showToast(`${ok} Titel in Bibliothek geladen!`, "success");
+    showToast(t("{ok} Titel in Bibliothek geladen!", { ok }), "success");
   }
 
   zipBtn.disabled = false;

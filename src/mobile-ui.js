@@ -181,7 +181,7 @@
   // auslösen.
   const pullIndicator = document.createElement("div");
   pullIndicator.className = "pull-refresh-indicator";
-  pullIndicator.textContent = "↓ Loslassen zum Aktualisieren";
+  pullIndicator.textContent = t("↓ Loslassen zum Aktualisieren");
   document.body.appendChild(pullIndicator);
 
   let pullStartY = null;
@@ -219,10 +219,10 @@
     if (pulling) {
       const dy = (e.changedTouches[0].clientY || 0) - (pullStartY || 0);
       if (dy > PULL_THRESHOLD && typeof refreshLibrary === "function") {
-        pullIndicator.textContent = "⟳ Wird aktualisiert …";
+        pullIndicator.textContent = t("⟳ Wird aktualisiert …");
         Promise.resolve(refreshLibrary()).finally(() => {
           pullIndicator.style.opacity = "0";
-          pullIndicator.textContent = "↓ Loslassen zum Aktualisieren";
+          pullIndicator.textContent = t("↓ Loslassen zum Aktualisieren");
         });
       } else {
         pullIndicator.style.opacity = "0";

@@ -1098,6 +1098,26 @@ body.has-dynamic-colors .playlist-hero {
 .toggle-switch.active { background: var(--sp-green); }
 .toggle-switch.active::after { transform: translateX(20px); }
 
+.lang-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+.lang-switch-btn {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--sp-muted);
+}
+.lang-switch-btn.active {
+  background: var(--sp-green);
+  color: #000;
+}
+
 .hotkey-list { display: flex; flex-direction: column; gap: 4px; }
 .hotkey-row {
   display: flex;

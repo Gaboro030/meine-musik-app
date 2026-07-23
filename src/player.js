@@ -434,10 +434,10 @@ document.querySelectorAll(".nav-item[data-view]").forEach((el) => {
 /* ===== Home View ===== */
 function greetingForNow() {
   const h = new Date().getHours();
-  if (h >= 5 && h < 11) return "Guten Morgen";
-  if (h >= 11 && h < 18) return "Guten Tag";
-  if (h >= 18 && h < 22) return "Guten Abend";
-  return "Gute Nacht";
+  if (h >= 5 && h < 11) return t("Guten Morgen");
+  if (h >= 11 && h < 18) return t("Guten Tag");
+  if (h >= 18 && h < 22) return t("Guten Abend");
+  return t("Gute Nacht");
 }
 
 function renderHome() {
@@ -466,7 +466,7 @@ function renderHome() {
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
     playBtn.textContent = "▶";
-    playBtn.title = "Abspielen";
+    playBtn.title = t("Abspielen");
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       playTrackIn(plIdx, trackIdx);
@@ -479,7 +479,7 @@ function renderHome() {
     title.textContent = track.title;
     const sub = document.createElement("div");
     sub.className = "card-sub";
-    sub.textContent = track.artist || "Unbekannter Interpret";
+    sub.textContent = track.artist || t("Unbekannter Interpret");
 
     card.append(coverWrap, title, sub);
     card.addEventListener("click", () => playTrackIn(plIdx, trackIdx));
@@ -531,7 +531,7 @@ function renderDailyMix() {
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
     playBtn.textContent = "▶";
-    playBtn.title = "Abspielen";
+    playBtn.title = t("Abspielen");
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       playTrackIn(plIdx, trackIdx);
@@ -574,7 +574,7 @@ function findTrackByPlayCountKey(key) {
 function renderStatsList(el, rows) {
   el.innerHTML = "";
   if (!rows.length) {
-    el.innerHTML = '<div class="card-sub" style="padding:8px 0;">Noch keine Wiedergaben.</div>';
+    el.innerHTML = `<div class="card-sub" style="padding:8px 0;">${t("Noch keine Wiedergaben.")}</div>`;
     return;
   }
   rows.forEach(([label, count], i) => {
@@ -612,12 +612,12 @@ function renderStats() {
     .slice()
     .sort((a, b) => b.count - a.count)
     .slice(0, 10)
-    .map((e) => [`${e.track.title} — ${e.track.artist || "Unbekannter Interpret"}`, e.count]);
+    .map((e) => [`${e.track.title} — ${e.track.artist || t("Unbekannter Interpret")}`, e.count]);
   renderStatsList(document.getElementById("statsTopSongs"), topSongs);
 
   const artistCounts = new Map();
   withTracks.forEach((e) => {
-    const artist = e.track.artist || "Unbekannter Interpret";
+    const artist = e.track.artist || t("Unbekannter Interpret");
     artistCounts.set(artist, (artistCounts.get(artist) || 0) + e.count);
   });
   const topArtists = [...artistCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
@@ -753,7 +753,7 @@ function buildDiscoverCard(rec) {
   const dlBtn = document.createElement("button");
   dlBtn.className = "card-download-btn";
   dlBtn.textContent = "⬇";
-  dlBtn.title = "In Bibliothek herunterladen";
+  dlBtn.title = t("In Bibliothek herunterladen");
   dlBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     downloadDiscoverTrack(rec, dlBtn);
@@ -761,7 +761,7 @@ function buildDiscoverCard(rec) {
   const watchBtn = document.createElement("button");
   watchBtn.className = "card-watch-btn";
   watchBtn.textContent = "▶";
-  watchBtn.title = "Video direkt ansehen (ohne Download)";
+  watchBtn.title = t("Video direkt ansehen (ohne Download)");
   watchBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     openVideoPreview(rec.video_id, rec.title);
@@ -780,7 +780,7 @@ function buildDiscoverCard(rec) {
   title.textContent = rec.title;
   const sub = document.createElement("div");
   sub.className = "card-sub";
-  sub.textContent = rec.artist || "Unbekannter Interpret";
+  sub.textContent = rec.artist || t("Unbekannter Interpret");
 
   card.append(coverWrap, title, sub);
   card.addEventListener("click", () => window.open(rec.url, "_blank", "noopener"));
@@ -792,7 +792,7 @@ function renderDiscover(recs) {
   if (!recs.length) {
     const empty = document.createElement("div");
     empty.className = "card-sub";
-    empty.textContent = "Gerade keine Vorschläge gefunden.";
+    empty.textContent = t("Gerade keine Vorschläge gefunden.");
     discoverGrid.appendChild(empty);
     return;
   }
@@ -867,15 +867,15 @@ async function downloadDiscoverTrack(rec, btn) {
       }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Download fehlgeschlagen.");
+    if (!res.ok) throw new Error(data.error || t("Download fehlgeschlagen."));
     btn.textContent = "✓";
     btn.classList.add("done");
-    showToast(`⬇ „${rec.title}" in „Entdeckt" gespeichert`);
+    showToast(t('⬇ „{title}" in „Entdeckt" gespeichert', { title: rec.title }));
     await refreshLibrary();
   } catch (err) {
     btn.disabled = false;
     btn.textContent = "⬇";
-    showToast(err.message || "Download fehlgeschlagen.");
+    showToast(err.message || t("Download fehlgeschlagen."));
   }
 }
 
@@ -906,7 +906,7 @@ function renderLibraryGrid() {
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
     playBtn.textContent = "▶";
-    playBtn.title = "Abspielen";
+    playBtn.title = t("Abspielen");
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       selectPlaylist(idx);
@@ -1068,20 +1068,20 @@ renameModal.addEventListener("click", (e) => {
 deletePlaylistBtn.addEventListener("click", () => {
   if (!currentPlaylist) return;
   showConfirmModal(
-    "Playlist löschen?",
-    `„${currentPlaylist.name}" mit ${currentPlaylist.tracks.length} Titeln wird unwiderruflich gelöscht.`,
+    t("Playlist löschen?"),
+    t('„{name}" mit {count} Titeln wird unwiderruflich gelöscht.', { name: currentPlaylist.name, count: currentPlaylist.tracks.length }),
     async () => {
       try {
         const res = await fetch(`/api/library/playlist/${encodeURIComponent(currentPlaylist.name)}`, {
           method: "DELETE",
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Löschen fehlgeschlagen.");
-        showToast("🗑 Playlist gelöscht");
+        if (!res.ok) throw new Error(data.error || t("Löschen fehlgeschlagen."));
+        showToast(t("🗑 Playlist gelöscht"));
         await refreshLibrary();
         showView("library");
       } catch (err) {
-        showToast(err.message || "Löschen fehlgeschlagen.");
+        showToast(err.message || t("Löschen fehlgeschlagen."));
       }
     }
   );
@@ -1098,13 +1098,13 @@ renamePlaylistBtn.addEventListener("click", () => {
         body: JSON.stringify({ new_name: newName }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Umbenennen fehlgeschlagen.");
-      showToast("✏️ Playlist umbenannt");
+      if (!res.ok) throw new Error(data.error || t("Umbenennen fehlgeschlagen."));
+      showToast(t("✏️ Playlist umbenannt"));
       await refreshLibrary();
       const idx = library.findIndex((p) => p.name === data.name);
       if (idx !== -1) selectPlaylist(idx);
     } catch (err) {
-      showToast(err.message || "Umbenennen fehlgeschlagen.");
+      showToast(err.message || t("Umbenennen fehlgeschlagen."));
     }
   });
 });
@@ -1120,11 +1120,11 @@ async function deleteTrack(index) {
       { method: "DELETE" }
     );
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Löschen fehlgeschlagen.");
+    if (!res.ok) throw new Error(data.error || t("Löschen fehlgeschlagen."));
     if (data.trash_id) {
-      showUndoToast(`🗑 „${track.title}" entfernt`, () => undoDelete(data.trash_id));
+      showUndoToast(t('🗑 „{title}" entfernt', { title: track.title }), () => undoDelete(data.trash_id));
     } else {
-      showToast(`🗑 „${track.title}" entfernt`);
+      showToast(t('🗑 „{title}" entfernt', { title: track.title }));
     }
     if (index === currentTrackIndex) {
       audioEl.pause();
@@ -1132,7 +1132,7 @@ async function deleteTrack(index) {
       currentTrackIndex = -1;
       nowPlayingMeta = null;
       updatePlayButton(false);
-      pbTitle.textContent = "Kein Titel ausgewählt";
+      pbTitle.textContent = t("Kein Titel ausgewählt");
       pbArtist.textContent = "—";
       updateVideoButtonVisibility();
       closeVideoViewIfOpenForTrackChange();
@@ -1147,7 +1147,7 @@ async function deleteTrack(index) {
       showView("library"); // that was the last track - the playlist folder is gone
     }
   } catch (err) {
-    showToast(err.message || "Löschen fehlgeschlagen.");
+    showToast(err.message || t("Löschen fehlgeschlagen."));
   }
 }
 
@@ -1182,14 +1182,14 @@ function renderRecommendations(recs) {
   if (!recs.length) {
     const empty = document.createElement("div");
     empty.className = "card-sub";
-    empty.textContent = "Gerade keine Vorschläge gefunden.";
+    empty.textContent = t("Gerade keine Vorschläge gefunden.");
     recsGrid.appendChild(empty);
     return;
   }
   recs.forEach((rec) => {
     const card = document.createElement("div");
     card.className = "card";
-    card.title = "Auf YouTube ansehen";
+    card.title = t("Auf YouTube ansehen");
 
     const coverWrap = document.createElement("div");
     coverWrap.className = "card-cover-wrap";
@@ -1204,7 +1204,7 @@ function renderRecommendations(recs) {
     title.textContent = rec.title;
     const sub = document.createElement("div");
     sub.className = "card-sub";
-    sub.textContent = rec.artist || "Unbekannter Interpret";
+    sub.textContent = rec.artist || t("Unbekannter Interpret");
 
     card.append(coverWrap, title, sub);
     card.addEventListener("click", () => window.open(rec.url, "_blank", "noopener"));
@@ -1300,15 +1300,15 @@ async function submitBulkUpdate(payload) {
       }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Bulk-Bearbeitung fehlgeschlagen.");
-    const failedNote = data.failed ? `, ${data.failed} fehlgeschlagen` : "";
-    showToast(`✅ ${data.updated} Titel aktualisiert${failedNote}`);
+    if (!res.ok) throw new Error(data.error || t("Bulk-Bearbeitung fehlgeschlagen."));
+    const failedNote = data.failed ? t(", {count} fehlgeschlagen", { count: data.failed }) : "";
+    showToast(t("✅ {count} Titel aktualisiert{failedNote}", { count: data.updated, failedNote }));
     setBulkSelectMode(false);
     await refreshLibrary();
     const idx = library.findIndex((p) => p.name === playlistName);
     if (idx !== -1) selectPlaylist(idx);
   } catch (err) {
-    showToast(err.message || "Bulk-Bearbeitung fehlgeschlagen.");
+    showToast(err.message || t("Bulk-Bearbeitung fehlgeschlagen."));
   }
 }
 
@@ -1377,7 +1377,7 @@ function buildTrackRow(t, i) {
     title.textContent = t.title;
     const artist = document.createElement("div");
     artist.className = "track-artist";
-    artist.textContent = t.artist || "Unbekannter Interpret";
+    artist.textContent = t.artist || t("Unbekannter Interpret");
     text.append(title, artist);
     cell.append(img, text);
     tdTitle.appendChild(cell);
@@ -1397,7 +1397,7 @@ function buildTrackRow(t, i) {
     moreBtn.type = "button";
     moreBtn.className = "track-more-btn";
     moreBtn.textContent = "⋯";
-    moreBtn.title = "Optionen";
+    moreBtn.title = t("Optionen");
     moreBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       openTrackMoreMenu(moreBtn, t);
@@ -1410,7 +1410,7 @@ function buildTrackRow(t, i) {
     addBtn.type = "button";
     addBtn.className = "track-add-btn";
     addBtn.textContent = "➕";
-    addBtn.title = "Zu Playlist hinzufügen";
+    addBtn.title = t("Zu Playlist hinzufügen");
     addBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       openAddMenu(addBtn, { source_playlist: currentPlaylist.name, filename: t.file });
@@ -1422,7 +1422,7 @@ function buildTrackRow(t, i) {
     const removeBtn = document.createElement("button");
     removeBtn.className = "track-remove-btn";
     removeBtn.textContent = "🗑";
-    removeBtn.title = "Aus Playlist entfernen";
+    removeBtn.title = t("Aus Playlist entfernen");
     removeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       deleteTrack(i);
@@ -1585,7 +1585,7 @@ function playTrack(index, opts = {}) {
 
   pbCover.src = coverFor(track);
   pbTitle.textContent = track.title;
-  pbArtist.textContent = track.artist || "Unbekannter Interpret";
+  pbArtist.textContent = track.artist || t("Unbekannter Interpret");
   isLiked = false;
   pbLike.classList.remove("active");
   pbLike.textContent = "♡";
@@ -1641,7 +1641,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
 
   pbCover.src = entry.cover || PLACEHOLDER_COVER;
   pbTitle.textContent = entry.title;
-  pbArtist.textContent = entry.artist || "Unbekannter Interpret";
+  pbArtist.textContent = entry.artist || t("Unbekannter Interpret");
   isLiked = false;
   pbLike.classList.remove("active");
   pbLike.textContent = "♡";
@@ -1662,7 +1662,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
 
   if (source === "guest") {
     fetch(`/api/queue/${entry.id}`, { method: "DELETE" }).catch(() => {});
-    showToast(`👥 Aus der Warteschlange: „${entry.title}"`);
+    showToast(t('👥 Aus der Warteschlange: „{title}"', { title: entry.title }));
   }
   updateVideoButtonVisibility();
   resetSilenceSkipState();
@@ -1808,7 +1808,7 @@ function reshuffleNow(btn) {
   shuffleAllBtn.classList.add("active");
   buildShuffleOrder(false);
   playTrack(shuffleOrder[0]);
-  showToast("🔀 Neu gemischt!");
+  showToast(t("🔀 Neu gemischt!"));
   if (btn) {
     btn.classList.remove("shuffle-pulse");
     // Force reflow so the animation restarts on rapid repeat clicks.
@@ -1890,7 +1890,7 @@ function showUndoToast(message, onUndo) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "undo-toast-btn";
-    btn.textContent = "Rückgängig";
+    btn.textContent = t("Rückgängig");
     toast.append(label, btn);
     document.body.appendChild(toast);
   }
@@ -1916,10 +1916,10 @@ async function undoDelete(trashId) {
   try {
     const res = await fetch(`/api/trash/${trashId}/restore`, { method: "POST" });
     if (!res.ok) throw new Error();
-    showToast("↩ Wiederhergestellt");
+    showToast(t("↩ Wiederhergestellt"));
     await refreshLibrary();
   } catch (_) {
-    showToast("Wiederherstellen fehlgeschlagen.");
+    showToast(t("Wiederherstellen fehlgeschlagen."));
   }
 }
 
@@ -2031,7 +2031,7 @@ audioEl.addEventListener("error", () => {
   if (retriedForSrc !== src) {
     retriedForSrc = src;
     const pos = audioEl.currentTime || 0;
-    showToast("⚠️ Aussetzer im Stream – versuche es erneut …");
+    showToast(t("⚠️ Aussetzer im Stream – versuche es erneut …"));
     audioEl.load();
     const restore = () => {
       audioEl.removeEventListener("canplay", restore);
@@ -2047,10 +2047,10 @@ audioEl.addEventListener("error", () => {
   consecutiveAudioErrors += 1;
   updatePlayButton(false);
   if (consecutiveAudioErrors >= MAX_CONSECUTIVE_AUDIO_ERRORS) {
-    showToast("⚠️ Mehrere Titel nicht ladbar – Wiedergabe gestoppt");
+    showToast(t("⚠️ Mehrere Titel nicht ladbar – Wiedergabe gestoppt"));
     return;
   }
-  showToast("⚠️ Fehler beim Laden des Titels – nächster Song in 3s …");
+  showToast(t("⚠️ Fehler beim Laden des Titels – nächster Song in 3s …"));
   clearTimeout(audioErrorRetryTimer);
   audioErrorRetryTimer = setTimeout(() => nextTrack(), 3000);
 });
@@ -2065,7 +2065,7 @@ function armStallWatchdog() {
   stallTimer = setTimeout(() => {
     if (audioEl.paused || !audioEl.getAttribute("src")) return;
     const pos = audioEl.currentTime || 0;
-    showToast("⚠️ Stream hängt – lade neu …");
+    showToast(t("⚠️ Stream hängt – lade neu …"));
     audioEl.load();
     const restore = () => {
       audioEl.removeEventListener("canplay", restore);
@@ -2124,13 +2124,13 @@ function queueEntryFor(track) {
 
 function enqueueNext(track) {
   userQueue.unshift(queueEntryFor(track));
-  showToast(`Als Nächstes: „${track.title}"`);
+  showToast(t('Als Nächstes: „{title}"', { title: track.title }));
   renderQueuePanel();
 }
 
 function enqueueLast(track) {
   userQueue.push(queueEntryFor(track));
-  showToast(`In Warteschlange: „${track.title}"`);
+  showToast(t('In Warteschlange: „{title}"', { title: track.title }));
   renderQueuePanel();
 }
 
@@ -2149,7 +2149,7 @@ function openTrackMoreMenu(anchorBtn, track) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "add-to-playlist-item";
-    b.textContent = label;
+    b.textContent = t(label);
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       closeTrackMoreMenu();
@@ -2298,7 +2298,7 @@ function queueRowBase(entry) {
   title.textContent = entry.title;
   const artist = document.createElement("div");
   artist.className = "queue-row-artist";
-  artist.textContent = entry.artist || "Unbekannter Interpret";
+  artist.textContent = entry.artist || t("Unbekannter Interpret");
   text.append(title, artist);
   row.append(img, text);
   return row;
@@ -2310,11 +2310,13 @@ function renderQueuePanel() {
   queuePanelBody.innerHTML = "";
 
   // --- Eigene Queue ---
-  queuePanelBody.appendChild(queueSectionHeading(userQueue.length ? `Als Nächstes (${userQueue.length})` : "Als Nächstes"));
+  queuePanelBody.appendChild(
+    queueSectionHeading(userQueue.length ? t("Als Nächstes ({count})", { count: userQueue.length }) : t("Als Nächstes"))
+  );
   if (!userQueue.length) {
     const empty = document.createElement("div");
     empty.className = "queue-empty";
-    empty.textContent = "Leer - über ⋯ bei einem Song füllen.";
+    empty.textContent = t("Leer - über ⋯ bei einem Song füllen.");
     queuePanelBody.appendChild(empty);
   }
   userQueue.forEach((entry, idx) => {
@@ -2351,7 +2353,7 @@ function renderQueuePanel() {
     up.type = "button";
     up.className = "queue-row-btn";
     up.textContent = "↑";
-    up.title = "Nach oben";
+    up.title = t("Nach oben");
     up.disabled = idx === 0;
     up.addEventListener("click", () => {
       const [moved] = userQueue.splice(idx, 1);
@@ -2362,7 +2364,7 @@ function renderQueuePanel() {
     down.type = "button";
     down.className = "queue-row-btn";
     down.textContent = "↓";
-    down.title = "Nach unten";
+    down.title = t("Nach unten");
     down.disabled = idx === userQueue.length - 1;
     down.addEventListener("click", () => {
       const [moved] = userQueue.splice(idx, 1);
@@ -2373,7 +2375,7 @@ function renderQueuePanel() {
     del.type = "button";
     del.className = "queue-row-btn queue-row-del";
     del.textContent = "✕";
-    del.title = "Entfernen";
+    del.title = t("Entfernen");
     del.addEventListener("click", () => {
       userQueue.splice(idx, 1);
       renderQueuePanel();
@@ -2385,7 +2387,7 @@ function renderQueuePanel() {
 
   // --- Gast-Queue (Party) ---
   if (liveQueue.length) {
-    queuePanelBody.appendChild(queueSectionHeading(`Von Gästen (${liveQueue.length})`));
+    queuePanelBody.appendChild(queueSectionHeading(t("Von Gästen ({count})", { count: liveQueue.length })));
     liveQueue.forEach((entry) => {
       const row = queueRowBase(entry);
       // Offline-Indikator: liegt der Song schon lokal in der Bibliothek
@@ -2395,7 +2397,7 @@ function renderQueuePanel() {
       const badge = document.createElement("span");
       badge.className = "queue-row-source-badge";
       badge.textContent = local ? "📀" : "🌐";
-      badge.title = local ? "Bereits in deiner Bibliothek - spielt lokal" : "Nicht lokal vorhanden - wird gestreamt";
+      badge.title = local ? t("Bereits in deiner Bibliothek - spielt lokal") : t("Nicht lokal vorhanden - wird gestreamt");
       row.appendChild(badge);
       const actions = document.createElement("div");
       actions.className = "queue-row-actions";
@@ -2403,7 +2405,7 @@ function renderQueuePanel() {
       del.type = "button";
       del.className = "queue-row-btn queue-row-del";
       del.textContent = "✕";
-      del.title = "Entfernen";
+      del.title = t("Entfernen");
       del.addEventListener("click", () => {
         // Server broadcastet queue_update - liveQueue + Panel syncen darüber.
         fetch(`/api/queue/${entry.id}`, { method: "DELETE" }).catch(() => {});
@@ -2418,7 +2420,7 @@ function renderQueuePanel() {
   const upcoming = upcomingPlaylistTracks(8);
   if (upcoming.length) {
     queuePanelBody.appendChild(
-      queueSectionHeading(`Danach: ${currentPlaylist ? currentPlaylist.name : ""}`)
+      queueSectionHeading(t("Danach: {playlist}", { playlist: currentPlaylist ? currentPlaylist.name : "" }))
     );
     upcoming.forEach((t) => {
       const row = queueRowBase({ title: t.title, artist: t.artist, cover: coverFor(t) });
@@ -2430,7 +2432,7 @@ function renderQueuePanel() {
   // --- Ähnliche Songs (gleicher Interpret, ganze Bibliothek) ---
   const similar = similarTracks(8);
   if (similar.length) {
-    queuePanelBody.appendChild(queueSectionHeading("Ähnliche Songs"));
+    queuePanelBody.appendChild(queueSectionHeading(t("Ähnliche Songs")));
     similar.forEach(({ track, plIdx, trackIdx }) => {
       const row = queueRowBase({ title: track.title, artist: track.artist, cover: coverFor(track) });
       row.classList.add("queue-row-clickable");
@@ -2766,7 +2768,7 @@ function showUploadToast(msg) {
 
 async function uploadFiles(playlistName, files, onDone) {
   if (!files.length) {
-    showToast("Keine MP3-Dateien gefunden.");
+    showToast(t("Keine MP3-Dateien gefunden."));
     return;
   }
   showUploadToast(`⏳ Lade ${files.length} Titel hoch …`);
@@ -3132,11 +3134,11 @@ let loopPointA = null;
 let loopPointB = null;
 function updateAbLoopStatus() {
   if (loopPointA != null && loopPointB != null) {
-    abLoopStatus.textContent = `Loop: ${fmtTime(loopPointA)} – ${fmtTime(loopPointB)}`;
+    abLoopStatus.textContent = t("Loop: {a} – {b}", { a: fmtTime(loopPointA), b: fmtTime(loopPointB) });
   } else if (loopPointA != null) {
-    abLoopStatus.textContent = `A bei ${fmtTime(loopPointA)} – jetzt B setzen`;
+    abLoopStatus.textContent = t("A bei {a} – jetzt B setzen", { a: fmtTime(loopPointA) });
   } else {
-    abLoopStatus.textContent = "Kein Loop aktiv";
+    abLoopStatus.textContent = t("Kein Loop aktiv");
   }
 }
 function clearAbLoop() {
@@ -3151,11 +3153,11 @@ abLoopSetABtn.addEventListener("click", () => {
 });
 abLoopSetBBtn.addEventListener("click", () => {
   if (loopPointA == null) {
-    showToast("Erst Punkt A setzen.");
+    showToast(t("Erst Punkt A setzen."));
     return;
   }
   if (audioEl.currentTime <= loopPointA) {
-    showToast("B muss nach A liegen.");
+    showToast(t("B muss nach A liegen."));
     return;
   }
   loopPointB = audioEl.currentTime;
@@ -3408,7 +3410,7 @@ function updateMediaSessionMetadata(track) {
     : [];
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title,
-    artist: track.artist || "Unbekannter Interpret",
+    artist: track.artist || t("Unbekannter Interpret"),
     album: track.album || "",
     artwork,
   });
@@ -3575,13 +3577,13 @@ function resizeVisualizerCanvas() {
 
 function setVisualizerMeta() {
   visualizerTitle.textContent = nowPlayingMeta.title;
-  visualizerArtist.textContent = nowPlayingMeta.artist || "Unbekannter Interpret";
+  visualizerArtist.textContent = nowPlayingMeta.artist || t("Unbekannter Interpret");
   visualizerCover.src = coverFor({ cover: nowPlayingMeta.cover });
 }
 
 function openVisualizer() {
   if (!nowPlayingMeta) {
-    showToast("Gerade wird kein Titel abgespielt.");
+    showToast(t("Gerade wird kein Titel abgespielt."));
     return;
   }
   initAudioGraph();
@@ -3667,10 +3669,10 @@ async function openVideoView() {
     const res = await fetch(`/api/library/search-online?q=${encodeURIComponent(q)}`);
     const data = await res.json();
     const hit = (data.results || [])[0];
-    if (!hit) throw new Error("Kein passendes Video gefunden.");
+    if (!hit) throw new Error(t("Kein passendes Video gefunden."));
     await openVideoPreview(hit.video_id, nowPlayingMeta.title);
   } catch (err) {
-    showToast(err.message || "Kein passendes Video gefunden.");
+    showToast(err.message || t("Kein passendes Video gefunden."));
   }
 }
 
@@ -3680,7 +3682,7 @@ async function openVideoView() {
    selben Overlay wie lokale mp4-Tracks ab. Desktop-only (siehe
    get_stream_url in commands.rs). */
 async function openVideoPreview(videoId, title) {
-  showToast(`⏳ Lade Video „${title}" …`);
+  showToast(t('⏳ Lade Video „{title}" …', { title }));
   try {
     const res = await fetch("/api/library/video-stream-url", {
       method: "POST",
@@ -3688,7 +3690,7 @@ async function openVideoPreview(videoId, title) {
       body: JSON.stringify({ video_id: videoId }),
     });
     const data = await res.json();
-    if (!res.ok || !data.url) throw new Error(data.error || "Video konnte nicht geladen werden.");
+    if (!res.ok || !data.url) throw new Error(data.error || t("Video konnte nicht geladen werden."));
     videoIsPreview = true;
     videoWasPlaying = !audioEl.paused;
     audioEl.pause();
@@ -3696,7 +3698,7 @@ async function openVideoPreview(videoId, title) {
     videoOverlay.classList.remove("hidden");
     videoPlayerEl.play().catch(() => {});
   } catch (err) {
-    showToast(err.message || "Video konnte nicht geladen werden.");
+    showToast(err.message || t("Video konnte nicht geladen werden."));
   }
 }
 
@@ -3809,7 +3811,7 @@ let pipEnabled = localStorage.getItem(PIP_ENABLED_KEY) === "1";
 const pipSupported = "documentPictureInPicture" in window;
 if (!pipSupported) {
   pipToggleSwitch.disabled = true;
-  pipToggleSwitch.title = "Nicht unterstützt auf diesem System";
+  pipToggleSwitch.title = t("Nicht unterstützt auf diesem System");
 }
 function setPipEnabled(enabled) {
   pipEnabled = enabled && pipSupported;
@@ -3945,9 +3947,9 @@ clearLyricsCacheBtn.addEventListener("click", async () => {
   try {
     const res = await fetch("/api/settings/clear-lyrics-cache", { method: "POST" });
     const data = await res.json();
-    showToast(`🧹 ${data.removed || 0} zwischengespeicherte Songtexte gelöscht`);
+    showToast(t("🧹 {count} zwischengespeicherte Songtexte gelöscht", { count: data.removed || 0 }));
   } catch (_) {
-    showToast("Cache konnte nicht geleert werden.");
+    showToast(t("Cache konnte nicht geleert werden."));
   } finally {
     clearLyricsCacheBtn.disabled = false;
     clearLyricsCacheBtn.textContent = original;
@@ -4004,11 +4006,11 @@ function saveHotkeyBindings() {
 
 function formatHotkey(combo) {
   const parts = [];
-  if (combo.ctrl) parts.push("Strg");
+  if (combo.ctrl) parts.push(t("Strg"));
   if (combo.alt) parts.push("Alt");
-  if (combo.shift) parts.push("Umschalt");
+  if (combo.shift) parts.push(t("Umschalt"));
   let keyLabel = combo.key;
-  if (keyLabel === " ") keyLabel = "Leertaste";
+  if (keyLabel === " ") keyLabel = t("Leertaste");
   else if (keyLabel === "arrowright") keyLabel = "→";
   else if (keyLabel === "arrowleft") keyLabel = "←";
   else if (keyLabel === "arrowup") keyLabel = "↑";
@@ -4041,14 +4043,14 @@ function renderHotkeyList() {
     row.className = "hotkey-row hotkey-configurable";
 
     const label = document.createElement("span");
-    label.textContent = action.label;
+    label.textContent = t(action.label);
 
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "hotkey-combo";
     btn.dataset.actionId = action.id;
     if (recordingActionId === action.id) {
-      btn.textContent = "Taste drücken … (Esc = abbrechen)";
+      btn.textContent = t("Taste drücken … (Esc = abbrechen)");
       btn.classList.add("listening");
     } else {
       btn.textContent = formatHotkey(hotkeyBindings[action.id]);
@@ -4077,7 +4079,7 @@ function renderShortcutsCheatsheet() {
     const row = document.createElement("div");
     row.className = "hotkey-row";
     const label = document.createElement("span");
-    label.textContent = action.label;
+    label.textContent = t(action.label);
     const combo = document.createElement("span");
     combo.className = "hotkey-combo";
     combo.textContent = formatHotkey(hotkeyBindings[action.id]);
@@ -4120,7 +4122,7 @@ document.addEventListener("keydown", (e) => {
     (a) => a.id !== recordingActionId && hotkeysEqual(hotkeyBindings[a.id], combo)
   );
   if (clash) {
-    showToast(`⚠️ Kombination schon vergeben für „${clash.label}"`);
+    showToast(t('⚠️ Kombination schon vergeben für „{label}"', { label: clash.label }));
     recordingActionId = null;
     renderHotkeyList();
     return;
@@ -4171,11 +4173,11 @@ async function addTrackToPlaylist(targetPlaylist, trackData) {
       body: JSON.stringify({ target_playlist: targetPlaylist, ...trackData, ...(preset || {}) }),
     });
     const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || "Hinzufügen fehlgeschlagen.");
-    showToast(`➕ Zu „${targetPlaylist}" hinzugefügt`);
+    if (!res.ok || data.error) throw new Error(data.error || t("Hinzufügen fehlgeschlagen."));
+    showToast(t('➕ Zu „{playlist}" hinzugefügt', { playlist: targetPlaylist }));
     await refreshLibrary();
   } catch (err) {
-    showToast(err.message || "Hinzufügen fehlgeschlagen.");
+    showToast(err.message || t("Hinzufügen fehlgeschlagen."));
   }
 }
 
@@ -4187,7 +4189,7 @@ function openAddMenu(anchorBtn, trackData) {
   if (!library.length) {
     const empty = document.createElement("div");
     empty.className = "add-to-playlist-empty";
-    empty.textContent = "Noch keine Playlist vorhanden";
+    empty.textContent = t("Noch keine Playlist vorhanden");
     menu.appendChild(empty);
   }
   library.forEach((pl) => {
@@ -4240,7 +4242,7 @@ function attachAddButton(coverWrap, trackData, className = "card-add-btn") {
   btn.type = "button";
   btn.className = className;
   btn.textContent = "➕";
-  btn.title = "Zu Playlist hinzufügen";
+  btn.title = t("Zu Playlist hinzufügen");
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     openAddMenu(btn, trackData);
@@ -4289,7 +4291,7 @@ function renderSearchSongs(matches) {
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
     playBtn.textContent = "▶";
-    playBtn.title = "Abspielen";
+    playBtn.title = t("Abspielen");
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       exitSearchAndPlay(plIdx, trackIdx);
@@ -4302,7 +4304,7 @@ function renderSearchSongs(matches) {
     title.textContent = track.title;
     const sub = document.createElement("div");
     sub.className = "card-sub";
-    sub.textContent = `${track.artist || "Unbekannter Interpret"} · ${library[plIdx].name}`;
+    sub.textContent = `${track.artist || t("Unbekannter Interpret")} · ${library[plIdx].name}`;
 
     card.append(coverWrap, title, sub);
     card.addEventListener("click", () => exitSearchAndPlay(plIdx, trackIdx));
@@ -4430,7 +4432,7 @@ function renderSearchHistoryDropdown() {
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
   clearBtn.className = "search-history-clear";
-  clearBtn.textContent = "Suchverlauf löschen";
+  clearBtn.textContent = t("Suchverlauf löschen");
   clearBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     localStorage.removeItem(SEARCH_HISTORY_KEY);
@@ -4537,16 +4539,16 @@ async function downloadPlaylistOffline() {
   offlineDownloadBtn.disabled = true;
   let failed = 0;
   for (let i = 0; i < tracks.length; i++) {
-    const t = tracks[i];
-    showToast(`⬇️ Offline-Download ${i + 1}/${tracks.length}: „${t.title}"`);
+    const track = tracks[i];
+    showToast(t('⬇️ Offline-Download {current}/{total}: „{title}"', { current: i + 1, total: tracks.length, title: track.title }));
     try {
-      const res = await fetch(t.stream_url);
+      const res = await fetch(track.stream_url);
       if (!res.ok) throw new Error("Stream fehlgeschlagen");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${safeClientFilename(t.title)}.mp3`;
+      a.download = `${safeClientFilename(track.title)}.mp3`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -4560,8 +4562,8 @@ async function downloadPlaylistOffline() {
   const okCount = tracks.length - failed;
   showToast(
     failed
-      ? `✅ ${okCount} Titel offline gespeichert, ${failed} fehlgeschlagen`
-      : `✅ Alle ${okCount} Titel offline gespeichert`
+      ? t("✅ {ok} Titel offline gespeichert, {failed} fehlgeschlagen", { ok: okCount, failed })
+      : t("✅ Alle {ok} Titel offline gespeichert", { ok: okCount })
   );
 }
 
@@ -5026,7 +5028,7 @@ function stopLyricsLoop() {
 
 async function openLyrics(force = false) {
   if (!nowPlayingMeta) {
-    showToast("Gerade wird kein Titel abgespielt.");
+    showToast(t("Gerade wird kein Titel abgespielt."));
     return;
   }
   const meta = nowPlayingMeta;
@@ -5035,7 +5037,7 @@ async function openLyrics(force = false) {
   lyricsOverlay.classList.remove("hidden");
   startLyricsLoop();
   lyricsTitle.textContent = meta.title;
-  lyricsArtist.textContent = meta.artist || "Unbekannter Interpret";
+  lyricsArtist.textContent = meta.artist || t("Unbekannter Interpret");
   lyricsSyncOffset = loadLyricsSyncOffsetFor(meta.title, meta.artist);
   updateLyricsSyncReadout();
   renderStaticLyrics(force ? "Suche erneut …" : "Lade Songtext …");
@@ -5179,7 +5181,7 @@ function renderParticipants(list) {
     removeBtn.type = "button";
     removeBtn.className = "qr-participant-remove";
     removeBtn.textContent = "✕";
-    removeBtn.title = "Aus der Party entfernen";
+    removeBtn.title = t("Aus der Party entfernen");
     removeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       fetch(`/api/party/participants/${encodeURIComponent(p.id)}`, { method: "DELETE" })
@@ -5250,11 +5252,11 @@ function sendPartyHeartbeat() {
 function setPartyMode(active) {
   partyModeActive = active;
   partyModeBtn.classList.toggle("active", active);
-  partyModeBtn.textContent = active ? "Party beenden" : "Party starten";
+  partyModeBtn.textContent = active ? t("Party beenden") : t("Party starten");
   partyPopoverToggleBtn.classList.toggle("active", active);
   partyStatusText.textContent = active
-    ? "Aktiv – alle Geräte im WLAN hören jetzt synchron mit."
-    : "Spielt auf allen Geräten im WLAN exakt denselben Song synchron ab.";
+    ? t("Aktiv – alle Geräte im WLAN hören jetzt synchron mit.")
+    : t("Spielt auf allen Geräten im WLAN exakt denselben Song synchron ab.");
   partyChatSection.classList.toggle("hidden", !active);
 
   clearInterval(partyHeartbeatTimer);
@@ -5263,14 +5265,14 @@ function setPartyMode(active) {
     loadPartyChat();
     sendPartyHeartbeat();
     partyHeartbeatTimer = setInterval(sendPartyHeartbeat, 2000);
-    showToast("🎉 Party-Modus gestartet");
+    showToast(t("🎉 Party-Modus gestartet"));
   } else {
     fetch("/api/party/state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: false }),
     }).catch(() => {});
-    showToast("🎉 Party-Modus beendet");
+    showToast(t("🎉 Party-Modus beendet"));
   }
 }
 
@@ -5286,7 +5288,7 @@ function appendChatMessage(msg) {
   row.className = "party-chat-msg";
   const name = document.createElement("span");
   name.className = "party-chat-msg-name";
-  name.textContent = msg.name || "Gast";
+  name.textContent = msg.name || t("Gast");
   const text = document.createElement("span");
   text.className = "party-chat-msg-text";
   text.textContent = msg.text || "";
@@ -5327,11 +5329,11 @@ partyChatInput.addEventListener("keydown", (e) => {
    eine neue Playlist - die Originaldateien bleiben unangetastet. */
 async function savePartyHistoryAsPlaylist() {
   if (!partyHistory.length) {
-    showToast("In dieser Party wurde noch nichts gespielt.");
+    showToast(t("In dieser Party wurde noch nichts gespielt."));
     return;
   }
-  const defaultName = `Party vom ${new Date().toLocaleDateString("de-DE")}`;
-  const name = window.prompt("Name der neuen Playlist:", defaultName);
+  const defaultName = t("Party vom {date}", { date: new Date().toLocaleDateString(getLanguage() === "en" ? "en-US" : "de-DE") });
+  const name = window.prompt(t("Name der neuen Playlist:"), defaultName);
   if (!name || !name.trim()) return;
   const cleanName = name.trim();
 
@@ -5359,7 +5361,7 @@ async function savePartyHistoryAsPlaylist() {
     } catch (_) {}
   }
   await refreshLibrary();
-  showToast(`🎉 ${ok} von ${unique.length} Songs in „${cleanName}" gespeichert`);
+  showToast(t('🎉 {ok} von {total} Songs in „{name}" gespeichert', { ok, total: unique.length, name: cleanName }));
 }
 partySaveHistoryBtn.addEventListener("click", savePartyHistoryAsPlaylist);
 
@@ -5492,7 +5494,7 @@ function renderTrash(entries) {
 
       const tdDate = document.createElement("td");
       tdDate.textContent = entry.trashed_at
-        ? new Date(entry.trashed_at * 1000).toLocaleString("de-DE")
+        ? new Date(entry.trashed_at * 1000).toLocaleString(getLanguage() === "en" ? "en-US" : "de-DE")
         : "—";
 
       const tdActions = document.createElement("td");
@@ -5500,12 +5502,12 @@ function renderTrash(entries) {
       const restoreBtn = document.createElement("button");
       restoreBtn.className = "trash-restore-btn";
       restoreBtn.textContent = "↩️";
-      restoreBtn.title = "Wiederherstellen";
+      restoreBtn.title = t("Wiederherstellen");
       restoreBtn.addEventListener("click", () => restoreTrashEntry(entry.id));
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "trash-delete-btn";
       deleteBtn.textContent = "🗑";
-      deleteBtn.title = "Endgültig löschen";
+      deleteBtn.title = t("Endgültig löschen");
       deleteBtn.addEventListener("click", () => deleteTrashEntryForever(entry.id));
       tdActions.append(restoreBtn, deleteBtn);
 
@@ -5518,12 +5520,12 @@ async function restoreTrashEntry(id) {
   try {
     const res = await fetch(`/api/trash/${id}/restore`, { method: "POST" });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Wiederherstellen fehlgeschlagen.");
-    showToast("↩️ Titel wiederhergestellt");
+    if (!res.ok) throw new Error(data.error || t("Wiederherstellen fehlgeschlagen."));
+    showToast(t("↩️ Titel wiederhergestellt"));
     await refreshLibrary();
     await loadTrash();
   } catch (err) {
-    showToast(err.message || "Wiederherstellen fehlgeschlagen.");
+    showToast(err.message || t("Wiederherstellen fehlgeschlagen."));
   }
 }
 
@@ -5555,41 +5557,41 @@ function renderDuplicates(groups) {
     heading.textContent = `${group.label} (${group.tracks.length}×)`;
     card.appendChild(heading);
 
-    group.tracks.forEach((t, i) => {
+    group.tracks.forEach((track, i) => {
       const row = document.createElement("div");
       row.className = "duplicate-track-row";
       const info = document.createElement("div");
       info.className = "duplicate-track-info";
-      info.textContent = `${i === 0 ? "★ " : ""}${t.playlist} — ${t.file}`;
+      info.textContent = `${i === 0 ? "★ " : ""}${track.playlist} — ${track.file}`;
       const delBtn = document.createElement("button");
       delBtn.className = "trash-delete-btn";
       delBtn.textContent = "🗑";
-      delBtn.title = "In den Papierkorb verschieben";
+      delBtn.title = t("In den Papierkorb verschieben");
       delBtn.addEventListener("click", async () => {
         try {
           const res = await fetch(
-            `/api/library/track/${encodeURIComponent(t.playlist)}/${encodeURIComponent(t.file)}`,
+            `/api/library/track/${encodeURIComponent(track.playlist)}/${encodeURIComponent(track.file)}`,
             { method: "DELETE" }
           );
           const data = await res.json();
-          if (!res.ok) throw new Error("Löschen fehlgeschlagen.");
+          if (!res.ok) throw new Error(t("Löschen fehlgeschlagen."));
           if (data.trash_id) {
-            showUndoToast("🗑 In den Papierkorb verschoben", () => undoDelete(data.trash_id));
+            showUndoToast(t("🗑 In den Papierkorb verschoben"), () => undoDelete(data.trash_id));
           } else {
-            showToast("🗑 In den Papierkorb verschoben");
+            showToast(t("🗑 In den Papierkorb verschoben"));
           }
           // Duplikate-Ansicht ist nicht an currentPlaylist/currentTrackIndex
           // gebunden (kann aus jeder Playlist loeschen) - deshalb hier extra
           // gegen nowPlayingMeta pruefen, statt wie in deleteTrack() gegen
           // den Index. Sonst zeigt der Player weiter auf eine gerade
           // verschobene Datei.
-          if (nowPlayingMeta && nowPlayingMeta.playlist === t.playlist && nowPlayingMeta.file === t.file) {
+          if (nowPlayingMeta && nowPlayingMeta.playlist === track.playlist && nowPlayingMeta.file === track.file) {
             audioEl.pause();
             audioEl.removeAttribute("src");
             currentTrackIndex = -1;
             nowPlayingMeta = null;
             updatePlayButton(false);
-            pbTitle.textContent = "Kein Titel ausgewählt";
+            pbTitle.textContent = t("Kein Titel ausgewählt");
             pbArtist.textContent = "—";
             updateVideoButtonVisibility();
             closeVideoViewIfOpenForTrackChange();
@@ -5597,7 +5599,7 @@ function renderDuplicates(groups) {
           await refreshLibrary();
           await loadDuplicates();
         } catch (err) {
-          showToast(err.message || "Löschen fehlgeschlagen.");
+          showToast(err.message || t("Löschen fehlgeschlagen."));
         }
       });
       row.append(info, delBtn);
@@ -5663,29 +5665,29 @@ healthCleanupBtn.addEventListener("click", async () => {
   try {
     const res = await fetch("/api/health-check/cleanup", { method: "POST" });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Bereinigen fehlgeschlagen.");
+    if (!res.ok) throw new Error(data.error || t("Bereinigen fehlgeschlagen."));
     const total = (data.removed_sidecars || 0) + (data.removed_trash_entries || 0);
-    showToast(total ? `🧹 ${total} Eintrag/Einträge bereinigt` : "Nichts zu bereinigen.");
+    showToast(total ? t("🧹 {count} Eintrag/Einträge bereinigt", { count: total }) : t("Nichts zu bereinigen."));
     await loadHealthCheck();
   } catch (err) {
-    showToast(err.message || "Bereinigen fehlgeschlagen.");
+    showToast(err.message || t("Bereinigen fehlgeschlagen."));
     healthCleanupBtn.disabled = false;
   }
 });
 
 async function deleteTrashEntryForever(id) {
   showConfirmModal(
-    "Endgültig löschen?",
-    "Diese Datei wird unwiderruflich gelöscht und kann nicht wiederhergestellt werden.",
+    t("Endgültig löschen?"),
+    t("Diese Datei wird unwiderruflich gelöscht und kann nicht wiederhergestellt werden."),
     async () => {
       try {
         const res = await fetch(`/api/trash/${id}`, { method: "DELETE" });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Löschen fehlgeschlagen.");
-        showToast("🗑 Endgültig gelöscht");
+        if (!res.ok) throw new Error(data.error || t("Löschen fehlgeschlagen."));
+        showToast(t("🗑 Endgültig gelöscht"));
         await loadTrash();
       } catch (err) {
-        showToast(err.message || "Löschen fehlgeschlagen.");
+        showToast(err.message || t("Löschen fehlgeschlagen."));
       }
     }
   );

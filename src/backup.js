@@ -50,7 +50,7 @@
       });
       if (!path) return;
       await window.__TAURI__.fs.writeTextFile(path, json);
-      toast("💾 Einstellungen gesichert");
+      toast(t("💾 Einstellungen gesichert"));
     } catch (err) {
       toast(errMsg(err));
     } finally {
@@ -70,10 +70,10 @@
         const text = await window.__TAURI__.fs.readTextFile(path);
         const parsed = JSON.parse(text);
         if (!parsed || parsed.kind !== "settings-backup" || !parsed.localStorage) {
-          throw new Error("Keine gültige Einstellungs-Backup-Datei.");
+          throw new Error(t("Keine gültige Einstellungs-Backup-Datei."));
         }
         Object.entries(parsed.localStorage).forEach(([k, v]) => localStorage.setItem(k, v));
-        toast("💾 Einstellungen wiederhergestellt – App startet neu …");
+        toast(t("💾 Einstellungen wiederhergestellt – App startet neu …"));
         setTimeout(() => window.location.reload(), 1200);
       } catch (err) {
         toast(errMsg(err));
@@ -86,7 +86,7 @@
     exportZipBtn.addEventListener("click", async () => {
       exportZipBtn.disabled = true;
       const orig = exportZipBtn.textContent;
-      exportZipBtn.textContent = "Wird gepackt …";
+      exportZipBtn.textContent = t("Wird gepackt …");
       try {
         const path = await window.__TAURI__.dialog.save({
           defaultPath: `meine-musik-bibliothek-${todayStamp()}.zip`,
@@ -94,7 +94,7 @@
         });
         if (!path) return;
         await invoke("export_library_zip", { destPath: path });
-        toast("📦 Bibliothek als ZIP exportiert");
+        toast(t("📦 Bibliothek als ZIP exportiert"));
       } catch (err) {
         toast(errMsg(err));
       } finally {
@@ -108,7 +108,7 @@
     importZipBtn.addEventListener("click", async () => {
       importZipBtn.disabled = true;
       const orig = importZipBtn.textContent;
-      importZipBtn.textContent = "Wird entpackt …";
+      importZipBtn.textContent = t("Wird entpackt …");
       try {
         const path = await window.__TAURI__.dialog.open({
           multiple: false,
@@ -116,7 +116,7 @@
         });
         if (!path) return;
         const imported = await invoke("import_library_zip", { srcPath: path });
-        toast(`📦 ${imported} Datei(en) wiederhergestellt`);
+        toast(t("📦 {count} Datei(en) wiederhergestellt", { count: imported }));
         if (typeof refreshLibrary === "function") await refreshLibrary();
       } catch (err) {
         toast(errMsg(err));

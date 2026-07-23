@@ -20,7 +20,7 @@
   const modal = document.getElementById("syncModal");
   const modalClose = document.getElementById("syncModalClose");
   const modalCancel = document.getElementById("syncModalCancel");
-  const targetNameEl = document.getElementById("syncTargetName");
+  const targetNameEl = document.getElementById("syncModalTitle");
   const selectAll = document.getElementById("syncSelectAll");
   const playlistListEl = document.getElementById("syncPlaylistList");
   const progressWrap = document.getElementById("syncProgressWrap");
@@ -80,18 +80,18 @@
   async function toggleSync() {
     syncOn = !syncOn;
     if (syncOn) {
-      modeBtn.textContent = "Sync-Modus beenden";
+      modeBtn.textContent = t("Sync-Modus beenden");
       modeBtn.classList.add("active");
-      statusText.textContent = "Sichtbar für andere Geräte im WLAN - Liste aktualisiert sich automatisch.";
+      statusText.textContent = t("Sichtbar für andere Geräte im WLAN - Liste aktualisiert sich automatisch.");
       try {
         await invoke("sync_start");
       } catch (_) {}
       refreshPeers();
       pollTimer = setInterval(refreshPeers, 3000);
     } else {
-      modeBtn.textContent = "Sync-Modus starten";
+      modeBtn.textContent = t("Sync-Modus starten");
       modeBtn.classList.remove("active");
-      statusText.textContent = "Findet andere Geräte im selben WLAN, auf denen der Sync-Modus offen ist.";
+      statusText.textContent = t("Findet andere Geräte im selben WLAN, auf denen der Sync-Modus offen ist.");
       try {
         await invoke("sync_stop");
       } catch (_) {}
@@ -117,17 +117,17 @@
 
   async function openSendModal(peer) {
     currentPeer = peer;
-    targetNameEl.textContent = peer.name;
+    targetNameEl.textContent = t("An {device} senden", { device: peer.name });
     progressWrap.classList.add("hidden");
     sendBtn.disabled = false;
-    sendBtn.textContent = "Senden";
-    playlistListEl.innerHTML = '<div class="sync-peer-empty">Lade Playlists …</div>';
+    sendBtn.textContent = t("Senden");
+    playlistListEl.innerHTML = `<div class="sync-peer-empty">${t("Lade Playlists …")}</div>`;
     modal.classList.remove("hidden");
     try {
       const data = await invoke("list_playlists");
       playlistListEl.innerHTML = "";
       if (!data.length) {
-        playlistListEl.innerHTML = '<div class="sync-peer-empty">Keine Playlists in der Bibliothek.</div>';
+        playlistListEl.innerHTML = `<div class="sync-peer-empty">${t("Keine Playlists in der Bibliothek.")}</div>`;
         return;
       }
       for (const pl of data) {
@@ -163,14 +163,14 @@
     if (!currentPeer) return;
     const names = [...playlistListEl.querySelectorAll('input[type="checkbox"]:checked')].map((cb) => cb.dataset.name);
     if (!names.length) {
-      showToast("Bitte mindestens eine Playlist auswählen.");
+      showToast(t("Bitte mindestens eine Playlist auswählen."));
       return;
     }
     sendBtn.disabled = true;
-    sendBtn.textContent = "Wird gesendet …";
+    sendBtn.textContent = t("Wird gesendet …");
     progressWrap.classList.remove("hidden");
     progressBar.style.width = "0%";
-    progressLabel.textContent = "Vorbereitung …";
+    progressLabel.textContent = t("Vorbereitung …");
 
     const taskId = `sync${Date.now()}`;
     const unlisten = await listen(`sync-progress-${taskId}`, (e) => {
@@ -191,16 +191,16 @@
         // Show the actual reason (e.g. "Nicht erreichbar: ..." vs "HTTP
         // 400") instead of just a count - if every file fails the same
         // way, this is the one piece of information that tells us why.
-        showToast(`${result.sent} gesendet, ${result.failed.length} fehlgeschlagen: ${result.failed[0]}`);
+        showToast(t("{sent} gesendet, {failed} fehlgeschlagen: {reason}", { sent: result.sent, failed: result.failed.length, reason: result.failed[0] }));
       } else {
-        showToast(`${result.sent} Dateien an ${currentPeer.name} gesendet!`);
+        showToast(t("{count} Dateien an {peer} gesendet!", { count: result.sent, peer: currentPeer.name }));
       }
-      sendBtn.textContent = "Fertig ✓";
+      sendBtn.textContent = t("Fertig ✓");
       setTimeout(closeModal, 1200);
     } catch (err) {
       showToast(String(err));
       sendBtn.disabled = false;
-      sendBtn.textContent = "Senden";
+      sendBtn.textContent = t("Senden");
     } finally {
       unlisten();
     }

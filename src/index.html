@@ -22,77 +22,77 @@
 
       <nav class="nav-main">
         <button type="button" class="nav-item active" data-view="home">
-          <span class="nav-icon">🏠</span> Home
+          <span class="nav-icon">🏠</span> <span data-i18n="Home">Home</span>
         </button>
         <button type="button" class="nav-item" data-view="library">
-          <span class="nav-icon">📚</span> Bibliothek
+          <span class="nav-icon">📚</span> <span data-i18n="Bibliothek">Bibliothek</span>
         </button>
         <button type="button" class="nav-item" data-view="trash">
-          <span class="nav-icon">🗑️</span> Papierkorb
+          <span class="nav-icon">🗑️</span> <span data-i18n="Papierkorb">Papierkorb</span>
         </button>
         <button type="button" class="nav-item" data-view="duplicates">
-          <span class="nav-icon">🧬</span> Duplikate
+          <span class="nav-icon">🧬</span> <span data-i18n="Duplikate">Duplikate</span>
         </button>
         <button type="button" class="nav-item" data-view="stats">
-          <span class="nav-icon">📊</span> Statistik
+          <span class="nav-icon">📊</span> <span data-i18n="Statistik">Statistik</span>
         </button>
         <button type="button" class="nav-item" data-view="health">
-          <span class="nav-icon">🩺</span> Health-Check
+          <span class="nav-icon">🩺</span> <span data-i18n="Health-Check">Health-Check</span>
         </button>
       </nav>
 
       <div class="sidebar-divider"></div>
 
-      <div class="sidebar-section-title">Playlists</div>
+      <div class="sidebar-section-title" data-i18n="Playlists">Playlists</div>
       <div class="playlist-list" id="playlistList">
-        <div class="playlist-list-empty" id="playlistListEmpty">Noch keine Playlist</div>
+        <div class="playlist-list-empty" id="playlistListEmpty" data-i18n="Noch keine Playlist">Noch keine Playlist</div>
       </div>
 
       <div class="sidebar-tools mobile-action-dock">
         <div class="sidebar-tool-wrap">
-          <button type="button" id="qrToggleBtn" class="sidebar-tool-btn" title="Freunde einladen">👥</button>
+          <button type="button" id="qrToggleBtn" class="sidebar-tool-btn" data-i18n-title="Freunde einladen" title="Freunde einladen">👥</button>
           <div id="qrPopover" class="sidebar-tool-popover hidden">
-            <div class="sidebar-tool-popover-title">Freunde einladen</div>
+            <div class="sidebar-tool-popover-title" data-i18n="Freunde einladen">Freunde einladen</div>
             <img id="qrImage" class="qr-image" src="/api/qr" alt="QR-Code zur Gäste-Seite" />
-            <div id="qrHint" class="qr-hint">Scannen &amp; Songs zur Warteschlange hinzufügen</div>
-            <div id="qrParticipantsTitle" class="qr-participants-title hidden">Hören gerade zu</div>
+            <div id="qrHint" class="qr-hint" data-i18n="Scannen &amp; Songs zur Warteschlange hinzufügen">Scannen &amp; Songs zur Warteschlange hinzufügen</div>
+            <div id="qrParticipantsTitle" class="qr-participants-title hidden" data-i18n="Hören gerade zu">Hören gerade zu</div>
             <div id="qrParticipantList" class="qr-participant-list"></div>
           </div>
         </div>
         <div class="sidebar-tool-wrap">
-          <button type="button" id="partyPopoverToggleBtn" class="sidebar-tool-btn" title="Party-Modus">🎉</button>
+          <button type="button" id="partyPopoverToggleBtn" class="sidebar-tool-btn" data-i18n-title="Party-Modus" title="Party-Modus">🎉</button>
           <div id="partyPopover" class="sidebar-tool-popover hidden">
-            <div class="sidebar-tool-popover-title">Party-Modus</div>
-            <div id="partyStatusText" class="party-popover-status">
+            <div class="sidebar-tool-popover-title" data-i18n="Party-Modus">Party-Modus</div>
+            <div id="partyStatusText" class="party-popover-status" data-i18n="Spielt auf allen Geräten im WLAN exakt denselben Song synchron ab.">
               Spielt auf allen Geräten im WLAN exakt denselben Song synchron ab.
             </div>
-            <button type="button" id="partyModeBtn" class="party-toggle-switch">Party starten</button>
+            <button type="button" id="partyModeBtn" class="party-toggle-switch" data-i18n="Party starten">Party starten</button>
             <div id="partySkipStatus" class="party-skip-status hidden"></div>
             <div id="partyChatSection" class="party-chat-section hidden">
               <div id="partyChatMessages" class="party-chat-messages"></div>
               <div class="party-chat-input-row">
-                <input type="text" id="partyChatInput" class="party-chat-input" placeholder="Nachricht an alle…" maxlength="200" />
-                <button type="button" id="partyChatSendBtn" class="party-chat-send-btn" title="Senden">➤</button>
+                <input type="text" id="partyChatInput" class="party-chat-input" data-i18n-placeholder="Nachricht an alle…" placeholder="Nachricht an alle…" maxlength="200" />
+                <button type="button" id="partyChatSendBtn" class="party-chat-send-btn" data-i18n-title="Senden" title="Senden">➤</button>
               </div>
-              <button type="button" id="partySaveHistoryBtn" class="btn-secondary party-save-history-btn">Verlauf als Playlist speichern</button>
+              <button type="button" id="partySaveHistoryBtn" class="btn-secondary party-save-history-btn" data-i18n="Verlauf als Playlist speichern">Verlauf als Playlist speichern</button>
             </div>
           </div>
         </div>
         <div class="sidebar-tool-wrap">
-          <button type="button" id="syncToggleBtn" class="sidebar-tool-btn" title="Handy-Sync">📱</button>
+          <button type="button" id="syncToggleBtn" class="sidebar-tool-btn" data-i18n-title="Handy-Sync" title="Handy-Sync">📱</button>
           <div id="syncPopover" class="sidebar-tool-popover hidden">
-            <div class="sidebar-tool-popover-title">Handy-Sync</div>
-            <div id="syncStatusText" class="party-popover-status">
+            <div class="sidebar-tool-popover-title" data-i18n="Handy-Sync">Handy-Sync</div>
+            <div id="syncStatusText" class="party-popover-status" data-i18n="Findet andere Geräte im selben WLAN, auf denen der Sync-Modus offen ist.">
               Findet andere Geräte im selben WLAN, auf denen der Sync-Modus offen ist.
             </div>
-            <button type="button" id="syncModeBtn" class="party-toggle-switch">Sync-Modus starten</button>
+            <button type="button" id="syncModeBtn" class="party-toggle-switch" data-i18n="Sync-Modus starten">Sync-Modus starten</button>
             <div id="syncPeerList" class="sync-peer-list"></div>
           </div>
         </div>
         <div class="sidebar-tool-wrap">
-          <button type="button" id="themeToggleBtn" class="sidebar-tool-btn" title="Design">🎨</button>
+          <button type="button" id="themeToggleBtn" class="sidebar-tool-btn" data-i18n-title="Design" title="Design">🎨</button>
           <div id="themePopover" class="sidebar-tool-popover hidden">
-            <div class="sidebar-tool-popover-title">Design</div>
+            <div class="sidebar-tool-popover-title" data-i18n="Design">Design</div>
             <div class="theme-options">
               <button type="button" class="theme-option" data-theme="spotify-green">
                 <span class="theme-swatch" style="background:#1db954"></span> Spotify-Green
@@ -177,14 +177,14 @@
           </div>
         </div>
         <div class="sidebar-tool-wrap">
-          <button type="button" id="settingsToggleBtn" class="sidebar-tool-btn" title="Einstellungen">⚙️</button>
+          <button type="button" id="settingsToggleBtn" class="sidebar-tool-btn" data-i18n-title="Einstellungen" title="Einstellungen">⚙️</button>
         </div>
-        <a href="downloader.html" class="dock-downloader-link" title="Downloader">📥</a>
+        <a href="downloader.html" class="dock-downloader-link" data-i18n-title="Downloader" title="Downloader">📥</a>
       </div>
 
       <div class="sidebar-footer">
         <a href="downloader.html" class="nav-item nav-external">
-          <span class="nav-icon">📥</span> Musik hinzufügen
+          <span class="nav-icon">📥</span> <span data-i18n="Musik hinzufügen">Musik hinzufügen</span>
         </a>
       </div>
     </aside>
@@ -197,41 +197,41 @@
         </div>
         <div class="search-bar">
           <span class="search-icon">🔍</span>
-          <input type="text" id="searchInput" class="search-input" placeholder="Songs, Playlists, Interpreten suchen…" autocomplete="off" />
+          <input type="text" id="searchInput" class="search-input" data-i18n-placeholder="Songs, Playlists, Interpreten suchen…" placeholder="Songs, Playlists, Interpreten suchen…" autocomplete="off" />
           <div id="searchHistoryDropdown" class="search-history-dropdown hidden"></div>
         </div>
-        <a href="downloader.html" class="header-downloader-btn">⬇️ Downloader</a>
+        <a href="downloader.html" class="header-downloader-btn" data-i18n="⬇️ Downloader">⬇️ Downloader</a>
       </header>
 
       <div class="content-scroll">
         <div id="emptyState" class="empty-state">
           <div class="empty-icon">🎧</div>
-          <h2>Noch keine Musik in deiner Bibliothek</h2>
+          <h2 data-i18n="Noch keine Musik in deiner Bibliothek">Noch keine Musik in deiner Bibliothek</h2>
           <p>
             Lade Titel im <a href="downloader.html">Downloader</a> herunter und aktiviere dort
             „In Bibliothek speichern" — sie tauchen dann automatisch hier auf.
           </p>
-          <a href="downloader.html" class="btn-primary">Zum Downloader</a>
+          <a href="downloader.html" class="btn-primary" data-i18n="Zum Downloader">Zum Downloader</a>
         </div>
 
         <div id="homeView" class="view-section hidden">
           <h1 id="homeGreeting" class="home-greeting">Guten Tag</h1>
           <section class="home-section hidden" id="dailyMixSection">
-            <h2 class="home-section-title">📻 Daily Mix</h2>
+            <h2 class="home-section-title" data-i18n="📻 Daily Mix">📻 Daily Mix</h2>
             <div class="card-grid" id="dailyMixGrid"></div>
           </section>
           <section class="home-section hidden" id="moodSection">
-            <h2 class="home-section-title">Stimmungen</h2>
+            <h2 class="home-section-title" data-i18n="Stimmungen">Stimmungen</h2>
             <div class="mood-grid" id="moodGrid"></div>
           </section>
           <section class="home-section">
-            <h2 class="home-section-title">Zuletzt hinzugefügt</h2>
+            <h2 class="home-section-title" data-i18n="Zuletzt hinzugefügt">Zuletzt hinzugefügt</h2>
             <div class="card-grid" id="recentGrid"></div>
           </section>
           <section class="home-section">
             <div class="recs-header">
-              <h2 class="home-section-title">Andere Songs entdecken</h2>
-              <button type="button" id="discoverRefreshBtn" class="recs-refresh-btn" title="Neue Vorschläge">🔄</button>
+              <h2 class="home-section-title" data-i18n="Andere Songs entdecken">Andere Songs entdecken</h2>
+              <button type="button" id="discoverRefreshBtn" class="recs-refresh-btn" data-i18n-title="Neue Vorschläge" title="Neue Vorschläge">🔄</button>
             </div>
             <div class="card-grid recs-grid" id="discoverGrid"></div>
           </section>
@@ -239,12 +239,12 @@
         </div>
 
         <div id="libraryView" class="view-section hidden">
-          <h1 class="library-heading">Deine Bibliothek</h1>
+          <h1 class="library-heading" data-i18n="Deine Bibliothek">Deine Bibliothek</h1>
           <div class="card-grid" id="libraryGrid">
             <div class="card card-dropzone" id="libraryDropzone" tabindex="0">
               <div class="dropzone-icon">📁</div>
-              <div class="card-title">Playlist hinzufügen</div>
-              <div class="card-sub">Songordner per Drag &amp; Drop hierher ziehen</div>
+              <div class="card-title" data-i18n="Playlist hinzufügen">Playlist hinzufügen</div>
+              <div class="card-sub" data-i18n="Songordner per Drag &amp; Drop hierher ziehen">Songordner per Drag &amp; Drop hierher ziehen</div>
               <input type="file" id="libraryFileInput" webkitdirectory multiple class="hidden" />
             </div>
           </div>
@@ -254,47 +254,47 @@
           <div class="playlist-hero">
             <img id="playlistCover" class="playlist-cover" src="" alt="" />
             <div class="playlist-meta">
-              <span class="playlist-kind">PLAYLIST</span>
+              <span class="playlist-kind" data-i18n="PLAYLIST">PLAYLIST</span>
               <div class="playlist-title-row">
                 <h1 id="playlistTitle">—</h1>
-                <button type="button" id="renamePlaylistBtn" class="icon-btn" title="Playlist umbenennen">✏️</button>
-                <button type="button" id="exportPlaylistBtn" class="icon-btn" title="Als M3U exportieren (für andere Player)">📤</button>
-                <button type="button" id="exportPlaylistCsvBtn" class="icon-btn" title="Als CSV exportieren (Import in SoundIiiz/TuneMyMusic → Spotify/YouTube Music)">📋</button>
-                <button type="button" id="deletePlaylistBtn" class="icon-btn icon-btn-danger" title="Playlist löschen">🗑️</button>
+                <button type="button" id="renamePlaylistBtn" class="icon-btn" data-i18n-title="Playlist umbenennen" title="Playlist umbenennen">✏️</button>
+                <button type="button" id="exportPlaylistBtn" class="icon-btn" data-i18n-title="Als M3U exportieren (für andere Player)" title="Als M3U exportieren (für andere Player)">📤</button>
+                <button type="button" id="exportPlaylistCsvBtn" class="icon-btn" data-i18n-title="Als CSV exportieren (Import in SoundIiiz/TuneMyMusic → Spotify/YouTube Music)" title="Als CSV exportieren (Import in SoundIiiz/TuneMyMusic → Spotify/YouTube Music)">📋</button>
+                <button type="button" id="deletePlaylistBtn" class="icon-btn icon-btn-danger" data-i18n-title="Playlist löschen" title="Playlist löschen">🗑️</button>
               </div>
               <div class="playlist-sub">
                 <span id="playlistTrackCount">0 Titel</span>
-                <span class="playlist-drop-hint">— Songs von überall auf dieser Seite ablegen, um sie hinzuzufügen</span>
+                <span class="playlist-drop-hint" data-i18n="— Songs von überall auf dieser Seite ablegen, um sie hinzuzufügen">— Songs von überall auf dieser Seite ablegen, um sie hinzuzufügen</span>
               </div>
             </div>
           </div>
           <div class="dropzone-overlay" id="playlistDropOverlay">
             <div class="dropzone-icon">📁</div>
-            <div>Songs hier ablegen</div>
+            <div data-i18n="Songs hier ablegen">Songs hier ablegen</div>
           </div>
 
           <div class="playlist-actions">
-            <button id="playAllBtn" class="btn-play-circle" title="Alle abspielen"></button>
-            <button id="shuffleAllBtn" class="btn-shuffle-circle" title="Zufallswiedergabe"></button>
-            <button id="offlineDownloadBtn" class="btn-offline-circle" title="Offline herunterladen"><span class="btn-icon-download"></span> Offline herunterladen</button>
-            <button id="bulkSelectBtn" type="button" class="btn-secondary" title="Mehrere Titel für Album-/Cover-Änderung auswählen">☑️ Auswählen</button>
+            <button id="playAllBtn" class="btn-play-circle" data-i18n-title="Alle abspielen" title="Alle abspielen"></button>
+            <button id="shuffleAllBtn" class="btn-shuffle-circle" data-i18n-title="Zufallswiedergabe" title="Zufallswiedergabe"></button>
+            <button id="offlineDownloadBtn" class="btn-offline-circle" data-i18n-title="Offline herunterladen" title="Offline herunterladen"><span class="btn-icon-download"></span> <span data-i18n="Offline herunterladen">Offline herunterladen</span></button>
+            <button id="bulkSelectBtn" type="button" class="btn-secondary" data-i18n-title="Mehrere Titel für Album-/Cover-Änderung auswählen" title="Mehrere Titel für Album-/Cover-Änderung auswählen">☑️ <span data-i18n="Auswählen">Auswählen</span></button>
           </div>
 
           <div id="bulkEditBar" class="bulk-edit-bar hidden">
             <span id="bulkEditCount" class="bulk-edit-count">0 ausgewählt</span>
-            <button type="button" id="bulkEditSelectAllBtn" class="btn-secondary">Alle auswählen</button>
-            <button type="button" id="bulkEditAlbumBtn" class="btn-secondary" disabled>Album ändern</button>
-            <button type="button" id="bulkEditCoverBtn" class="btn-secondary" disabled>Cover ändern</button>
+            <button type="button" id="bulkEditSelectAllBtn" class="btn-secondary" data-i18n="Alle auswählen">Alle auswählen</button>
+            <button type="button" id="bulkEditAlbumBtn" class="btn-secondary" disabled data-i18n="Album ändern">Album ändern</button>
+            <button type="button" id="bulkEditCoverBtn" class="btn-secondary" disabled data-i18n="Cover ändern">Cover ändern</button>
             <input type="file" id="bulkEditCoverInput" accept="image/*" class="hidden" />
-            <button type="button" id="bulkEditCancelBtn" class="btn-secondary">Fertig</button>
+            <button type="button" id="bulkEditCancelBtn" class="btn-secondary" data-i18n="Fertig">Fertig</button>
           </div>
 
           <table class="track-table" id="trackTable">
             <thead>
               <tr>
                 <th class="col-index">#</th>
-                <th>Titel</th>
-                <th>Album</th>
+                <th data-i18n="Titel">Titel</th>
+                <th data-i18n="Album">Album</th>
                 <th class="col-duration">⏱</th>
                 <th class="col-more"></th>
                 <th class="col-add"></th>
@@ -306,89 +306,89 @@
 
           <section class="recs-section" id="recsSection">
             <div class="recs-header">
-              <h2 class="home-section-title">Empfohlene Songs für diese Playlist</h2>
-              <button type="button" id="recsRefreshBtn" class="recs-refresh-btn" title="Neue Vorschläge">🔄</button>
+              <h2 class="home-section-title" data-i18n="Empfohlene Songs für diese Playlist">Empfohlene Songs für diese Playlist</h2>
+              <button type="button" id="recsRefreshBtn" class="recs-refresh-btn" data-i18n-title="Neue Vorschläge" title="Neue Vorschläge">🔄</button>
             </div>
             <div class="card-grid recs-grid" id="recsGrid"></div>
           </section>
         </div>
 
         <div id="searchView" class="view-section hidden">
-          <h1 class="library-heading">Suchergebnisse</h1>
+          <h1 class="library-heading" data-i18n="Suchergebnisse">Suchergebnisse</h1>
           <section class="home-section hidden" id="searchSongsSection">
-            <h2 class="home-section-title">In deiner Bibliothek</h2>
+            <h2 class="home-section-title" data-i18n="In deiner Bibliothek">In deiner Bibliothek</h2>
             <div class="card-grid" id="searchSongsGrid"></div>
           </section>
           <section class="home-section hidden" id="searchPlaylistsSection">
-            <h2 class="home-section-title">Gefundene Playlists</h2>
+            <h2 class="home-section-title" data-i18n="Gefundene Playlists">Gefundene Playlists</h2>
             <div class="card-grid" id="searchPlaylistsGrid"></div>
           </section>
           <section class="home-section hidden" id="searchOnlineSection">
-            <h2 class="home-section-title">🌐 Online gefunden – zum Herunterladen</h2>
+            <h2 class="home-section-title" data-i18n="🌐 Online gefunden – zum Herunterladen">🌐 Online gefunden – zum Herunterladen</h2>
             <div class="card-grid recs-grid" id="searchOnlineGrid"></div>
           </section>
-          <div id="searchNothingAtAll" class="card-sub hidden" style="padding: 20px 0;">Keine Ergebnisse.</div>
+          <div id="searchNothingAtAll" class="card-sub hidden" style="padding: 20px 0;" data-i18n="Keine Ergebnisse.">Keine Ergebnisse.</div>
         </div>
 
         <div id="trashView" class="view-section hidden">
-          <h1 class="library-heading">Papierkorb</h1>
+          <h1 class="library-heading" data-i18n="Papierkorb">Papierkorb</h1>
           <table class="track-table">
             <thead>
               <tr>
-                <th>Titel</th>
-                <th>Playlist</th>
-                <th>Gelöscht am</th>
+                <th data-i18n="Titel">Titel</th>
+                <th data-i18n="Playlist">Playlist</th>
+                <th data-i18n="Gelöscht am">Gelöscht am</th>
                 <th class="col-remove"></th>
               </tr>
             </thead>
             <tbody id="trashTableBody"></tbody>
           </table>
-          <div id="trashEmpty" class="card-sub hidden" style="padding: 20px 0;">Papierkorb ist leer.</div>
+          <div id="trashEmpty" class="card-sub hidden" style="padding: 20px 0;" data-i18n="Papierkorb ist leer.">Papierkorb ist leer.</div>
         </div>
 
         <div id="duplicatesView" class="view-section hidden">
-          <h1 class="library-heading">Duplikate</h1>
-          <div id="duplicatesEmpty" class="card-sub hidden" style="padding: 20px 0;">Keine Duplikate gefunden.</div>
+          <h1 class="library-heading" data-i18n="Duplikate">Duplikate</h1>
+          <div id="duplicatesEmpty" class="card-sub hidden" style="padding: 20px 0;" data-i18n="Keine Duplikate gefunden.">Keine Duplikate gefunden.</div>
           <div id="duplicatesList" class="duplicates-list"></div>
         </div>
 
         <div id="statsView" class="view-section hidden">
-          <h1 class="library-heading">Statistik</h1>
+          <h1 class="library-heading" data-i18n="Statistik">Statistik</h1>
           <div class="stats-summary-row">
             <div class="stats-card">
               <div id="statsTotalListenTime" class="stats-card-value">0h</div>
-              <div class="stats-card-label">Hörzeit gesamt</div>
+              <div class="stats-card-label" data-i18n="Hörzeit gesamt">Hörzeit gesamt</div>
             </div>
             <div class="stats-card">
               <div id="statsTotalPlays" class="stats-card-value">0</div>
-              <div class="stats-card-label">Songs abgespielt</div>
+              <div class="stats-card-label" data-i18n="Songs abgespielt">Songs abgespielt</div>
             </div>
           </div>
-          <h2 class="stats-section-heading">Top-Songs</h2>
+          <h2 class="stats-section-heading" data-i18n="Top-Songs">Top-Songs</h2>
           <div id="statsTopSongs" class="stats-list"></div>
-          <h2 class="stats-section-heading">Top-Interpreten</h2>
+          <h2 class="stats-section-heading" data-i18n="Top-Interpreten">Top-Interpreten</h2>
           <div id="statsTopArtists" class="stats-list"></div>
         </div>
 
         <div id="healthView" class="view-section hidden">
-          <h1 class="library-heading">Health-Check</h1>
-          <div class="card-sub" style="padding: 0 0 16px;">
+          <h1 class="library-heading" data-i18n="Health-Check">Health-Check</h1>
+          <div class="card-sub" style="padding: 0 0 16px;" data-i18n="Prueft die Bibliothek auf verwaiste Sidecar-Dateien (Cover/Album/ Interpret-Sidecars ohne zugehoerigen Track) und kaputte Papierkorb-Eintraege (Datei fehlt, Wiederherstellen wuerde scheitern).">
             Prueft die Bibliothek auf verwaiste Sidecar-Dateien (Cover/Album/
             Interpret-Sidecars ohne zugehoerigen Track) und kaputte
             Papierkorb-Eintraege (Datei fehlt, Wiederherstellen wuerde
             scheitern).
           </div>
           <div class="health-actions">
-            <button type="button" id="healthScanBtn" class="btn-secondary">🔍 Erneut scannen</button>
-            <button type="button" id="healthCleanupBtn" class="btn-secondary" disabled>🧹 Alles bereinigen</button>
+            <button type="button" id="healthScanBtn" class="btn-secondary" data-i18n="🔍 Erneut scannen">🔍 Erneut scannen</button>
+            <button type="button" id="healthCleanupBtn" class="btn-secondary" disabled data-i18n="🧹 Alles bereinigen">🧹 Alles bereinigen</button>
           </div>
-          <div id="healthOk" class="card-sub hidden" style="padding: 20px 0;">✅ Alles sauber - nichts gefunden.</div>
+          <div id="healthOk" class="card-sub hidden" style="padding: 20px 0;" data-i18n="✅ Alles sauber - nichts gefunden.">✅ Alles sauber - nichts gefunden.</div>
           <div id="healthOrphansSection" class="hidden">
-            <h2 class="stats-section-heading">Verwaiste Sidecar-Dateien</h2>
+            <h2 class="stats-section-heading" data-i18n="Verwaiste Sidecar-Dateien">Verwaiste Sidecar-Dateien</h2>
             <div id="healthOrphansList" class="stats-list"></div>
           </div>
           <div id="healthTrashSection" class="hidden">
-            <h2 class="stats-section-heading">Kaputte Papierkorb-Eintraege</h2>
+            <h2 class="stats-section-heading" data-i18n="Kaputte Papierkorb-Eintraege">Kaputte Papierkorb-Eintraege</h2>
             <div id="healthTrashList" class="stats-list"></div>
           </div>
         </div>
@@ -399,33 +399,43 @@
   <div id="settingsModal" class="modal-overlay settings-modal hidden">
     <div class="modal">
       <div class="modal-header">
-        <h3>⚙️ Einstellungen</h3>
+        <h3 data-i18n="⚙️ Einstellungen">⚙️ Einstellungen</h3>
         <button type="button" id="settingsModalClose" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
         <div class="settings-section">
-          <div class="settings-section-title">Darstellung</div>
+          <div class="settings-section-title" data-i18n="Darstellung">Darstellung</div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Dynamic Glow</div>
-              <div class="settings-row-desc">Hintergrund passt sich der Cover-Farbe des Songs an</div>
+              <div class="settings-row-label" data-i18n="Sprache">Sprache</div>
+              <div class="settings-row-desc" data-i18n="Sprache der App-Oberfläche">Sprache der App-Oberfläche</div>
+            </div>
+            <div class="lang-switch" id="langSwitch">
+              <button type="button" class="lang-switch-btn" data-lang="de">DE</button>
+              <button type="button" class="lang-switch-btn" data-lang="en">EN</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Dynamic Glow">Dynamic Glow</div>
+              <div class="settings-row-desc" data-i18n="Hintergrund passt sich der Cover-Farbe des Songs an">Hintergrund passt sich der Cover-Farbe des Songs an</div>
             </div>
             <button type="button" id="glowToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
           </div>
         </div>
         <div class="settings-section">
-          <div class="settings-section-title">Wiedergabe &amp; Sound</div>
+          <div class="settings-section-title" data-i18n="Wiedergabe &amp; Sound">Wiedergabe &amp; Sound</div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Weicher Übergang (Crossfade)</div>
-              <div class="settings-row-desc">Songs blenden sich beim Wechsel sanft ineinander statt hart zu schneiden</div>
+              <div class="settings-row-label" data-i18n="Weicher Übergang (Crossfade)">Weicher Übergang (Crossfade)</div>
+              <div class="settings-row-desc" data-i18n="Songs blenden sich beim Wechsel sanft ineinander statt hart zu schneiden">Songs blenden sich beim Wechsel sanft ineinander statt hart zu schneiden</div>
             </div>
             <button type="button" id="crossfadeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Crossfade-Dauer</div>
-              <div class="settings-row-desc">Wie lange sich zwei Songs beim Wechsel überlappen</div>
+              <div class="settings-row-label" data-i18n="Crossfade-Dauer">Crossfade-Dauer</div>
+              <div class="settings-row-desc" data-i18n="Wie lange sich zwei Songs beim Wechsel überlappen">Wie lange sich zwei Songs beim Wechsel überlappen</div>
             </div>
           </div>
           <div class="settings-slider-row">
@@ -434,94 +444,94 @@
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">DJ-Beat-Übergänge (experimentell)</div>
-              <div class="settings-row-desc">Erkennt das Tempo (BPM) automatisch und startet den Übergang auf dem nächsten Beat statt an einem beliebigen Punkt</div>
+              <div class="settings-row-label" data-i18n="DJ-Beat-Übergänge (experimentell)">DJ-Beat-Übergänge (experimentell)</div>
+              <div class="settings-row-desc" data-i18n="Erkennt das Tempo (BPM) automatisch und startet den Übergang auf dem nächsten Beat statt an einem beliebigen Punkt">Erkennt das Tempo (BPM) automatisch und startet den Übergang auf dem nächsten Beat statt an einem beliebigen Punkt</div>
             </div>
             <button type="button" id="djBeatmatchToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Lautstärke-Normalisierung</div>
-              <div class="settings-row-desc">Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln</div>
+              <div class="settings-row-label" data-i18n="Lautstärke-Normalisierung">Lautstärke-Normalisierung</div>
+              <div class="settings-row-desc" data-i18n="Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln">Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln</div>
             </div>
             <button type="button" id="normalizeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Stille überspringen (Skip-Silence)</div>
-              <div class="settings-row-desc">Leise Anfänge/Enden bei jedem Song automatisch überspringen</div>
+              <div class="settings-row-label" data-i18n="Stille überspringen (Skip-Silence)">Stille überspringen (Skip-Silence)</div>
+              <div class="settings-row-desc" data-i18n="Leise Anfänge/Enden bei jedem Song automatisch überspringen">Leise Anfänge/Enden bei jedem Song automatisch überspringen</div>
             </div>
             <button type="button" id="skipSilenceToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Mini-Player (Picture-in-Picture)</div>
-              <div class="settings-row-desc">Beim Minimieren schwebt ein kleines Player-Fenster über allen anderen Programmen</div>
+              <div class="settings-row-label" data-i18n="Mini-Player (Picture-in-Picture)">Mini-Player (Picture-in-Picture)</div>
+              <div class="settings-row-desc" data-i18n="Beim Minimieren schwebt ein kleines Player-Fenster über allen anderen Programmen">Beim Minimieren schwebt ein kleines Player-Fenster über allen anderen Programmen</div>
             </div>
             <button type="button" id="pipToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
           </div>
         </div>
         <div class="settings-section">
-          <div class="settings-section-title">Cache &amp; Speicher</div>
+          <div class="settings-section-title" data-i18n="Cache &amp; Speicher">Cache &amp; Speicher</div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Songtext-Cache leeren</div>
-              <div class="settings-row-desc">Lokal gespeicherte Songtexte löschen - werden beim nächsten Abspielen neu geladen</div>
+              <div class="settings-row-label" data-i18n="Songtext-Cache leeren">Songtext-Cache leeren</div>
+              <div class="settings-row-desc" data-i18n="Lokal gespeicherte Songtexte löschen - werden beim nächsten Abspielen neu geladen">Lokal gespeicherte Songtexte löschen - werden beim nächsten Abspielen neu geladen</div>
             </div>
-            <button type="button" id="clearLyricsCacheBtn" class="btn-secondary">Leeren</button>
+            <button type="button" id="clearLyricsCacheBtn" class="btn-secondary" data-i18n="Leeren">Leeren</button>
           </div>
         </div>
         <div class="settings-section">
-          <div class="settings-section-title">Backup</div>
+          <div class="settings-section-title" data-i18n="Backup">Backup</div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Einstellungen sichern</div>
-              <div class="settings-row-desc">Themes, Play-Verlauf & Co. als kleine Datei speichern (z.B. in einen Cloud-Ordner)</div>
+              <div class="settings-row-label" data-i18n="Einstellungen sichern">Einstellungen sichern</div>
+              <div class="settings-row-desc" data-i18n="Themes, Play-Verlauf & Co. als kleine Datei speichern (z.B. in einen Cloud-Ordner)">Themes, Play-Verlauf & Co. als kleine Datei speichern (z.B. in einen Cloud-Ordner)</div>
             </div>
-            <button type="button" id="exportSettingsBtn" class="btn-secondary">Sichern</button>
+            <button type="button" id="exportSettingsBtn" class="btn-secondary" data-i18n="Sichern">Sichern</button>
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Einstellungen wiederherstellen</div>
-              <div class="settings-row-desc">Aus einer zuvor gesicherten Datei zurückspielen</div>
+              <div class="settings-row-label" data-i18n="Einstellungen wiederherstellen">Einstellungen wiederherstellen</div>
+              <div class="settings-row-desc" data-i18n="Aus einer zuvor gesicherten Datei zurückspielen">Aus einer zuvor gesicherten Datei zurückspielen</div>
             </div>
-            <button type="button" id="importSettingsBtn" class="btn-secondary">Wiederherstellen</button>
+            <button type="button" id="importSettingsBtn" class="btn-secondary" data-i18n="Wiederherstellen">Wiederherstellen</button>
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Komplette Bibliothek exportieren</div>
-              <div class="settings-row-desc">Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern</div>
+              <div class="settings-row-label" data-i18n="Komplette Bibliothek exportieren">Komplette Bibliothek exportieren</div>
+              <div class="settings-row-desc" data-i18n="Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern">Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern</div>
             </div>
-            <button type="button" id="exportZipBtn" class="btn-secondary">Als ZIP exportieren</button>
+            <button type="button" id="exportZipBtn" class="btn-secondary" data-i18n="Als ZIP exportieren">Als ZIP exportieren</button>
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Bibliothek aus ZIP wiederherstellen</div>
-              <div class="settings-row-desc">Fehlende Titel aus einem ZIP-Backup ergänzen (vorhandene Dateien bleiben unangetastet)</div>
+              <div class="settings-row-label" data-i18n="Bibliothek aus ZIP wiederherstellen">Bibliothek aus ZIP wiederherstellen</div>
+              <div class="settings-row-desc" data-i18n="Fehlende Titel aus einem ZIP-Backup ergänzen (vorhandene Dateien bleiben unangetastet)">Fehlende Titel aus einem ZIP-Backup ergänzen (vorhandene Dateien bleiben unangetastet)</div>
             </div>
-            <button type="button" id="importZipBtn" class="btn-secondary">Aus ZIP importieren</button>
+            <button type="button" id="importZipBtn" class="btn-secondary" data-i18n="Aus ZIP importieren">Aus ZIP importieren</button>
           </div>
         </div>
         <div class="settings-section">
-          <div class="settings-section-title">Sync &amp; Verbindung</div>
+          <div class="settings-section-title" data-i18n="Sync &amp; Verbindung">Sync &amp; Verbindung</div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Handy-Sync beim Start aktivieren</div>
-              <div class="settings-row-desc">Gerät ist sofort im WLAN sichtbar, ohne den Sync-Popover erst zu öffnen</div>
+              <div class="settings-row-label" data-i18n="Handy-Sync beim Start aktivieren">Handy-Sync beim Start aktivieren</div>
+              <div class="settings-row-desc" data-i18n="Gerät ist sofort im WLAN sichtbar, ohne den Sync-Popover erst zu öffnen">Gerät ist sofort im WLAN sichtbar, ohne den Sync-Popover erst zu öffnen</div>
             </div>
             <button type="button" id="syncAutoStartToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
           </div>
         </div>
         <div class="settings-section" id="hotkeysSettingsSection">
-          <div class="settings-section-title">Hotkeys</div>
+          <div class="settings-section-title" data-i18n="Hotkeys">Hotkeys</div>
           <div class="hotkey-list" id="hotkeyList"></div>
-          <div class="settings-row-desc" style="margin-top:8px;">Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.</div>
+          <div class="settings-row-desc" style="margin-top:8px;" data-i18n="Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.">Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.</div>
         </div>
         <div class="settings-section">
-          <div class="settings-section-title">App-Info</div>
+          <div class="settings-section-title" data-i18n="App-Info">App-Info</div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Version</div>
+              <div class="settings-row-label" data-i18n="Version">Version</div>
               <div class="settings-row-desc" id="appVersionText">—</div>
             </div>
           </div>
@@ -533,12 +543,12 @@
   <div id="shortcutsModal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
-        <h3>⌨️ Tastenkürzel</h3>
+        <h3 data-i18n="⌨️ Tastenkürzel">⌨️ Tastenkürzel</h3>
         <button type="button" id="shortcutsModalClose" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
         <div class="hotkey-list" id="shortcutsList"></div>
-        <div class="settings-row-desc" style="margin-top:8px;">Umbelegen unter Einstellungen → Hotkeys.</div>
+        <div class="settings-row-desc" style="margin-top:8px;" data-i18n="Umbelegen unter Einstellungen → Hotkeys.">Umbelegen unter Einstellungen → Hotkeys.</div>
       </div>
     </div>
   </div>
@@ -552,8 +562,8 @@
       <div class="modal-body">
         <p id="confirmModalText"></p>
         <div class="modal-actions">
-          <button type="button" id="confirmModalCancel" class="btn-secondary">Abbrechen</button>
-          <button type="button" id="confirmModalOk" class="btn-danger">Löschen</button>
+          <button type="button" id="confirmModalCancel" class="btn-secondary" data-i18n="Abbrechen">Abbrechen</button>
+          <button type="button" id="confirmModalOk" class="btn-danger" data-i18n="Löschen">Löschen</button>
         </div>
       </div>
     </div>
@@ -562,14 +572,14 @@
   <div id="renameModal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
-        <h3>Playlist umbenennen</h3>
+        <h3 data-i18n="Playlist umbenennen">Playlist umbenennen</h3>
         <button type="button" id="renameModalClose" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
         <input type="text" id="renameInput" class="modal-input" maxlength="180" />
         <div class="modal-actions">
-          <button type="button" id="renameModalCancel" class="btn-secondary">Abbrechen</button>
-          <button type="button" id="renameModalOk" class="btn-primary-sm">Speichern</button>
+          <button type="button" id="renameModalCancel" class="btn-secondary" data-i18n="Abbrechen">Abbrechen</button>
+          <button type="button" id="renameModalOk" class="btn-primary-sm" data-i18n="Speichern">Speichern</button>
         </div>
       </div>
     </div>
@@ -578,19 +588,19 @@
   <div id="syncModal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
-        <h3>An <span id="syncTargetName">Gerät</span> senden</h3>
+        <h3 id="syncModalTitle">Gerät</h3>
         <button type="button" id="syncModalClose" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
-        <label class="sync-select-all"><input type="checkbox" id="syncSelectAll" checked /> Alle Playlists</label>
+        <label class="sync-select-all"><input type="checkbox" id="syncSelectAll" checked /> <span data-i18n="Alle Playlists">Alle Playlists</span></label>
         <div id="syncPlaylistList" class="sync-playlist-list"></div>
         <div id="syncProgressWrap" class="sync-progress-wrap hidden">
           <div class="sync-progress-bar-track"><div id="syncProgressBar" class="sync-progress-bar-fill"></div></div>
           <div id="syncProgressLabel" class="sync-progress-label">0 / 0</div>
         </div>
         <div class="modal-actions">
-          <button type="button" id="syncModalCancel" class="btn-secondary">Abbrechen</button>
-          <button type="button" id="syncSendBtn" class="btn-primary-sm">Senden</button>
+          <button type="button" id="syncModalCancel" class="btn-secondary" data-i18n="Abbrechen">Abbrechen</button>
+          <button type="button" id="syncSendBtn" class="btn-primary-sm" data-i18n="Senden">Senden</button>
         </div>
       </div>
     </div>
@@ -605,9 +615,9 @@
           <div id="lyricsTitle" class="lyrics-title">—</div>
           <div id="lyricsArtist" class="lyrics-artist">—</div>
         </div>
-        <div class="lyrics-sync-adjust" id="lyricsSyncAdjust" title="Songtext-Sync feinjustieren, falls er vor- oder nacheilt">
+        <div class="lyrics-sync-adjust" id="lyricsSyncAdjust" data-i18n-title="Songtext-Sync feinjustieren, falls er vor- oder nacheilt" title="Songtext-Sync feinjustieren, falls er vor- oder nacheilt">
           <button type="button" id="lyricsSyncMinus" class="lyrics-sync-btn">−0.3s</button>
-          <span id="lyricsSyncReadout" class="lyrics-sync-readout" title="Zum Zurücksetzen klicken">0.0s</span>
+          <span id="lyricsSyncReadout" class="lyrics-sync-readout" data-i18n-title="Zum Zurücksetzen klicken" title="Zum Zurücksetzen klicken">0.0s</span>
           <button type="button" id="lyricsSyncPlus" class="lyrics-sync-btn">+0.3s</button>
         </div>
         <button type="button" id="lyricsCloseBtn" class="modal-close lyrics-close">✕</button>
@@ -621,23 +631,23 @@
     <div class="player-bar-left">
       <img id="pbCover" class="pb-cover" src="" alt="" />
       <div class="pb-info">
-        <div id="pbTitle" class="pb-title">Kein Titel ausgewählt</div>
+        <div id="pbTitle" class="pb-title" data-i18n="Kein Titel ausgewählt">Kein Titel ausgewählt</div>
         <div id="pbArtist" class="pb-artist">—</div>
         <div id="pbNextUp" class="pb-next-up hidden"></div>
       </div>
-      <button id="pbLike" class="pb-like" title="Merken">♡</button>
-      <button id="pbLyrics" class="pb-lyrics" title="Songtext anzeigen">🎤</button>
-      <button id="pbVideo" class="pb-video hidden" title="Video ansehen">🎬</button>
-      <button id="pbQueue" class="pb-queue" title="Warteschlange anzeigen"></button>
+      <button id="pbLike" class="pb-like" data-i18n-title="Merken" title="Merken">♡</button>
+      <button id="pbLyrics" class="pb-lyrics" data-i18n-title="Songtext anzeigen" title="Songtext anzeigen">🎤</button>
+      <button id="pbVideo" class="pb-video hidden" data-i18n-title="Video ansehen" title="Video ansehen">🎬</button>
+      <button id="pbQueue" class="pb-queue" data-i18n-title="Warteschlange anzeigen" title="Warteschlange anzeigen"></button>
     </div>
 
     <div class="player-bar-center">
       <div class="pb-controls">
-        <button id="pbShuffle" class="pb-btn" title="Zufallswiedergabe"></button>
-        <button id="pbPrev" class="pb-btn" title="Zurück">⏮</button>
-        <button id="pbPlay" class="pb-btn pb-play" title="Abspielen" data-state="play"></button>
-        <button id="pbNext" class="pb-btn" title="Vor">⏭</button>
-        <button id="pbRepeat" class="pb-btn" title="Wiederholen" data-mode="off"></button>
+        <button id="pbShuffle" class="pb-btn" data-i18n-title="Zufallswiedergabe" title="Zufallswiedergabe"></button>
+        <button id="pbPrev" class="pb-btn" data-i18n-title="Zurück" title="Zurück">⏮</button>
+        <button id="pbPlay" class="pb-btn pb-play" data-i18n-title="Abspielen" title="Abspielen" data-state="play"></button>
+        <button id="pbNext" class="pb-btn" data-i18n-title="Vor" title="Vor">⏭</button>
+        <button id="pbRepeat" class="pb-btn" data-i18n-title="Wiederholen" title="Wiederholen" data-mode="off"></button>
       </div>
       <div class="pb-scrubber">
         <span id="pbTimeCurrent" class="pb-time">0:00</span>
@@ -654,39 +664,39 @@
 
     <div class="player-bar-right">
       <div class="eq-wrap">
-        <button id="pbToolsToggleBtn" class="pb-vol-icon eq-toggle-btn" title="Geschwindigkeit &amp; A-B-Loop">⏱️</button>
+        <button id="pbToolsToggleBtn" class="pb-vol-icon eq-toggle-btn" data-i18n-title="Geschwindigkeit &amp; A-B-Loop" title="Geschwindigkeit &amp; A-B-Loop">⏱️</button>
         <div id="pbToolsPopover" class="eq-popover pbtools-popover hidden">
-          <div class="eq-popover-title">Geschwindigkeit</div>
+          <div class="eq-popover-title" data-i18n="Geschwindigkeit">Geschwindigkeit</div>
           <div class="pbtools-speed-row">
             <input type="range" id="playbackRateSlider" min="0.5" max="2" step="0.05" value="1" />
             <span id="playbackRateReadout" class="pbtools-readout">1.00x</span>
           </div>
-          <button type="button" id="playbackRateResetBtn" class="btn-secondary pbtools-reset-btn">Zurücksetzen</button>
-          <div class="eq-popover-title pbtools-section-title">A-B-Loop</div>
+          <button type="button" id="playbackRateResetBtn" class="btn-secondary pbtools-reset-btn" data-i18n="Zurücksetzen">Zurücksetzen</button>
+          <div class="eq-popover-title pbtools-section-title" data-i18n="A-B-Loop">A-B-Loop</div>
           <div class="pbtools-abloop-row">
-            <button type="button" id="abLoopSetABtn" class="btn-secondary">A setzen</button>
-            <button type="button" id="abLoopSetBBtn" class="btn-secondary">B setzen</button>
-            <button type="button" id="abLoopClearBtn" class="btn-secondary">Löschen</button>
+            <button type="button" id="abLoopSetABtn" class="btn-secondary" data-i18n="A setzen">A setzen</button>
+            <button type="button" id="abLoopSetBBtn" class="btn-secondary" data-i18n="B setzen">B setzen</button>
+            <button type="button" id="abLoopClearBtn" class="btn-secondary" data-i18n="Löschen">Löschen</button>
           </div>
-          <div id="abLoopStatus" class="pbtools-abloop-status">Kein Loop aktiv</div>
+          <div id="abLoopStatus" class="pbtools-abloop-status" data-i18n="Kein Loop aktiv">Kein Loop aktiv</div>
         </div>
       </div>
       <div class="eq-wrap">
-        <button id="eqToggleBtn" class="pb-vol-icon eq-toggle-btn" title="Equalizer">🎚️</button>
+        <button id="eqToggleBtn" class="pb-vol-icon eq-toggle-btn" data-i18n-title="Equalizer" title="Equalizer">🎚️</button>
         <div id="eqPopover" class="eq-popover hidden">
-          <div class="eq-popover-title">Equalizer</div>
+          <div class="eq-popover-title" data-i18n="Equalizer">Equalizer</div>
           <div class="eq-sliders">
             <div class="eq-slider-col">
               <input type="range" id="eqBassSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
-              <span class="eq-slider-label">Bass</span>
+              <span class="eq-slider-label" data-i18n="Bass">Bass</span>
             </div>
             <div class="eq-slider-col">
               <input type="range" id="eqMidSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
-              <span class="eq-slider-label">Mid</span>
+              <span class="eq-slider-label" data-i18n="Mid">Mid</span>
             </div>
             <div class="eq-slider-col">
               <input type="range" id="eqTrebleSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
-              <span class="eq-slider-label">Treble</span>
+              <span class="eq-slider-label" data-i18n="Treble">Treble</span>
             </div>
           </div>
         </div>
@@ -730,7 +740,7 @@
        Playlist-Titel. Geöffnet über den Queue-Button in der Player-Bar. -->
   <div id="queuePanel" class="queue-panel hidden">
     <div class="queue-panel-header">
-      <h3>Warteschlange</h3>
+      <h3 data-i18n="Warteschlange">Warteschlange</h3>
       <button id="queuePanelClose" class="modal-close" type="button">✕</button>
     </div>
     <div id="queuePanelBody" class="queue-panel-body"></div>
@@ -738,6 +748,7 @@
 
   <audio id="audioEl" preload="auto" crossorigin="anonymous"></audio>
 
+  <script src="i18n.js"></script>
   <script src="tauri-shim.js"></script>
   <script src="player.js"></script>
   <script src="hotkeys-native.js"></script>
