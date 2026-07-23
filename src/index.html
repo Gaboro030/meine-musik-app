@@ -522,6 +522,19 @@
     </div>
   </div>
 
+  <div id="shortcutsModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>⌨️ Tastenkürzel</h3>
+        <button type="button" id="shortcutsModalClose" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="hotkey-list" id="shortcutsList"></div>
+        <div class="settings-row-desc" style="margin-top:8px;">Umbelegen unter Einstellungen → Hotkeys.</div>
+      </div>
+    </div>
+  </div>
+
   <div id="confirmModal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
@@ -622,6 +635,7 @@
         <span id="pbTimeCurrent" class="pb-time">0:00</span>
         <div class="pb-progress-wrap" id="pbProgressWrap">
           <div class="pb-progress-track">
+            <canvas id="pbWaveformCanvas" class="pb-waveform-canvas"></canvas>
             <div class="pb-progress-bar" id="pbProgressBar"></div>
             <div class="pb-progress-handle" id="pbProgressHandle"></div>
           </div>

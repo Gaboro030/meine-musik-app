@@ -1858,18 +1858,22 @@ body.has-dynamic-colors .playlist-hero {
 }
 .pb-progress-track {
   position: relative;
-  height: 4px;
-  border-radius: 100px;
-  background: rgba(255,255,255,0.3);
+  height: 28px;
+  border-radius: 4px;
+  background: transparent;
 }
-.pb-progress-bar {
+/* Wellenform (Canvas, siehe player.js loadWaveform/drawWaveform) ersetzt
+   den frueheren schlichten Balken - .pb-progress-bar bleibt im DOM
+   (unschaedlich, wird nicht mehr befuellt) fuer den Fall, dass Canvas mal
+   nicht verfuegbar ist. */
+.pb-waveform-canvas {
   position: absolute;
   inset: 0;
-  width: 0%;
-  background: var(--sp-text);
-  border-radius: 100px;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
-.pb-progress-wrap:hover .pb-progress-bar { background: var(--sp-green); }
+.pb-progress-bar { display: none; }
 .pb-progress-handle {
   position: absolute;
   top: 50%;
@@ -3018,7 +3022,7 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   box-shadow: 0 6px 18px rgba(0,0,0,0.35);
 }
 .pb-controls { gap: 22px; }
-.pb-progress-track { height: 5px; background: var(--sp-surface); }
+.pb-progress-track { height: 20px; }
 .pb-volume-track { background: var(--sp-surface); }
 
 /* --- Empty-state (leere Bibliothek) --- */

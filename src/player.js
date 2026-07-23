@@ -87,6 +87,9 @@ const syncAutoStartToggleSwitch = document.getElementById("syncAutoStartToggleSw
 const clearLyricsCacheBtn = document.getElementById("clearLyricsCacheBtn");
 const appVersionText = document.getElementById("appVersionText");
 const hotkeyList = document.getElementById("hotkeyList");
+const shortcutsModal = document.getElementById("shortcutsModal");
+const shortcutsModalClose = document.getElementById("shortcutsModalClose");
+const shortcutsList = document.getElementById("shortcutsList");
 
 const pbLyrics = document.getElementById("pbLyrics");
 const lyricsOverlay = document.getElementById("lyricsOverlay");
@@ -127,6 +130,7 @@ const pbTimeTotal = document.getElementById("pbTimeTotal");
 const pbProgressWrap = document.getElementById("pbProgressWrap");
 const pbProgressBar = document.getElementById("pbProgressBar");
 const pbProgressHandle = document.getElementById("pbProgressHandle");
+const pbWaveformCanvas = document.getElementById("pbWaveformCanvas");
 const pbVolumeWrap = document.getElementById("pbVolumeWrap");
 const pbVolumeBar = document.getElementById("pbVolumeBar");
 const pbVolumeHandle = document.getElementById("pbVolumeHandle");
@@ -1611,6 +1615,7 @@ function playTrack(index, opts = {}) {
   closeVideoViewIfOpenForTrackChange();
   refreshLyricsIfOpen();
   refreshVisualizerIfOpen();
+  loadWaveform(track.stream_url);
 }
 
 /* Plays a track handed over from a queue (own "Als nächstes"-Warteschlange
@@ -1665,6 +1670,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
   renderQueuePanel();
   refreshLyricsIfOpen();
   refreshVisualizerIfOpen();
+  loadWaveform(entry.stream_url);
 }
 
 function updatePlayButton(playing) {
@@ -1946,8 +1952,8 @@ audioEl.addEventListener("pause", () => {
 audioEl.addEventListener("timeupdate", () => {
   if (!audioEl.duration) return;
   const pct = (audioEl.currentTime / audioEl.duration) * 100;
-  pbProgressBar.style.width = `${pct}%`;
   pbProgressHandle.style.left = `${pct}%`;
+  drawWaveform();
   pbTimeCurrent.textContent = fmtTime(audioEl.currentTime);
   maybeStartFadeOut();
 
@@ -2436,6 +2442,105 @@ function renderQueuePanel() {
     });
   }
 }
+
+/* ===== Waveform-Scrubber =====
+   Ersetzt den fruehen schlichten Balken durch eine echte Wellenform (wie
+   SoundCloud/moderne Player) - lokale Dateien, also kostet das komplette
+   Herunterladen+Decodieren fuer die Anzeige praktisch nichts (kein echtes
+   Netzwerk, nur Disk-IO). Peak-Werte pro Bucket statt RMS, damit auch
+   kurze, laute Schlaege sichtbar bleiben statt im Mittelwert unterzugehen. */
+const WAVEFORM_BUCKETS = 100;
+let waveformPeaks = null; // Float32Array[0..1] pro Bucket, oder null solange nicht geladen/fehlgeschlagen
+let waveformToken = 0;
+const waveformCtx = pbWaveformCanvas.getContext("2d");
+
+function resizeWaveformCanvas() {
+  const rect = pbWaveformCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const dpr = window.devicePixelRatio || 1;
+  pbWaveformCanvas.width = Math.max(1, Math.round(rect.width * dpr));
+  pbWaveformCanvas.height = Math.max(1, Math.round(rect.height * dpr));
+}
+
+function drawWaveform() {
+  if (!pbWaveformCanvas.width || !pbWaveformCanvas.height) resizeWaveformCanvas();
+  const w = pbWaveformCanvas.width;
+  const h = pbWaveformCanvas.height;
+  if (!w || !h) return;
+  waveformCtx.clearRect(0, 0, w, h);
+
+  const style = getComputedStyle(document.documentElement);
+  const dimColor = style.getPropertyValue("--sp-border").trim() || "rgba(255,255,255,0.3)";
+  const brightColor = style.getPropertyValue("--sp-text").trim() || "#fff";
+  const playedColor = style.getPropertyValue("--sp-green").trim() || brightColor;
+
+  // Vor dem Laden (oder wenn Decodieren fehlschlaegt): flache Platzhalter-
+  // Balken statt eines leeren Canvas - sieht wie ein "Lade..."-Zustand aus,
+  // keine Schwarze/weisse Luecke.
+  const peaks = waveformPeaks || new Float32Array(WAVEFORM_BUCKETS).fill(0.14);
+  const barCount = peaks.length;
+  const gap = Math.max(1, (w / barCount) * 0.3);
+  const barWidth = Math.max(1, (w - gap * (barCount - 1)) / barCount);
+  const playedPct = audioEl.duration ? audioEl.currentTime / audioEl.duration : 0;
+  const playedBars = Math.round(playedPct * barCount);
+
+  for (let i = 0; i < barCount; i++) {
+    const amp = Math.max(peaks[i], 0.05);
+    const barH = Math.max(2, amp * h);
+    const x = i * (barWidth + gap);
+    const y = (h - barH) / 2;
+    waveformCtx.fillStyle = i < playedBars ? playedColor : dimColor;
+    waveformCtx.fillRect(x, y, barWidth, barH);
+  }
+}
+
+/* Laedt+decodiert den KOMPLETTEN Track (nicht nur ein Prefix wie Skip-
+   Silence) fuer eine akkurate Wellenform ueber die gesamte Laenge. Ein
+   Token-Guard verhindert, dass ein spaeter abgeschlossener Decode-Vorgang
+   eines VORHERIGEN Tracks die Wellenform des inzwischen neuen Tracks
+   ueberschreibt (gleiche Idee wie bei den Lyrics). */
+async function loadWaveform(streamUrl) {
+  const token = ++waveformToken;
+  waveformPeaks = null;
+  drawWaveform();
+  try {
+    const resp = await fetch(streamUrl);
+    if (!resp.ok || token !== waveformToken) return;
+    const buf = await resp.arrayBuffer();
+    if (token !== waveformToken) return;
+    const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OfflineCtx) return;
+    const decoded = await new OfflineCtx(1, 1, 44100).decodeAudioData(buf);
+    if (token !== waveformToken) return;
+    const data = decoded.getChannelData(0);
+    const bucketSize = Math.max(1, Math.floor(data.length / WAVEFORM_BUCKETS));
+    const peaks = new Float32Array(WAVEFORM_BUCKETS);
+    for (let i = 0; i < WAVEFORM_BUCKETS; i++) {
+      const start = i * bucketSize;
+      const end = Math.min(start + bucketSize, data.length);
+      let max = 0;
+      for (let j = start; j < end; j++) {
+        const v = Math.abs(data[j]);
+        if (v > max) max = v;
+      }
+      peaks[i] = max;
+    }
+    let loudest = 0.01;
+    for (let i = 0; i < peaks.length; i++) if (peaks[i] > loudest) loudest = peaks[i];
+    for (let i = 0; i < peaks.length; i++) peaks[i] = peaks[i] / loudest;
+    if (token === waveformToken) {
+      waveformPeaks = peaks;
+      drawWaveform();
+    }
+  } catch (_) {
+    // Bleibt beim Flach-Platzhalter - rein kosmetisch, kein Fehler-Toast noetig.
+  }
+}
+
+window.addEventListener("resize", () => {
+  resizeWaveformCanvas();
+  drawWaveform();
+});
 
 /* ===== Scrubber (click + drag) ===== */
 function seekFromEvent(e) {
@@ -3739,6 +3844,7 @@ const HOTKEY_ACTIONS = [
   { id: "playpause", label: "Wiedergabe / Pause", default: { ctrl: true, alt: true, shift: false, key: " " }, fn: () => togglePlayPause() },
   { id: "like", label: "Song merken", default: { ctrl: true, alt: true, shift: false, key: "l" }, fn: () => toggleLike() },
   { id: "glow", label: "Dynamic Glow an/aus", default: { ctrl: true, alt: true, shift: false, key: "g" }, fn: () => toggleGlow() },
+  { id: "shortcuts", label: "Tastenkürzel-Übersicht", default: { ctrl: false, alt: false, shift: false, key: "?" }, fn: () => openShortcutsCheatsheet() },
 ];
 
 let hotkeyBindings = {};
@@ -3822,6 +3928,39 @@ function renderHotkeyList() {
     hotkeyList.appendChild(row);
   });
 }
+
+/* ===== Tastenkürzel-Übersicht (Cheatsheet) =====
+   Rein lesende Anzeige aller HOTKEY_ACTIONS mit ihrer AKTUELLEN Belegung
+   (nicht den Defaults) - da diese direkt aus hotkeyBindings/formatHotkey
+   erzeugt wird, bleibt sie automatisch korrekt, egal was der Nutzer in den
+   Einstellungen umbelegt hat. Die Trigger-Taste dafür selbst ("?") ist
+   genau wie jede andere Aktion oben ganz normal über HOTKEY_ACTIONS/die
+   Hotkeys-Einstellungen umbelegbar. */
+function renderShortcutsCheatsheet() {
+  shortcutsList.innerHTML = "";
+  HOTKEY_ACTIONS.forEach((action) => {
+    const row = document.createElement("div");
+    row.className = "hotkey-row";
+    const label = document.createElement("span");
+    label.textContent = action.label;
+    const combo = document.createElement("span");
+    combo.className = "hotkey-combo";
+    combo.textContent = formatHotkey(hotkeyBindings[action.id]);
+    row.append(label, combo);
+    shortcutsList.appendChild(row);
+  });
+}
+function openShortcutsCheatsheet() {
+  renderShortcutsCheatsheet();
+  shortcutsModal.classList.remove("hidden");
+}
+function closeShortcutsCheatsheet() {
+  shortcutsModal.classList.add("hidden");
+}
+shortcutsModalClose.addEventListener("click", closeShortcutsCheatsheet);
+shortcutsModal.addEventListener("click", (e) => {
+  if (e.target === shortcutsModal) closeShortcutsCheatsheet();
+});
 
 /* Single capture point for hotkey recording, kept completely separate from
    the playback keydown listener below so a key pressed while recording
