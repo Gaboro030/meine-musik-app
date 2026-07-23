@@ -1955,6 +1955,49 @@ body.has-dynamic-colors .playlist-hero {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ========= UNDO-TOAST (Loeschen) =========
+   Eigenes Element statt .player-toast wiederzuverwenden - der ist reiner
+   Text ohne Button und wird von jedem beliebigen anderen showToast()-Aufruf
+   ueberschrieben, was einen Undo mitten im 6s-Fenster wegreissen wuerde. */
+.undo-toast {
+  position: fixed;
+  bottom: 110px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--sp-elevated-hover);
+  color: var(--sp-text);
+  padding: 10px 10px 10px 20px;
+  border-radius: 100px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  border: 1px solid var(--sp-border);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 500;
+  white-space: nowrap;
+}
+.undo-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.undo-toast-btn {
+  padding: 7px 16px;
+  border-radius: 100px;
+  background: var(--sp-green);
+  color: #000;
+  font-weight: 800;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.undo-toast-btn:hover { background: var(--sp-green-hover); }
 .pb-volume-wrap:hover .pb-volume-handle { opacity: 1; }
 
 /* ========= VOLLBILD-VISUALIZER ========= */
@@ -2572,6 +2615,8 @@ body.has-dynamic-colors .playlist-hero {
 .stats-list-rank { width: 22px; color: var(--sp-muted); font-size: 0.85rem; }
 .stats-list-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stats-list-count { color: var(--sp-muted); font-size: 0.85rem; }
+
+.health-actions { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 20px; }
 
 /* ========= RESPONSIVE ========= */
 @media (max-width: 900px) {

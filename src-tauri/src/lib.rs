@@ -1,7 +1,9 @@
 mod backup;
 mod commands;
+mod cover;
 mod discovery;
 mod duplicates;
+mod health;
 mod hotkeys;
 mod innertube;
 mod lyrics;
@@ -118,6 +120,9 @@ pub fn run() {
             commands::download_track_progress,
             commands::get_stream_url,
             commands::clear_lyrics_cache,
+            cover::fetch_missing_cover,
+            health::health_check,
+            health::health_check_cleanup,
             commands::get_app_version,
             playlist::resolve_playlist,
             trash::list_trash,

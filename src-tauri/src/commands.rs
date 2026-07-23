@@ -320,7 +320,7 @@ pub fn remove_track_from_playlist(
     state: tauri::State<AppState>,
     playlist_name: String,
     filename: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let _lock = LIBRARY_LOCK.lock().unwrap();
     let playlist_dir = safe_join(&state.music_root, &playlist_name)?
         .parent()
@@ -330,14 +330,14 @@ pub fn remove_track_from_playlist(
     if !path.is_file() {
         return Err("Datei nicht gefunden.".into());
     }
-    crate::trash::move_to_trash(&state, &playlist_name, &filename, &path)?;
+    let trash_id = crate::trash::move_to_trash(&state, &playlist_name, &filename, &path)?;
     if std::fs::read_dir(&playlist_dir)
         .map(|mut d| d.next().is_none())
         .unwrap_or(false)
     {
         let _ = std::fs::remove_dir(&playlist_dir);
     }
-    Ok(())
+    Ok(trash_id)
 }
 
 #[derive(Serialize)]
@@ -401,7 +401,7 @@ pub fn bulk_update_tracks(
     Ok(BulkUpdateResult { updated, failed })
 }
 
-fn apply_mp3_tags(path: &Path, album: Option<&str>, cover_data: Option<&[u8]>, mime: &str) -> bool {
+pub(crate) fn apply_mp3_tags(path: &Path, album: Option<&str>, cover_data: Option<&[u8]>, mime: &str) -> bool {
     let mut tag = id3::Tag::read_from_path(path).unwrap_or_default();
     if let Some(a) = album {
         tag.set_album(a);
@@ -418,7 +418,7 @@ fn apply_mp3_tags(path: &Path, album: Option<&str>, cover_data: Option<&[u8]>, m
     tag.write_to_path(path, id3::Version::Id3v24).is_ok()
 }
 
-fn apply_sidecar_tags(path: &Path, album: Option<&str>, cover_data: Option<&[u8]>) -> bool {
+pub(crate) fn apply_sidecar_tags(path: &Path, album: Option<&str>, cover_data: Option<&[u8]>) -> bool {
     let mut ok = true;
     if let Some(a) = album {
         ok &= std::fs::write(path.with_extension("album.txt"), a).is_ok();

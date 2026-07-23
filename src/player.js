@@ -54,7 +54,15 @@ const trashTableBody = document.getElementById("trashTableBody");
 const duplicatesView = document.getElementById("duplicatesView");
 const duplicatesList = document.getElementById("duplicatesList");
 const duplicatesEmpty = document.getElementById("duplicatesEmpty");
+const healthScanBtn = document.getElementById("healthScanBtn");
+const healthCleanupBtn = document.getElementById("healthCleanupBtn");
+const healthOk = document.getElementById("healthOk");
+const healthOrphansSection = document.getElementById("healthOrphansSection");
+const healthOrphansList = document.getElementById("healthOrphansList");
+const healthTrashSection = document.getElementById("healthTrashSection");
+const healthTrashList = document.getElementById("healthTrashList");
 const statsView = document.getElementById("statsView");
+const healthView = document.getElementById("healthView");
 const trashEmpty = document.getElementById("trashEmpty");
 
 const qrToggleBtn = document.getElementById("qrToggleBtn");
@@ -373,7 +381,7 @@ function showView(view) {
   // bleiben (Trash: alles könnte im Papierkorb liegen; Statistik/Duplikate:
   // sollen einfach "nichts da" anzeigen statt hinter dem Empty-State
   // verschwinden).
-  const alwaysReachable = view === "trash" || view === "duplicates" || view === "stats";
+  const alwaysReachable = view === "trash" || view === "duplicates" || view === "stats" || view === "health";
   if (!library.length && !alwaysReachable) {
     emptyState.classList.remove("hidden");
     homeView.classList.add("hidden");
@@ -382,6 +390,7 @@ function showView(view) {
     trashView.classList.add("hidden");
     duplicatesView.classList.add("hidden");
     statsView.classList.add("hidden");
+    healthView.classList.add("hidden");
     navBackBtn.disabled = true;
     return;
   }
@@ -393,6 +402,7 @@ function showView(view) {
   trashView.classList.toggle("hidden", view !== "trash");
   duplicatesView.classList.toggle("hidden", view !== "duplicates");
   statsView.classList.toggle("hidden", view !== "stats");
+  healthView.classList.toggle("hidden", view !== "health");
 
   document.querySelectorAll(".nav-item[data-view]").forEach((el) => {
     el.classList.toggle("active", el.dataset.view === view);
@@ -406,6 +416,7 @@ function showView(view) {
   if (view === "trash") loadTrash();
   if (view === "duplicates") loadDuplicates();
   if (view === "stats") renderStats();
+  if (view === "health") loadHealthCheck();
 
   currentView = view;
 }
@@ -995,6 +1006,7 @@ function selectPlaylist(idx) {
   // Alle Songtexte dieser Playlist sofort im Hintergrund vorladen - beim
   // Mikro-Klick kommen sie dann verzögerungsfrei aus dem Memory-Cache.
   prefetchPlaylistLyrics(currentPlaylist);
+  prefetchMissingCovers(currentPlaylist);
 }
 
 /* ===== Confirm / Rename Modals ===== */
@@ -1105,7 +1117,11 @@ async function deleteTrack(index) {
     );
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Löschen fehlgeschlagen.");
-    showToast(`🗑 „${track.title}" entfernt`);
+    if (data.trash_id) {
+      showUndoToast(`🗑 „${track.title}" entfernt`, () => undoDelete(data.trash_id));
+    } else {
+      showToast(`🗑 „${track.title}" entfernt`);
+    }
     if (index === currentTrackIndex) {
       audioEl.pause();
       audioEl.removeAttribute("src");
@@ -1849,6 +1865,56 @@ function showToast(message) {
   toast.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove("show"), 1800);
+}
+
+/* ===== Undo-Toast (Loeschen) =====
+   Eigenes Element statt showToast() - der wird von jedem anderen Toast
+   ueberschrieben, was einen Undo-Button mitten im Anzeigefenster wegreissen
+   wuerde. 6s Zeitfenster zum Rueckgaengigmachen, danach bleibt die Datei im
+   Papierkorb (dort weiterhin manuell wiederherstellbar). */
+let undoToastTimer = null;
+function showUndoToast(message, onUndo) {
+  let toast = document.getElementById("undoToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "undoToast";
+    toast.className = "undo-toast";
+    const label = document.createElement("span");
+    label.className = "undo-toast-label";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "undo-toast-btn";
+    btn.textContent = "Rückgängig";
+    toast.append(label, btn);
+    document.body.appendChild(toast);
+  }
+  toast.querySelector(".undo-toast-label").textContent = message;
+  // Alten Klick-Handler ersetzen statt zu stapeln - nur der zuletzt
+  // gezeigte Undo darf noch etwas tun, falls schnell hintereinander geloescht wird.
+  const oldBtn = toast.querySelector(".undo-toast-btn");
+  const btn = oldBtn.cloneNode(true);
+  oldBtn.replaceWith(btn);
+  btn.addEventListener("click", () => {
+    toast.classList.remove("show");
+    clearTimeout(undoToastTimer);
+    onUndo();
+  });
+  toast.classList.remove("show");
+  void toast.offsetWidth;
+  toast.classList.add("show");
+  clearTimeout(undoToastTimer);
+  undoToastTimer = setTimeout(() => toast.classList.remove("show"), 6000);
+}
+
+async function undoDelete(trashId) {
+  try {
+    const res = await fetch(`/api/trash/${trashId}/restore`, { method: "POST" });
+    if (!res.ok) throw new Error();
+    showToast("↩ Wiederhergestellt");
+    await refreshLibrary();
+  } catch (_) {
+    showToast("Wiederherstellen fehlgeschlagen.");
+  }
 }
 
 pbRepeat.addEventListener("click", () => {
@@ -4304,6 +4370,44 @@ function prefetchPlaylistLyrics(pl) {
   for (let i = 0; i < 3; i++) worker();
 }
 
+/* Automatisches Cover-Nachladen: Tracks ohne eigenes Cover (weder ID3-Bild
+   noch .jpg-Sidecar - z.B. ein Upload ohne Tags oder ein per Handy-Sync
+   uebertragener Track) bekommen im Hintergrund eins von Deezer/MusicBrainz
+   spendiert (siehe cover.rs). coverFetchAttempted verhindert, dass beim
+   erneuten Oeffnen derselben Playlist in dieser Session staendig aufs Neue
+   nach demselben (evtl. einfach nicht auffindbaren) Cover gefragt wird. */
+let coverFetchAttempted = new Set();
+let coverPrefetchToken = 0;
+function prefetchMissingCovers(pl) {
+  if (!pl || !Array.isArray(pl.tracks) || !pl.tracks.length) return;
+  const token = ++coverPrefetchToken;
+  const queue = pl.tracks.filter(
+    (t) => t && t.title && !t.cover && !coverFetchAttempted.has(`${pl.name}::${t.file}`)
+  );
+  if (!queue.length) return;
+  let anyFound = false;
+  const worker = async () => {
+    while (queue.length && token === coverPrefetchToken) {
+      const t = queue.shift();
+      coverFetchAttempted.add(`${pl.name}::${t.file}`);
+      try {
+        const res = await fetch("/api/library/fetch-cover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ playlist: pl.name, file: t.file, title: t.title, artist: t.artist || "" }),
+        });
+        const data = await res.json();
+        if (data.found) anyFound = true;
+      } catch (_) { /* einzelner Fehlschlag stoppt den Rest nicht */ }
+    }
+  };
+  Promise.all([worker(), worker()]).then(() => {
+    // Neu gefundene Cover erst nach Abschluss EINMAL nachladen, statt bei
+    // jedem einzelnen Treffer die ganze Bibliothek neu zu holen.
+    if (anyFound && token === coverPrefetchToken) refreshLibrary();
+  });
+}
+
 /* Mirrors nextTrack()'s index selection (shuffle order / repeat mode)
    without touching playback - used purely to figure out which track to
    prefetch lyrics for. Guest-queue entries aren't playlist tracks with
@@ -5193,8 +5297,13 @@ function renderDuplicates(groups) {
             `/api/library/track/${encodeURIComponent(t.playlist)}/${encodeURIComponent(t.file)}`,
             { method: "DELETE" }
           );
+          const data = await res.json();
           if (!res.ok) throw new Error("Löschen fehlgeschlagen.");
-          showToast("🗑 In den Papierkorb verschoben");
+          if (data.trash_id) {
+            showUndoToast("🗑 In den Papierkorb verschoben", () => undoDelete(data.trash_id));
+          } else {
+            showToast("🗑 In den Papierkorb verschoben");
+          }
           // Duplikate-Ansicht ist nicht an currentPlaylist/currentTrackIndex
           // gebunden (kann aus jeder Playlist loeschen) - deshalb hier extra
           // gegen nowPlayingMeta pruefen, statt wie in deleteTrack() gegen
@@ -5223,6 +5332,72 @@ function renderDuplicates(groups) {
     duplicatesList.appendChild(card);
   });
 }
+
+/* ===== Health-Check =====
+   Findet verwaiste Sidecar-Dateien (Cover/Album/Interpret/Lyrics-Cache ohne
+   zugehoerigen Track - z.B. nach manuellem Loeschen/Umbenennen ausserhalb
+   der App) und Papierkorb-Eintraege, deren Datei physisch fehlt (Restore
+   wuerde da scheitern). Rein informativ + ein "Alles bereinigen"-Knopf,
+   keine Einzelauswahl - fuer den seltenen Aufraeum-Fall reicht das. */
+async function loadHealthCheck() {
+  healthOk.classList.add("hidden");
+  healthOrphansSection.classList.add("hidden");
+  healthTrashSection.classList.add("hidden");
+  healthCleanupBtn.disabled = true;
+  healthOrphansList.textContent = "";
+  healthTrashList.textContent = "";
+  let report = { orphaned_sidecars: [], broken_trash_entries: [] };
+  try {
+    const res = await fetch("/api/health-check");
+    report = await res.json();
+  } catch (_) {
+    /* leerer Report - zeigt "alles sauber", ist im Zweifel harmloser als ein Fehler-Toast */
+  }
+  renderHealthCheck(report);
+}
+
+function renderHealthCheck(report) {
+  const orphans = report.orphaned_sidecars || [];
+  const brokenTrash = report.broken_trash_entries || [];
+  const nothingFound = !orphans.length && !brokenTrash.length;
+
+  healthOk.classList.toggle("hidden", !nothingFound);
+  healthCleanupBtn.disabled = nothingFound;
+
+  healthOrphansSection.classList.toggle("hidden", !orphans.length);
+  healthOrphansList.textContent = "";
+  orphans.forEach((o) => {
+    const row = document.createElement("div");
+    row.className = "stats-list-row";
+    row.textContent = `${o.playlist} — ${o.filename}`;
+    healthOrphansList.appendChild(row);
+  });
+
+  healthTrashSection.classList.toggle("hidden", !brokenTrash.length);
+  healthTrashList.textContent = "";
+  brokenTrash.forEach((t) => {
+    const row = document.createElement("div");
+    row.className = "stats-list-row";
+    row.textContent = `${t.playlist} — ${t.filename}`;
+    healthTrashList.appendChild(row);
+  });
+}
+
+healthScanBtn.addEventListener("click", loadHealthCheck);
+healthCleanupBtn.addEventListener("click", async () => {
+  healthCleanupBtn.disabled = true;
+  try {
+    const res = await fetch("/api/health-check/cleanup", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Bereinigen fehlgeschlagen.");
+    const total = (data.removed_sidecars || 0) + (data.removed_trash_entries || 0);
+    showToast(total ? `🧹 ${total} Eintrag/Einträge bereinigt` : "Nichts zu bereinigen.");
+    await loadHealthCheck();
+  } catch (err) {
+    showToast(err.message || "Bereinigen fehlgeschlagen.");
+    healthCleanupBtn.disabled = false;
+  }
+});
 
 async function deleteTrashEntryForever(id) {
   showConfirmModal(

@@ -14,13 +14,13 @@ pub struct TrashEntry {
 
 static TRASH_LOCK: Mutex<()> = Mutex::new(());
 
-fn load_index(file: &Path) -> Vec<TrashEntry> {
+pub(crate) fn load_index(file: &Path) -> Vec<TrashEntry> {
     std::fs::read_to_string(file)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
 }
-fn save_index(file: &Path, entries: &[TrashEntry]) {
+pub(crate) fn save_index(file: &Path, entries: &[TrashEntry]) {
     if let Ok(s) = serde_json::to_string_pretty(entries) {
         let _ = std::fs::write(file, s);
     }
@@ -30,13 +30,15 @@ fn save_index(file: &Path, entries: &[TrashEntry]) {
 /// <uuid>.mp3 so trashed files from different playlists can never collide)
 /// and records enough metadata in trash_index.json to restore it later.
 /// Called from commands::remove_track_from_playlist, not exposed directly
-/// as a command.
+/// as a command. Returns the generated trash id so the caller can offer an
+/// immediate "Rueckgaengig" undo without the user having to dig through the
+/// Papierkorb view.
 pub fn move_to_trash(
     state: &AppState,
     playlist: &str,
     filename: &str,
     src_path: &Path,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let _lock = TRASH_LOCK.lock().unwrap();
     std::fs::create_dir_all(&state.trash_dir).map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
@@ -55,13 +57,13 @@ pub fn move_to_trash(
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
     entries.push(TrashEntry {
-        id,
+        id: id.clone(),
         filename: filename.to_string(),
         playlist: playlist.to_string(),
         trashed_at,
     });
     save_index(&state.trash_index_file, &entries);
-    Ok(())
+    Ok(id)
 }
 
 #[tauri::command]

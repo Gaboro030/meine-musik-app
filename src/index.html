@@ -36,6 +36,9 @@
         <button type="button" class="nav-item" data-view="stats">
           <span class="nav-icon">📊</span> Statistik
         </button>
+        <button type="button" class="nav-item" data-view="health">
+          <span class="nav-icon">🩺</span> Health-Check
+        </button>
       </nav>
 
       <div class="sidebar-divider"></div>
@@ -364,6 +367,29 @@
           <div id="statsTopSongs" class="stats-list"></div>
           <h2 class="stats-section-heading">Top-Interpreten</h2>
           <div id="statsTopArtists" class="stats-list"></div>
+        </div>
+
+        <div id="healthView" class="view-section hidden">
+          <h1 class="library-heading">Health-Check</h1>
+          <div class="card-sub" style="padding: 0 0 16px;">
+            Prueft die Bibliothek auf verwaiste Sidecar-Dateien (Cover/Album/
+            Interpret-Sidecars ohne zugehoerigen Track) und kaputte
+            Papierkorb-Eintraege (Datei fehlt, Wiederherstellen wuerde
+            scheitern).
+          </div>
+          <div class="health-actions">
+            <button type="button" id="healthScanBtn" class="btn-secondary">🔍 Erneut scannen</button>
+            <button type="button" id="healthCleanupBtn" class="btn-secondary" disabled>🧹 Alles bereinigen</button>
+          </div>
+          <div id="healthOk" class="card-sub hidden" style="padding: 20px 0;">✅ Alles sauber - nichts gefunden.</div>
+          <div id="healthOrphansSection" class="hidden">
+            <h2 class="stats-section-heading">Verwaiste Sidecar-Dateien</h2>
+            <div id="healthOrphansList" class="stats-list"></div>
+          </div>
+          <div id="healthTrashSection" class="hidden">
+            <h2 class="stats-section-heading">Kaputte Papierkorb-Eintraege</h2>
+            <div id="healthTrashList" class="stats-list"></div>
+          </div>
         </div>
       </div>
     </main>

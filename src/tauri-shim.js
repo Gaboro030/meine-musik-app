@@ -93,6 +93,16 @@
         const url = await invoke("get_stream_url", { videoId: b.video_id });
         return jsonResponse({ url });
       }
+      if (parts[2] === "fetch-cover" && method === "POST") {
+        const b = jsonBody();
+        const found = await invoke("fetch_missing_cover", {
+          playlistName: b.playlist,
+          filename: b.file,
+          title: b.title,
+          artist: b.artist,
+        });
+        return jsonResponse({ found });
+      }
       if (parts[2] === "upload" && method === "POST" && body instanceof FormData) {
         const playlist = String(body.get("playlist") || "Neue Playlist");
         const files = body.getAll("files");
@@ -129,11 +139,11 @@
         }
       }
       if (parts[2] === "track" && method === "DELETE") {
-        await invoke("remove_track_from_playlist", {
+        const trashId = await invoke("remove_track_from_playlist", {
           playlistName: seg(parts[3] || ""),
           filename: seg(parts[4] || ""),
         });
-        return jsonResponse({ ok: true });
+        return jsonResponse({ ok: true, trash_id: trashId });
       }
       if (parts[2] === "bulk-update" && method === "POST") {
         const b = jsonBody();
@@ -166,6 +176,14 @@
     // --- duplicates ------------------------------------------------------------
     if (parts[1] === "duplicates") {
       return jsonResponse({ groups: await invoke("find_duplicates") });
+    }
+
+    // --- health-check ----------------------------------------------------------
+    if (parts[1] === "health-check") {
+      if (parts[2] === "cleanup" && method === "POST") {
+        return jsonResponse(await invoke("health_check_cleanup"));
+      }
+      return jsonResponse(await invoke("health_check"));
     }
 
     // --- lyrics --------------------------------------------------------------
