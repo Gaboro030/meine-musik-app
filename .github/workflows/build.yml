@@ -80,6 +80,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Android-SDK/NDK + 4 Rust-Targets + Gradle-Build sprengen auf dem
+      # GH-Standard-Runner (~14 GB frei) irgendwann das Limit ("No space
+      # left on device") - vorinstallierten, hier ungenutzten Kram
+      # (.NET, GHC, CodeQL-Cache, Docker-Images) vorher wegwerfen.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h /
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
