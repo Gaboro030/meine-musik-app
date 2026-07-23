@@ -54,9 +54,13 @@ jobs:
           node scripts/make-placeholder-icon.mjs
           npx tauri icon icons-source.png
 
-      - name: Run Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
-
+      # Muss VOR "Run Rust tests" stehen: Tauris build.rs prueft beim
+      # Kompilieren (auch bei `cargo test`, nicht nur `cargo build`), ob
+      # die als externalBin konfigurierten Sidecar-Binaries bereits unter
+      # src-tauri/binaries/ existieren - sonst bricht schon der Build-Script
+      # mit "resource path ... doesn't exist" ab, bevor ueberhaupt ein Test
+      # laeuft (genau das ist auf CI passiert, als der Test-Schritt davor
+      # stand).
       - name: Download yt-dlp + cloudflared sidecars
         shell: bash
         run: |
@@ -74,6 +78,9 @@ jobs:
             chmod +x src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu \
               src-tauri/binaries/cloudflared-x86_64-unknown-linux-gnu
           fi
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Build
         run: npm run build
