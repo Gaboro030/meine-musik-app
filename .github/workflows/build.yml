@@ -34,9 +34,16 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Cargo-Registry + target/ cachen (Key ueber Cargo.lock) - spart auf
+      # jedem Push die komplette Neu-Kompilierung aller Crates von Null.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install frontend deps
         run: npm install
@@ -46,6 +53,9 @@ jobs:
         run: |
           node scripts/make-placeholder-icon.mjs
           npx tauri icon icons-source.png
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Download yt-dlp + cloudflared sidecars
         shell: bash
@@ -94,9 +104,14 @@ jobs:
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - uses: actions/setup-java@v4
         with:
@@ -105,6 +120,12 @@ jobs:
 
       - name: Set up Android SDK/NDK
         uses: android-actions/setup-android@v3
+
+      # Gradle-Abhaengigkeiten cachen - das generierte Android-Projekt
+      # (npx tauri android init) existiert erst nach diesem Schritt, aber
+      # setup-gradle darf schon vorher stehen: es hoert sich beim ersten
+      # ./gradlew-Aufruf automatisch ein.
+      - uses: gradle/actions/setup-gradle@v3
 
       - name: Install NDK and export NDK_HOME
         run: |

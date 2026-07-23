@@ -77,3 +77,28 @@ pub fn find_duplicates(state: tauri::State<AppState>) -> Result<Vec<DuplicateGro
     out.sort_by(|a, b| b.tracks.len().cmp(&a.tracks.len()).then(a.label.cmp(&b.label)));
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_lowercases_and_collapses_whitespace() {
+        assert_eq!(normalize("  Hello   World  "), "hello world");
+    }
+
+    #[test]
+    fn normalize_strips_punctuation() {
+        assert_eq!(normalize("Song (feat. X)!"), "song feat x");
+    }
+
+    #[test]
+    fn normalize_treats_case_and_spacing_variants_as_equal() {
+        assert_eq!(normalize("Blinding Lights"), normalize("BLINDING   LIGHTS"));
+    }
+
+    #[test]
+    fn normalize_treats_different_titles_as_different() {
+        assert_ne!(normalize("Blinding Lights"), normalize("Shape of You"));
+    }
+}

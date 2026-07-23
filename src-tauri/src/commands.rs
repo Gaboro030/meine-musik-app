@@ -1070,3 +1070,90 @@ pub fn export_playlist_m3u(state: tauri::State<AppState>, playlist_name: String)
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Eigenes, garantiert eindeutiges Verzeichnis pro Test statt einer
+    /// tempfile-Abhaengigkeit - uuid ist ohnehin schon Crate-Dependency.
+    /// Tests laufen standardmaessig parallel, ein gemeinsamer fester Pfad
+    /// wuerde sich gegenseitig in die Quere kommen.
+    fn temp_root() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mm_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn safe_filename_replaces_path_separators_and_special_chars() {
+        assert_eq!(safe_filename(r#"a/b\c:d*e?f"g<h>i|j"#), "a_b_c_d_e_f_g_h_i_j");
+    }
+
+    #[test]
+    fn safe_filename_empty_or_whitespace_falls_back_to_track() {
+        assert_eq!(safe_filename("   "), "track");
+        assert_eq!(safe_filename(""), "track");
+    }
+
+    #[test]
+    fn safe_filename_caps_length_at_180_chars() {
+        let long = "a".repeat(300);
+        assert_eq!(safe_filename(&long).len(), 180);
+    }
+
+    #[test]
+    fn safe_join_allows_normal_relative_path_inside_root() {
+        let root = temp_root();
+        assert!(safe_join(&root, "Playlist/song.mp3").is_ok());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn safe_join_blocks_path_traversal_out_of_root() {
+        let root = temp_root();
+        assert!(safe_join(&root, "../outside.mp3").is_err());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn safe_join_blocks_empty_path() {
+        let root = temp_root();
+        assert!(safe_join(&root, "").is_err());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn apply_sidecar_tags_writes_album_and_cover_files() {
+        let root = temp_root();
+        let track = root.join("song.m4a");
+        std::fs::write(&track, b"fake-audio").unwrap();
+
+        let ok = apply_sidecar_tags(&track, Some("Test Album"), Some(b"fake-jpeg-bytes"));
+
+        assert!(ok);
+        assert_eq!(
+            std::fs::read_to_string(track.with_extension("album.txt")).unwrap(),
+            "Test Album"
+        );
+        assert_eq!(
+            std::fs::read(track.with_extension("jpg")).unwrap(),
+            b"fake-jpeg-bytes"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn apply_mp3_tags_writes_album_into_id3_tag() {
+        let root = temp_root();
+        let track = root.join("song.mp3");
+        std::fs::write(&track, b"").unwrap();
+
+        let ok = apply_mp3_tags(&track, Some("Test Album"), None, "image/jpeg");
+
+        assert!(ok);
+        let tag = id3::Tag::read_from_path(&track).unwrap();
+        assert_eq!(tag.album(), Some("Test Album"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+}

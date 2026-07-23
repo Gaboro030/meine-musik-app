@@ -288,3 +288,59 @@ pub async fn get_lyrics_cached(
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_query_text_strips_youtube_noise_and_brackets() {
+        assert_eq!(
+            clean_query_text("Never Gonna Give You Up (Official Video) [HD]"),
+            "Never Gonna Give You Up"
+        );
+    }
+
+    #[test]
+    fn clean_query_text_strips_lyrics_marker() {
+        let cleaned = clean_query_text("Some Song Lyrics");
+        assert!(!cleaned.to_lowercase().contains("lyrics"));
+    }
+
+    #[test]
+    fn normalize_for_compare_ignores_case_and_short_tokens() {
+        let a = normalize_for_compare("The Weeknd");
+        let b = normalize_for_compare("the weeknd");
+        assert_eq!(a, b);
+        // "a"/"i"-style 1-Buchstaben-Woerter sind zu generisch, um mitzuzaehlen.
+        assert!(!normalize_for_compare("a i song").contains("a"));
+    }
+
+    #[test]
+    fn similarity_ok_accepts_close_match_despite_remaster_suffix() {
+        assert!(similarity_ok("Blinding Lights", "Blinding Lights (Remastered)"));
+    }
+
+    #[test]
+    fn similarity_ok_rejects_a_completely_different_song() {
+        assert!(!similarity_ok("Blinding Lights", "Shape of You"));
+    }
+
+    #[test]
+    fn similarity_ok_empty_requested_accepts_anything() {
+        // Kein bekannter Interpret in der Bibliothek soll den Match nicht blocken.
+        assert!(similarity_ok("", "Irgendein Interpret"));
+    }
+
+    #[test]
+    fn similarity_ok_rejects_when_candidate_is_empty_but_requested_is_not() {
+        assert!(!similarity_ok("Blinding Lights", ""));
+    }
+
+    #[test]
+    fn candidate_ok_requires_both_title_and_artist_to_match() {
+        assert!(candidate_ok("Blinding Lights", "The Weeknd", "Blinding Lights", "The Weeknd"));
+        assert!(!candidate_ok("Blinding Lights", "The Weeknd", "Blinding Lights", "Dua Lipa"));
+        assert!(!candidate_ok("Blinding Lights", "The Weeknd", "Shape of You", "The Weeknd"));
+    }
+}
