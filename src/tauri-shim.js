@@ -137,6 +137,9 @@
         if (parts[4] === "export-m3u") {
           return jsonResponse({ content: await invoke("export_playlist_m3u", { playlistName: name }) });
         }
+        if (parts[4] === "export-csv") {
+          return jsonResponse({ content: await invoke("export_playlist_csv", { playlistName: name }) });
+        }
       }
       if (parts[2] === "track" && method === "DELETE") {
         const trashId = await invoke("remove_track_from_playlist", {

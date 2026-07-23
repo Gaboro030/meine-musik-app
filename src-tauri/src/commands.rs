@@ -1071,6 +1071,37 @@ pub fn export_playlist_m3u(state: tauri::State<AppState>, playlist_name: String)
     Ok(out)
 }
 
+fn csv_escape(field: &str) -> String {
+    if field.contains(',') || field.contains('"') || field.contains('\n') {
+        format!("\"{}\"", field.replace('"', "\"\""))
+    } else {
+        field.to_string()
+    }
+}
+
+/// CSV-Export (Title,Artist,Album) statt M3U - laesst sich in Tools wie
+/// SoundIiiz/TuneMyMusic/FreeYourMusic importieren, die damit Playlists
+/// nach Spotify/YouTube Music uebertragen. Ein direkter Push in deren APIs
+/// ist bewusst nicht gebaut - beide bräuchten eine eigene registrierte/
+/// genehmigte OAuth-App, die dieses Projekt nicht hat.
+#[tauri::command]
+pub fn export_playlist_csv(state: tauri::State<AppState>, playlist_name: String) -> Result<String, String> {
+    let dir = safe_join(&state.music_root, &safe_filename(&playlist_name))?;
+    let pl = scan_playlist_dir(&dir, &playlist_name).ok_or("Playlist leer oder nicht gefunden.")?;
+    let mut out = String::from("Title,Artist,Album\n");
+    for t in &pl.tracks {
+        let artist = if t.artist.trim().is_empty() { "Unbekannter Interpret" } else { &t.artist };
+        let album = if t.album.trim().is_empty() { &pl.name } else { &t.album };
+        out.push_str(&format!(
+            "{},{},{}\n",
+            csv_escape(&t.title),
+            csv_escape(artist),
+            csv_escape(album)
+        ));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1155,5 +1186,20 @@ mod tests {
         let tag = id3::Tag::read_from_path(&track).unwrap();
         assert_eq!(tag.album(), Some("Test Album"));
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn csv_escape_leaves_plain_field_untouched() {
+        assert_eq!(csv_escape("Blinding Lights"), "Blinding Lights");
+    }
+
+    #[test]
+    fn csv_escape_quotes_field_with_comma() {
+        assert_eq!(csv_escape("Song, Pt. 2"), "\"Song, Pt. 2\"");
+    }
+
+    #[test]
+    fn csv_escape_doubles_inner_quotes() {
+        assert_eq!(csv_escape("The \"Best\" Song"), "\"The \"\"Best\"\" Song\"");
     }
 }

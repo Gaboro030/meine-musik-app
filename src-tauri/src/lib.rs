@@ -141,6 +141,7 @@ pub fn run() {
             party::party_participants,
             party::party_remove_participant,
             commands::export_playlist_m3u,
+            commands::export_playlist_csv,
             duplicates::find_duplicates,
             backup::export_library_zip,
             backup::import_library_zip,
