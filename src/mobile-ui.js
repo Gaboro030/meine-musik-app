@@ -21,6 +21,13 @@
   if (!scroller) return;
 
   const mq = window.matchMedia("(max-width: 900px)");
+  // Nur echte Touch-Geraete duerfen die Bar per Scroll auto-ausblenden -
+  // ein Desktop-Fenster im Vollbild auf einem Hochkant-2.-Monitor faellt
+  // CSS-Breiten-technisch auch unter 900px, wird aber mit der Maus bedient.
+  // Ohne diese Sperre versteckte sich die Player-Bar (samt Songtext-Button)
+  // dort beim normalen Mausrad-Scrollen genauso wie auf dem Handy und blieb
+  // unklickbar stehen ("Songtext auf 2. Monitor im Vollbild blockiert").
+  const pointerMq = window.matchMedia("(pointer: coarse)");
 
   // Touchmove wird global auf `document` beobachtet (siehe unten) - ohne
   // diese Sperre zaehlte Scrollen INNERHALB eines offenen Vollbild-Overlays
@@ -61,7 +68,7 @@
 
   function evaluate() {
     ticking = false;
-    if (!mq.matches) return;
+    if (!mq.matches || !pointerMq.matches) return;
     const top = docScrollTop() + scroller.scrollTop;
     if (nearTop() || nearBottom()) {
       setHidden(false);

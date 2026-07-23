@@ -1339,7 +1339,7 @@ bulkEditCoverInput.addEventListener("change", async () => {
    (< CHUNK_SIZE Titel) unveraendertes Verhalten - ein einziger Batch. */
 const TRACK_TABLE_CHUNK_SIZE = 150;
 
-function buildTrackRow(t, i) {
+function buildTrackRow(track, i) {
     const tr = document.createElement("tr");
     tr.className = "track-row";
     tr.dataset.index = i;
@@ -1350,14 +1350,14 @@ function buildTrackRow(t, i) {
     const selectCb = document.createElement("input");
     selectCb.type = "checkbox";
     selectCb.className = "track-select-checkbox";
-    selectCb.checked = bulkSelectedFiles.has(t.file);
+    selectCb.checked = bulkSelectedFiles.has(track.file);
     selectCb.addEventListener("click", (e) => {
       e.stopPropagation();
       if (e.shiftKey && lastBulkClickedIndex !== -1) {
         selectCb.checked = true;
         selectTrackRange(lastBulkClickedIndex, i);
       } else {
-        toggleTrackSelection(t.file, selectCb.checked);
+        toggleTrackSelection(track.file, selectCb.checked);
       }
       lastBulkClickedIndex = i;
     });
@@ -1368,26 +1368,26 @@ function buildTrackRow(t, i) {
     cell.className = "track-title-cell";
     const img = document.createElement("img");
     img.className = "track-thumb";
-    img.src = coverFor(t);
+    img.src = coverFor(track);
     img.alt = "";
     const text = document.createElement("div");
     text.className = "track-text";
     const title = document.createElement("div");
     title.className = "track-title";
-    title.textContent = t.title;
+    title.textContent = track.title;
     const artist = document.createElement("div");
     artist.className = "track-artist";
-    artist.textContent = t.artist || t("Unbekannter Interpret");
+    artist.textContent = track.artist || t("Unbekannter Interpret");
     text.append(title, artist);
     cell.append(img, text);
     tdTitle.appendChild(cell);
 
     const tdAlbum = document.createElement("td");
-    tdAlbum.textContent = t.album || "—";
+    tdAlbum.textContent = track.album || "—";
 
     const tdDuration = document.createElement("td");
     tdDuration.className = "col-duration";
-    tdDuration.textContent = t.duration ? fmtTime(t.duration) : "—";
+    tdDuration.textContent = track.duration ? fmtTime(track.duration) : "—";
 
     // ⋯ (U+22EF, reines Textzeichen - kein Emoji-Risiko wie bei 🔀/⏸):
     // Menü mit "Als nächstes spielen" / "An Warteschlange anhängen".
@@ -1400,7 +1400,7 @@ function buildTrackRow(t, i) {
     moreBtn.title = t("Optionen");
     moreBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openTrackMoreMenu(moreBtn, t);
+      openTrackMoreMenu(moreBtn, track);
     });
     tdMore.appendChild(moreBtn);
 
@@ -1413,7 +1413,7 @@ function buildTrackRow(t, i) {
     addBtn.title = t("Zu Playlist hinzufügen");
     addBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openAddMenu(addBtn, { source_playlist: currentPlaylist.name, filename: t.file });
+      openAddMenu(addBtn, { source_playlist: currentPlaylist.name, filename: track.file });
     });
     tdAdd.appendChild(addBtn);
 
@@ -1436,14 +1436,14 @@ function buildTrackRow(t, i) {
           selectTrackRange(lastBulkClickedIndex, i);
         } else {
           selectCb.checked = !selectCb.checked;
-          toggleTrackSelection(t.file, selectCb.checked);
+          toggleTrackSelection(track.file, selectCb.checked);
         }
         lastBulkClickedIndex = i;
         return;
       }
       // Klick auf den bereits laufenden Track: pausieren bzw. fortsetzen
       // statt von vorne zu starten.
-      if (i === currentTrackIndex && nowPlayingMeta && nowPlayingMeta.stream_url === t.stream_url) {
+      if (i === currentTrackIndex && nowPlayingMeta && nowPlayingMeta.stream_url === track.stream_url) {
         togglePlayPause();
       } else {
         playTrack(i);
