@@ -1538,12 +1538,18 @@ body.has-dynamic-colors .playlist-hero {
 .playlist-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 20px;
   padding: 8px 0 20px;
 }
 .btn-play-circle {
   width: 56px;
   height: 56px;
+  /* Ohne das hier schrumpft der Kreis auf schmalen Bildschirmen (die Reihe
+     hat mehr Buttons als Platz) nur in der Breite - Flexbox schrumpft per
+     Default die Breite (Hauptachse), die feste Hoehe bleibt stehen, macht
+     aus dem Kreis ein Ei ("zerquetscht"). */
+  flex-shrink: 0;
   border-radius: 50%;
   background: var(--sp-green);
   color: #000;
@@ -1557,6 +1563,7 @@ body.has-dynamic-colors .playlist-hero {
 .btn-shuffle-circle {
   width: 40px;
   height: 40px;
+  flex-shrink: 0; /* siehe .btn-play-circle - gleicher Squish-Bug */
   border-radius: 50%;
   color: var(--sp-muted);
   font-size: 1.2rem;
@@ -2060,6 +2067,11 @@ body.has-dynamic-colors .playlist-hero {
 .lyrics-close:hover { background: rgba(255,255,255,0.16); }
 .lyrics-body {
   overflow-y: auto;
+  /* Ohne das "leckt" ein Scroll-Gesture, das am oberen/unteren Rand DIESES
+     Containers ankommt, weiter zur Seite dahinter durch (Scroll-Chaining) -
+     auf dem Handy sah das aus wie "man kann einfach weiterscrollen",
+     obwohl das Overlay eigentlich zu Ende ist. */
+  overscroll-behavior: contain;
   font-size: 1.4rem;
   line-height: 1.7;
   font-weight: 600;
@@ -3007,12 +3019,28 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   }
   .brand { padding: 0 2px 10px; font-size: 1.05rem; }
   .brand-icon { width: 28px; height: 28px; font-size: 0.95rem; }
-  .nav-main { flex-direction: row; gap: 8px; }
+  /* Tabs Home/Bibliothek/Papierkorb/Duplikate/Statistik: 5 Stueck mit
+     flex:1 gleichmaessig verteilt passten auf schmalen Handys nicht -
+     letzte Tabs wurden abgeschnitten/unlesbar, ohne Moeglichkeit dahin zu
+     scrollen. Jetzt natuerliche Breite pro Tab + horizontal scrollbar. */
+  .nav-main {
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
   .nav-item {
-    flex: 1;
+    /* Basis-Regel (Desktop-Sidebar) setzt width:100% - ohne die hier zu
+       ueberschreiben rechnet flex:0 0 auto seine Basis trotzdem von 100%
+       der Zeile aus statt vom Inhalt, jeder Tab waere wieder so breit wie
+       die ganze Reihe. */
+    width: auto;
+    flex: 0 0 auto;
     justify-content: center;
-    padding: 11px 4px;
+    padding: 11px 14px;
     font-size: 0.88rem;
+    white-space: nowrap;
     background: var(--sp-surface);
   }
   .nav-item.active { background: var(--sp-green); }

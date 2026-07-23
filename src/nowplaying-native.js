@@ -10,8 +10,7 @@
 (function () {
   "use strict";
   if (!window.__TAURI__) return;
-  const { invoke } = window.__TAURI__.core;
-  const { listen } = window.__TAURI__.event;
+  const { invoke, addPluginListener } = window.__TAURI__.core;
 
   function push(playing) {
     if (!nowPlayingMeta) return;
@@ -25,8 +24,16 @@
   audioEl.addEventListener("play", () => push(true));
   audioEl.addEventListener("pause", () => push(false));
 
-  listen("media-control", (e) => {
-    switch (e.payload && e.payload.action) {
+  // WICHTIG: "media-control" wird von NowPlayingPlugin.kt per trigger(...)
+  // aus einem @TauriPlugin heraus gefeuert - das ist ein PLUGIN-Event
+  // (Kanal ist an den Plugin-Namen "now-playing" aus nowplaying.rs
+  // gebunden), kein normales App-weites emit()-Event. window.__TAURI__.
+  // event.listen() hoert nur auf Letzteres und bekam dieses Event deshalb
+  // NIE - Notification zeigte zwar den Songtitel (updateNowPlaying lief),
+  // aber Play/Prev/Next taten sichtbar nichts. addPluginListener ist der
+  // richtige Kanal fuer Plugin-eigene Events.
+  addPluginListener("now-playing", "media-control", (payload) => {
+    switch (payload && payload.action) {
       case "play":
       case "pause":
         togglePlayPause();
@@ -38,5 +45,5 @@
         prevTrack();
         break;
     }
-  });
+  }).catch(() => {});
 })();

@@ -22,7 +22,21 @@
 
   const mq = window.matchMedia("(max-width: 900px)");
 
+  // Touchmove wird global auf `document` beobachtet (siehe unten) - ohne
+  // diese Sperre zaehlte Scrollen INNERHALB eines offenen Vollbild-Overlays
+  // (Songtext/Video/Visualizer/Warteschlange/Settings) genauso wie Scrollen
+  // in der Track-Liste und blendete die Player-Bar aus. Bei Songtext heisst
+  // das: die Bar verschwand ausgerechnet in der Luecke, die .lyrics-overlay
+  // extra fuer sie freilaesst ("die Bar soll doch unten sein").
+  const OVERLAY_SELECTOR =
+    ".lyrics-overlay:not(.hidden), .visualizer-overlay:not(.hidden), " +
+    ".video-overlay:not(.hidden), .modal-overlay:not(.hidden), .queue-panel:not(.hidden)";
+  function anyOverlayOpen() {
+    return !!document.querySelector(OVERLAY_SELECTOR);
+  }
+
   function setHidden(hidden) {
+    if (anyOverlayOpen()) hidden = false;
     document.body.classList.toggle("mobile-bars-hidden", mq.matches && hidden);
   }
 
