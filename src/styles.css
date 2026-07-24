@@ -1742,7 +1742,17 @@ body.has-dynamic-colors .playlist-hero {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 0;
+  /* KEIN min-width:0 hier: das erlaubt dem umgebenden Grid (.player-bar,
+     grid-template-columns: 1fr minmax(0,722px) 1fr), diese Spalte bis auf
+     0px zusammenzudruecken, sobald das Fenster schmal wird (z.B. Vollbild
+     auf einem Hochkant-Monitor) - Cover/Herz/Songtext/Warteschlange
+     rendern dann nur noch per Overflow ueber die Spaltengrenze hinweg und
+     .player-bar-right (die rechte 1fr-Spalte OHNE eigenes min-width:0,
+     daher gegen das Zusammendruecken geschuetzt) liegt an derselben Stelle
+     oben drauf - Klicks auf Herz/Songtext gingen an sie verloren
+     ("ich kann auch nicht auf das Herz daneben druecken"). Die Text-
+     Kuerzung von Titel/Interpret braucht das hier nicht: .pb-info hat
+     bereits sein eigenes min-width:0 fuer die Ellipsis-Kuerzung. */
 }
 .pb-cover {
   width: 56px;
