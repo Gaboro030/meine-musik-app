@@ -129,14 +129,20 @@ async fn lrclib_get(
 /// blind items[0]) und nimmt den ERSTEN, der wirklich zu Titel+Interpret
 /// passt. Genau das war die Ursache des "komplett anderes Lied"-Bugs: die
 /// alte Version vertraute lrclib's Ranking bedingungslos.
-async fn lrclib_search(client: &reqwest::Client, title: &str, artist: &str) -> Option<LrcHit> {
-    let q = format!("{} {}", clean_query_text(artist), clean_query_text(title));
+///
+/// `q` kommt vorformatiert rein (statt hier aus title+artist gebaut) - der
+/// Aufrufer entscheidet, ob der Interpret mit in die Suchanfrage soll (siehe
+/// fetch_lyrics: bei uns kommen Titel/Interpret roh von YouTube, der
+/// "Interpret" ist da haeufig eher der Kanalname als der echte Kuenstler -
+/// eine reine Titel-Suche findet dann oft etwas, das die Interpret-Suche nie
+/// gefunden haette).
+async fn lrclib_search(client: &reqwest::Client, q: String, title: &str, artist: &str) -> Option<LrcHit> {
     let resp = client.get(LRCLIB_SEARCH).query(&[("q", q)]).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
     let items: Vec<serde_json::Value> = resp.json().await.ok()?;
-    for item in items.iter().take(8) {
+    for item in items.iter().take(10) {
         let track_name = str_field(item, "trackName").unwrap_or_default();
         let artist_name = str_field(item, "artistName").unwrap_or_default();
         if !candidate_ok(title, artist, &track_name, &artist_name) {
@@ -194,21 +200,41 @@ pub async fn fetch_lyrics(
     // nicht die Summe aller drei. Kostet ein paar unnoetige Requests wenn
     // die erste Quelle schon einen Treffer liefert, spart dafuer im
     // Normalfall spuerbar Zeit bis die Lyrics im Overlay stehen.
+    let search_q = format!("{} {}", clean_query_text(&artist), clean_query_text(&title));
     let (get_hit, search_hit, ovh_hit) = tokio::join!(
         lrclib_get(&client, &title, &artist, duration),
-        lrclib_search(&client, &title, &artist),
+        lrclib_search(&client, search_q, &title, &artist),
         lyrics_ovh(&client, &title, &artist),
     );
 
     let get_hit = get_hit.filter(|h| candidate_ok(&title, &artist, &h.track_name, &h.artist_name));
     let hit = get_hit.or(search_hit);
 
-    let (synced, mut plain) = match hit {
+    let (mut synced, mut plain) = match hit {
         Some(h) => (h.synced, h.plain),
         None => (None, None),
     };
     if plain.is_none() && synced.is_none() {
         plain = ovh_hit;
+    }
+
+    // Letzter Ausweg, nur wenn ALLE drei obigen Quellen leer ausgingen: bei
+    // uns kommen Titel/Interpret roh von YouTube, der "Interpret" ist da
+    // haeufig eher der Kanalname (z.B. "Rolitas 30 Seconds.") als der
+    // tatsaechliche Kuenstler - jede der drei Quellen oben haette dann nie
+    // treffen koennen, egal wie gut ihr Ranking ist. Eine reine Titel-Suche
+    // (Interpret als leerer String an candidate_ok - similarity_ok laesst
+    // einen leeren "requested"-Wert alles durch) findet oft trotzdem den
+    // richtigen Song. Bewusst NUR als letzter Ausweg, nicht parallel zu den
+    // anderen: die Interpret-Pruefung bleibt fuer den Normalfall so streng
+    // wie bisher (siehe candidate_ok/similarity_ok-Tests), das hier weicht
+    // sie nur auf, wenn wir sonst "keine Lyrics gefunden" zeigen wuerden.
+    if synced.is_none() && plain.is_none() {
+        let title_only_q = clean_query_text(&title);
+        if let Some(h) = lrclib_search(&client, title_only_q, &title, "").await {
+            synced = h.synced;
+            plain = h.plain;
+        }
     }
 
     if synced.is_some() || plain.is_some() {

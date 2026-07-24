@@ -1,4 +1,4 @@
-use crate::discovery::{audio_preference_score, is_bad_variant, yt_search};
+use crate::discovery::best_audio_match;
 use regex::Regex;
 use serde::Serialize;
 use std::sync::OnceLock;
@@ -269,17 +269,12 @@ async fn extract_spotify(app: &tauri::AppHandle, url: &str) -> Result<PlaylistEx
     let mut entries = Vec::new();
     let mut unmatched = 0usize;
     for t in &spotify_tracks {
-        let query = format!("{} {}", t.artist, t.title);
-        let mut candidates: Vec<_> = yt_search(app, &query, 5)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|r| !is_bad_variant(&format!("{} {}", r.title, r.artist)))
-            .collect();
         // Prefer "- Topic" / plain-audio uploads over "Official Video" rips
-        // (matches the studio master more closely, same as Spotify).
-        candidates.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
-        let best = candidates.into_iter().next();
+        // (matches the studio master more closely, same as Spotify) - pools
+        // a plain search with a second "Topic"-boosted one instead of a
+        // single 5-result query, since the Topic upload often doesn't even
+        // appear in a bare title+artist search.
+        let best = best_audio_match(app, &t.title, &t.artist).await;
         match best {
             Some(r) => entries.push(PlaylistTrack {
                 id: r.video_id.clone(),

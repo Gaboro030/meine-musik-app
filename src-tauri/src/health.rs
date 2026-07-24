@@ -1,7 +1,9 @@
 use crate::commands::AppState;
+use regex::Regex;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::OnceLock;
 
 #[derive(Serialize, Clone)]
 pub struct OrphanedSidecar {
@@ -133,9 +135,301 @@ pub fn health_check_cleanup(state: tauri::State<AppState>) -> Result<HealthClean
     Ok(HealthCleanupResult { removed_sidecars, removed_trash_entries })
 }
 
+/* ===== Auto-Trim Stille (Anfang/Ende) =====
+   Eigene Erweiterung, kein Teil des normalen health_check() - der laeuft
+   bei jedem Oeffnen der Health-Check-Seite automatisch und darf dafuer
+   nicht pro Track ein komplettes ffmpeg-Decoding anstossen (bei einer
+   groesseren Bibliothek waere das spuerbar langsam). Stattdessen ein
+   eigener, vom Nutzer explizit angestossener Scan-Button.
+
+   Nutzt System-ffmpeg ueber PATH (nicht gebuendelt wie yt-dlp/cloudflared -
+   siehe capabilities/default.json), da ffmpeg als eigenes Sidecar-Binary
+   pro Plattform mehrere zig MB zusaetzlich in jeden Build packen wuerde.
+   Der bestehende Download-Pfad (build_ytdlp_args: --embed-thumbnail,
+   --audio-format mp3) haengt ohnehin schon stillschweigend an System-
+   ffmpeg, das ist also keine neue Abhaengigkeitsklasse fuer diese App -
+   nur die erste Stelle, die das offen zugibt, statt es yt-dlp intern
+   erledigen zu lassen. Fehlt ffmpeg, scheitert scan_silence/trim_silence
+   mit einer verstaendlichen Fehlermeldung statt eines rohen OS-Fehlers.
+   Desktop-only wie yt-dlp selbst - Android hat weder das eine noch das
+   andere. */
+
+#[derive(Serialize, Clone)]
+pub struct SilenceHit {
+    pub playlist: String,
+    pub filename: String,
+    pub title: String,
+    pub leading: f64,
+    pub trailing: f64,
+}
+
+fn ffmpeg_duration_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| Regex::new(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)").unwrap())
+}
+fn silence_start_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| Regex::new(r"silence_start:\s*(-?[\d.]+)").unwrap())
+}
+fn silence_end_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| Regex::new(r"silence_end:\s*(-?[\d.]+)").unwrap())
+}
+
+/// ffmpegs eigene "-i <file>"-Kopfzeile enthaelt die Gesamtlaenge
+/// ("Duration: 00:01:23.45, ..."), egal ob ein Filter angehaengt ist -
+/// spart einen zweiten Aufruf/eine zweite Dependency nur fuer die Dauer.
+fn parse_ffmpeg_duration(stderr: &str) -> Option<f64> {
+    let c = ffmpeg_duration_re().captures(stderr)?;
+    let h: f64 = c[1].parse().ok()?;
+    let m: f64 = c[2].parse().ok()?;
+    let s: f64 = c[3].parse().ok()?;
+    Some(h * 3600.0 + m * 60.0 + s)
+}
+
+/// Wertet die silencedetect-Filter-Ausgabe aus (Paare aus "silence_start"/
+/// "silence_end" in chronologischer Reihenfolge) und liefert (Stille am
+/// Anfang, Stille am Ende) in Sekunden. Ein "silence_start" ohne
+/// nachfolgendes "silence_end" bedeutet: die Stille laeuft bis zum
+/// Dateiende durch (ffmpeg emittiert silence_end nur, wenn die Stille
+/// endet, bevor der Stream zu Ende ist).
+fn parse_edge_silence(stderr: &str, total_duration: f64) -> (f64, f64) {
+    let starts: Vec<f64> = silence_start_re()
+        .captures_iter(stderr)
+        .filter_map(|c| c[1].parse::<f64>().ok())
+        .collect();
+    let ends: Vec<f64> = silence_end_re()
+        .captures_iter(stderr)
+        .filter_map(|c| c[1].parse::<f64>().ok())
+        .collect();
+
+    let leading = match (starts.first(), ends.first()) {
+        (Some(s), Some(e)) if *s < 0.1 => *e,
+        _ => 0.0,
+    };
+
+    let trailing = if starts.len() > ends.len() {
+        // Letzter silence_start hat kein Ende mehr bekommen -> laeuft bis EOF.
+        (total_duration - starts[starts.len() - 1]).max(0.0)
+    } else {
+        match (starts.last(), ends.last()) {
+            (Some(s), Some(e)) if (*e - total_duration).abs() < 0.3 => (total_duration - s).max(0.0),
+            _ => 0.0,
+        }
+    };
+
+    (leading, trailing)
+}
+
+const SILENCE_THRESHOLD_SECONDS: f64 = 0.5;
+
+async fn ffmpeg_analyze(app: &tauri::AppHandle, path: &Path) -> Result<(f64, f64, f64), String> {
+    use tauri_plugin_shell::ShellExt;
+    let output = app
+        .shell()
+        .command("ffmpeg")
+        .args([
+            "-i",
+            &path.to_string_lossy(),
+            "-af",
+            "silencedetect=noise=-35dB:d=0.3",
+            "-f",
+            "null",
+            "-",
+        ])
+        .output()
+        .await
+        .map_err(|_| "ffmpeg nicht gefunden - fuer Stille-Erkennung/Trimmen wird ein auf System-PATH installiertes ffmpeg benoetigt.".to_string())?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let total = parse_ffmpeg_duration(&stderr).ok_or_else(|| "Audiodauer konnte nicht ermittelt werden.".to_string())?;
+    let (leading, trailing) = parse_edge_silence(&stderr, total);
+    Ok((leading, trailing, total))
+}
+
+fn track_full_path(state: &AppState, playlist: &str, filename: &str) -> Result<std::path::PathBuf, String> {
+    crate::commands::safe_join(
+        &state.music_root,
+        &format!("{}/{}", crate::commands::safe_filename(playlist), filename),
+    )
+}
+
+/// Scannt alle .mp3-Tracks der Bibliothek auf nennenswerte Stille (>= 0.5s)
+/// am Anfang oder Ende. Bewusst NICHT Teil von health_check() - siehe
+/// Modul-Kommentar oben.
+#[tauri::command]
+pub async fn scan_silence(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Vec<SilenceHit>, String> {
+    if cfg!(target_os = "android") {
+        return Err("Auf Android nicht verfuegbar (kein ffmpeg).".into());
+    }
+    let playlists = crate::commands::list_playlists_inner(&state.music_root);
+    let mut hits = Vec::new();
+    for pl in &playlists {
+        for tr in &pl.tracks {
+            if !tr.file.to_lowercase().ends_with(".mp3") {
+                continue;
+            }
+            let Ok(full) = track_full_path(&state, &pl.name, &tr.file) else { continue };
+            if !full.is_file() {
+                continue;
+            }
+            if let Ok((leading, trailing, _)) = ffmpeg_analyze(&app, &full).await {
+                if leading >= SILENCE_THRESHOLD_SECONDS || trailing >= SILENCE_THRESHOLD_SECONDS {
+                    hits.push(SilenceHit {
+                        playlist: pl.name.clone(),
+                        filename: tr.file.clone(),
+                        title: tr.title.clone(),
+                        leading,
+                        trailing,
+                    });
+                }
+            }
+        }
+    }
+    Ok(hits)
+}
+
+/// Schneidet Stille am Anfang/Ende einer einzelnen Datei weg (verlustfreier
+/// Stream-Copy-Trim via ffmpeg -ss/-to -c copy, kein Re-Encode noetig - MP3
+/// braucht dafuer keine Keyframe-Ausrichtung wie Video). Das Original wird
+/// vorher als Kopie in den bestehenden Papierkorb-Index eingetragen (siehe
+/// trash.rs) statt einfach ueberschrieben - "Rueckgaengig" ist damit ueber
+/// denselben Mechanismus moeglich wie beim normalen Loeschen.
+#[tauri::command]
+pub async fn trim_silence(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    playlist: String,
+    filename: String,
+) -> Result<String, String> {
+    if cfg!(target_os = "android") {
+        return Err("Auf Android nicht verfuegbar (kein ffmpeg).".into());
+    }
+    let full = track_full_path(&state, &playlist, &filename)?;
+    if !full.is_file() {
+        return Err("Datei nicht gefunden.".into());
+    }
+    let (leading, trailing, total) = ffmpeg_analyze(&app, &full).await?;
+    if leading < SILENCE_THRESHOLD_SECONDS && trailing < SILENCE_THRESHOLD_SECONDS {
+        return Err("Keine nennenswerte Stille gefunden.".into());
+    }
+    let end = (total - trailing).max(leading);
+
+    use tauri_plugin_shell::ShellExt;
+    let tmp = full.with_extension("trim_tmp.mp3");
+    let out = app
+        .shell()
+        .command("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            &full.to_string_lossy(),
+            "-ss",
+            &leading.to_string(),
+            "-to",
+            &end.to_string(),
+            "-c",
+            "copy",
+            &tmp.to_string_lossy(),
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() || !tmp.is_file() {
+        let _ = std::fs::remove_file(&tmp);
+        return Err("Trimmen fehlgeschlagen.".into());
+    }
+
+    std::fs::create_dir_all(&state.trash_dir).map_err(|e| e.to_string())?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let backup_dest = state.trash_dir.join(format!("{id}.mp3"));
+    if let Err(e) = std::fs::copy(&full, &backup_dest) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    let trashed_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    let mut entries = crate::trash::load_index(&state.trash_index_file);
+    entries.push(crate::trash::TrashEntry {
+        id: id.clone(),
+        filename: filename.clone(),
+        playlist: playlist.clone(),
+        trashed_at,
+    });
+    crate::trash::save_index(&state.trash_index_file, &entries);
+
+    std::fs::rename(&tmp, &full).map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Macht trim_silence rueckgaengig: die per trash_id gesicherte Original-
+/// Kopie ersetzt die getrimmte Datei an derselben Stelle (nicht der normale
+/// restore_trash-Weg - der wuerde bei einem noch existierenden Ziel-Dateinamen
+/// stattdessen "Song (2).mp3" danebenlegen statt den Trim zu ersetzen).
+#[tauri::command]
+pub fn undo_trim_silence(
+    state: tauri::State<AppState>,
+    trash_id: String,
+    playlist: String,
+    filename: String,
+) -> Result<(), String> {
+    let backup = state.trash_dir.join(format!("{trash_id}.mp3"));
+    if !backup.is_file() {
+        return Err("Sicherung nicht mehr vorhanden.".into());
+    }
+    let full = track_full_path(&state, &playlist, &filename)?;
+    std::fs::rename(&backup, &full).map_err(|e| e.to_string())?;
+    let mut entries = crate::trash::load_index(&state.trash_index_file);
+    entries.retain(|e| e.id != trash_id);
+    crate::trash::save_index(&state.trash_index_file, &entries);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Echte ffmpeg-Ausgabe (silencedetect=noise=-35dB:d=0.3) fuer eine
+    // synthetische Testdatei aus 1s Stille + 2s Ton + 1.5s Stille - per Hand
+    // gegen ein reales ffmpeg verifiziert, nicht ausgedacht.
+    const SAMPLE_STDERR: &str = "Input #0, mp3, from 'test_silence.mp3':\n  Duration: 00:00:04.50, start: 0.023021, bitrate: 128 kb/s\n[Parsed_silencedetect_0 @ 0000000000000000] silence_start: 0\n[Parsed_silencedetect_0 @ 0000000000000000] silence_end: 1.000091 | silence_duration: 1.000091\n[Parsed_silencedetect_0 @ 0000000000000000] silence_start: 2.999977\n[Parsed_silencedetect_0 @ 0000000000000000] silence_end: 4.5 | silence_duration: 1.500023\n";
+
+    #[test]
+    fn parses_duration_from_ffmpeg_header() {
+        assert_eq!(parse_ffmpeg_duration(SAMPLE_STDERR), Some(4.5));
+    }
+
+    #[test]
+    fn detects_leading_and_trailing_silence() {
+        let (leading, trailing) = parse_edge_silence(SAMPLE_STDERR, 4.5);
+        assert!((leading - 1.000091).abs() < 0.001);
+        assert!((trailing - 1.500023).abs() < 0.001);
+    }
+
+    #[test]
+    fn no_silence_markers_means_no_edge_silence() {
+        let stderr = "Input #0, mp3, from 'x.mp3':\n  Duration: 00:00:03.00, start: 0.0, bitrate: 128 kb/s\n";
+        assert_eq!(parse_edge_silence(stderr, 3.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn dangling_silence_start_runs_to_end_of_file() {
+        // Stille beginnt, aber die Datei endet mittendrin - ffmpeg emittiert
+        // dann nie ein silence_end dafuer.
+        let stderr = "Duration: 00:00:05.00, start: 0.0\nsilence_start: 3.5\n";
+        let (leading, trailing) = parse_edge_silence(stderr, 5.0);
+        assert_eq!(leading, 0.0);
+        assert!((trailing - 1.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn silence_only_in_the_middle_is_not_counted_as_edge_silence() {
+        // silence_start liegt nicht bei ~0 und silence_end nicht nahe der
+        // Gesamtdauer -> weder Anfang noch Ende betroffen.
+        let stderr = "Duration: 00:00:10.00, start: 0.0\nsilence_start: 4.0\nsilence_end: 4.8 | silence_duration: 0.8\n";
+        assert_eq!(parse_edge_silence(stderr, 10.0), (0.0, 0.0));
+    }
 
     fn temp_dir() -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("mm_health_test_{}", uuid::Uuid::new_v4()));

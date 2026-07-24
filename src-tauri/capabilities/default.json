@@ -8,7 +8,10 @@
     "shell:default",
     {
       "identifier": "shell:allow-execute",
-      "allow": [{ "name": "binaries/yt-dlp", "sidecar": true }]
+      "allow": [
+        { "name": "binaries/yt-dlp", "sidecar": true },
+        { "name": "ffmpeg", "cmd": "ffmpeg", "args": true }
+      ]
     },
     "fs:default",
     "http:default",

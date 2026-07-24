@@ -880,6 +880,64 @@ body.has-dynamic-colors .playlist-hero {
   letter-spacing: -0.02em;
   padding: 24px 0 24px;
 }
+.library-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.library-heading-row .library-heading { padding-bottom: 0; }
+.library-heading-row .home-greeting { padding-bottom: 0; }
+.library-heading-row { flex-wrap: wrap; }
+.library-heading-row .btn-secondary { flex-shrink: 0; }
+
+/* ========= VERLAUF ========= */
+.history-group-heading {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--sp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 22px 0 8px;
+}
+.history-group-heading:first-child { margin-top: 0; }
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.history-row:hover { background: var(--sp-elevated); }
+.history-row-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--sp-elevated);
+  flex-shrink: 0;
+}
+.history-row-text { min-width: 0; flex: 1 1 auto; }
+.history-row-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-row-artist {
+  font-size: 0.8rem;
+  color: var(--sp-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-row-time {
+  font-size: 0.78rem;
+  color: var(--sp-muted);
+  flex-shrink: 0;
+}
 
 /* ========= CARD GRID (recent tracks + playlist tiles) ========= */
 .card-grid {
@@ -2656,6 +2714,9 @@ body.has-dynamic-colors .playlist-hero {
 .stats-list-count { color: var(--sp-muted); font-size: 0.85rem; }
 
 .health-actions { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 20px; }
+.health-silence-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--sp-border); }
+.health-silence-section .stats-list-row { justify-content: space-between; }
+.health-silence-section .stats-list-label { flex: 1 1 auto; }
 
 /* ========= RESPONSIVE ========= */
 @media (max-width: 900px) and (pointer: coarse) {

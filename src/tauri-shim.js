@@ -186,6 +186,19 @@
       if (parts[2] === "cleanup" && method === "POST") {
         return jsonResponse(await invoke("health_check_cleanup"));
       }
+      if (parts[2] === "silence" && parts[3] === "trim" && method === "POST") {
+        const { playlist, filename } = jsonBody();
+        const trashId = await invoke("trim_silence", { playlist, filename });
+        return jsonResponse({ trash_id: trashId });
+      }
+      if (parts[2] === "silence" && parts[3] === "undo" && method === "POST") {
+        const { trashId, playlist, filename } = jsonBody();
+        await invoke("undo_trim_silence", { trashId, playlist, filename });
+        return jsonResponse({ ok: true });
+      }
+      if (parts[2] === "silence") {
+        return jsonResponse({ hits: await invoke("scan_silence") });
+      }
       return jsonResponse(await invoke("health_check"));
     }
 

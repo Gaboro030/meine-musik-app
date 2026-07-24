@@ -39,6 +39,9 @@
         <button type="button" class="nav-item" data-view="health">
           <span class="nav-icon">🩺</span> <span data-i18n="Health-Check">Health-Check</span>
         </button>
+        <button type="button" class="nav-item" data-view="history">
+          <span class="nav-icon">🕓</span> <span data-i18n="Verlauf">Verlauf</span>
+        </button>
       </nav>
 
       <div class="sidebar-divider"></div>
@@ -215,7 +218,10 @@
         </div>
 
         <div id="homeView" class="view-section hidden">
-          <h1 id="homeGreeting" class="home-greeting">Guten Tag</h1>
+          <div class="library-heading-row">
+            <h1 id="homeGreeting" class="home-greeting">Guten Tag</h1>
+            <button type="button" id="shuffleLibraryBtn" class="btn-secondary" data-i18n="🔀 Ganze Bibliothek mischen">🔀 Ganze Bibliothek mischen</button>
+          </div>
           <section class="home-section hidden" id="dailyMixSection">
             <h2 class="home-section-title" data-i18n="📻 Daily Mix">📻 Daily Mix</h2>
             <div class="card-grid" id="dailyMixGrid"></div>
@@ -391,6 +397,29 @@
             <h2 class="stats-section-heading" data-i18n="Kaputte Papierkorb-Eintraege">Kaputte Papierkorb-Eintraege</h2>
             <div id="healthTrashList" class="stats-list"></div>
           </div>
+
+          <div class="health-silence-section">
+            <h2 class="stats-section-heading" data-i18n="Stille am Anfang/Ende">Stille am Anfang/Ende</h2>
+            <div class="card-sub" style="padding: 0 0 16px;" data-i18n="Eigener, separater Scan (nicht Teil des normalen Health-Checks oben) - prueft jede MP3-Datei per ffmpeg auf laengere Stille am Anfang oder Ende und kann sie verlustfrei wegschneiden. Braucht ein auf dem System installiertes ffmpeg.">
+              Eigener, separater Scan (nicht Teil des normalen Health-Checks oben) - prueft jede MP3-Datei per ffmpeg
+              auf laengere Stille am Anfang oder Ende und kann sie verlustfrei wegschneiden. Braucht ein auf dem
+              System installiertes ffmpeg.
+            </div>
+            <div class="health-actions">
+              <button type="button" id="silenceScanBtn" class="btn-secondary" data-i18n="🔇 Auf Stille prüfen">🔇 Auf Stille prüfen</button>
+            </div>
+            <div id="silenceOk" class="card-sub hidden" style="padding: 12px 0;" data-i18n="✅ Keine nennenswerte Stille gefunden.">✅ Keine nennenswerte Stille gefunden.</div>
+            <div id="silenceList" class="stats-list"></div>
+          </div>
+        </div>
+
+        <div id="historyView" class="view-section hidden">
+          <div class="library-heading-row">
+            <h1 class="library-heading" data-i18n="Verlauf">Verlauf</h1>
+            <button type="button" id="historyClearBtn" class="btn-secondary" data-i18n="Verlauf löschen">Verlauf löschen</button>
+          </div>
+          <div id="historyEmpty" class="card-sub hidden" style="padding: 20px 0;" data-i18n="Noch keine Wiedergaben.">Noch keine Wiedergaben.</div>
+          <div id="historyList"></div>
         </div>
       </div>
     </main>

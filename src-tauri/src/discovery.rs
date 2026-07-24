@@ -35,9 +35,17 @@ pub(crate) fn is_bad_variant(text: &str) -> bool {
 /// Detects "Official Video"/"Music Video" uploads - these often carry
 /// intro dialogue, applause or a different mix than the plain studio
 /// release. Used to prefer a "Topic"/plain-audio upload when one exists.
+/// Deliberately also catches "(Music Video)"/"[MV]" WITHOUT the word
+/// "official" in front - plenty of uploads are titled that way, and the
+/// original official-only pattern silently let those rank as if they were
+/// plain audio, defeating "Original-Studio-Audio bevorzugen" for exactly
+/// the uploads it exists to avoid.
 fn official_video_re() -> &'static Regex {
     static CELL: OnceLock<Regex> = OnceLock::new();
-    CELL.get_or_init(|| Regex::new(r"(?i)\bofficial\s*(music\s*)?video\b|\bmv\b").unwrap())
+    CELL.get_or_init(|| {
+        Regex::new(r"(?i)\b(?:official\s*)?music\s*video\b|\bofficial\s*video\b|[\[(]\s*mv\s*[\])]|\bvideo\s*version\b")
+            .unwrap()
+    })
 }
 
 /// Detects live-performance uploads ("(Live)", "Live at Wembley", "MTV
@@ -73,6 +81,37 @@ pub(crate) fn audio_preference_score(title: &str, uploader: &str) -> i32 {
     }
 }
 
+/// Searches for the best audio-preferring match for a title/uploader: a
+/// plain query PLUS a second, "- Topic"-boosted query (YouTube Music's
+/// auto-generated audio-only channels are named exactly that, so nudging
+/// the search text toward it noticeably improves how often one actually
+/// surfaces - a bare title+artist search often buries it under a pile of
+/// near-identical official videos/lyric videos/reaction uploads). Results
+/// from both queries are pooled and deduped before ranking, which also
+/// just means more total candidates than either query alone would give -
+/// "Original-Studio-Audio bevorzugen" failing was as often "never even
+/// saw a Topic upload in the results" as it was a ranking problem.
+async fn best_audio_candidates(
+    app: &tauri::AppHandle,
+    title: &str,
+    uploader: &str,
+) -> Vec<OnlineTrack> {
+    let plain_query = format!("{title} {uploader}");
+    let topic_query = format!("{title} {uploader} Topic");
+    let (plain, topic) = tokio::join!(
+        yt_search(app, &plain_query, 10),
+        yt_search(app, &topic_query, 6),
+    );
+    let mut seen = HashSet::new();
+    plain
+        .unwrap_or_default()
+        .into_iter()
+        .chain(topic.unwrap_or_default())
+        .filter(|r| seen.insert(r.video_id.clone()))
+        .filter(|r| !is_bad_variant(&format!("{} {}", r.title, r.artist)))
+        .collect()
+}
+
 /// When the user wants clean studio audio instead of a music-video rip,
 /// search for a Topic-channel/plain-audio upload of the same song and swap
 /// to that video id. Returns None (keep the original) if nothing better
@@ -88,12 +127,8 @@ pub(crate) async fn find_audio_alternative(
     if own_score == 0 {
         return None;
     }
-    let query = format!("{title} {uploader}");
-    let results = yt_search(app, &query, 6).await.ok()?;
-    let mut candidates: Vec<_> = results
-        .into_iter()
-        .filter(|r| r.video_id != original_id && !is_bad_variant(&format!("{} {}", r.title, r.artist)))
-        .collect();
+    let mut candidates = best_audio_candidates(app, title, uploader).await;
+    candidates.retain(|r| r.video_id != original_id);
     candidates.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
     let best = candidates.into_iter().next()?;
     if audio_preference_score(&best.title, &best.artist) < own_score {
@@ -101,6 +136,20 @@ pub(crate) async fn find_audio_alternative(
     } else {
         None
     }
+}
+
+/// Fresh best-match search (no existing pick to compare against) - used
+/// when resolving an external playlist (Spotify) to a downloadable video
+/// per track. Same pooled plain+Topic search and ranking as
+/// find_audio_alternative, just without an "original" to exclude/beat.
+pub(crate) async fn best_audio_match(
+    app: &tauri::AppHandle,
+    title: &str,
+    uploader: &str,
+) -> Option<OnlineTrack> {
+    let mut candidates = best_audio_candidates(app, title, uploader).await;
+    candidates.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
+    candidates.into_iter().next()
 }
 
 /// Lowercases a track title and strips bracketed/video-only noise words,
@@ -348,4 +397,52 @@ pub async fn search_online(app: tauri::AppHandle, query: String) -> Result<Vec<O
         .into_iter()
         .filter(|r| !is_bad_variant(&format!("{} {}", r.title, r.artist)))
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_preference_score_ranks_topic_channel_best() {
+        assert_eq!(audio_preference_score("Blinding Lights", "The Weeknd - Topic"), 0);
+    }
+
+    #[test]
+    fn audio_preference_score_ranks_plain_upload_above_video() {
+        let plain = audio_preference_score("Blinding Lights", "The Weeknd");
+        let video = audio_preference_score("Blinding Lights (Official Video)", "The Weeknd");
+        assert!(plain < video);
+    }
+
+    #[test]
+    fn audio_preference_score_catches_music_video_without_official() {
+        // Die Luecke, die den Bug ausmachte: viele Uploads heissen einfach
+        // "(Music Video)" ohne "Official" davor - die alte Regex sah das
+        // nicht als Video-Hinweis und liess es wie normales Audio ranken.
+        let plain = audio_preference_score("Blinding Lights", "The Weeknd");
+        let music_video = audio_preference_score("Blinding Lights (Music Video)", "The Weeknd");
+        assert!(music_video > plain);
+    }
+
+    #[test]
+    fn audio_preference_score_catches_bracketed_mv() {
+        let plain = audio_preference_score("Blinding Lights", "The Weeknd");
+        let mv = audio_preference_score("Blinding Lights [MV]", "The Weeknd");
+        assert!(mv > plain);
+    }
+
+    #[test]
+    fn audio_preference_score_ranks_live_worst() {
+        let video = audio_preference_score("Blinding Lights (Official Video)", "The Weeknd");
+        let live = audio_preference_score("Blinding Lights (Live at Wembley)", "The Weeknd");
+        assert!(live > video);
+    }
+
+    #[test]
+    fn audio_preference_score_does_not_flag_song_with_video_in_its_real_title() {
+        // "Video Games" (Lana Del Rey) ist ein echter Songtitel - darf nicht
+        // als Video-Upload fehlinterpretiert werden.
+        assert_eq!(audio_preference_score("Video Games", "Lana Del Rey - Topic"), 0);
+    }
 }

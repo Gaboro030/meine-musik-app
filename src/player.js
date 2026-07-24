@@ -6,6 +6,7 @@ const homeView = document.getElementById("homeView");
 const libraryView = document.getElementById("libraryView");
 const playlistView = document.getElementById("playlistView");
 const homeGreeting = document.getElementById("homeGreeting");
+const shuffleLibraryBtn = document.getElementById("shuffleLibraryBtn");
 const recentGrid = document.getElementById("recentGrid");
 const dailyMixSection = document.getElementById("dailyMixSection");
 const dailyMixGrid = document.getElementById("dailyMixGrid");
@@ -61,8 +62,15 @@ const healthOrphansSection = document.getElementById("healthOrphansSection");
 const healthOrphansList = document.getElementById("healthOrphansList");
 const healthTrashSection = document.getElementById("healthTrashSection");
 const healthTrashList = document.getElementById("healthTrashList");
+const silenceScanBtn = document.getElementById("silenceScanBtn");
+const silenceOk = document.getElementById("silenceOk");
+const silenceList = document.getElementById("silenceList");
 const statsView = document.getElementById("statsView");
 const healthView = document.getElementById("healthView");
+const historyView = document.getElementById("historyView");
+const historyList = document.getElementById("historyList");
+const historyEmpty = document.getElementById("historyEmpty");
+const historyClearBtn = document.getElementById("historyClearBtn");
 const trashEmpty = document.getElementById("trashEmpty");
 
 const qrToggleBtn = document.getElementById("qrToggleBtn");
@@ -250,6 +258,40 @@ function bumpPlayCount(playlistName, file) {
   localStorage.setItem(PLAY_COUNTS_KEY, JSON.stringify(map));
 }
 
+/* ===== Verlauf (Recently Played) =====
+   Eigener Log statt nur die Play-Counts weiterzuverwenden - Counts sind ein
+   Aggregat (wie oft insgesamt), Verlauf braucht jeden einzelnen Play-
+   Zeitpunkt in Reihenfolge. Gleicher "gilt als gehört"-Schwellenwert (50%)
+   und derselbe playCountedForTrack-Guard wie beim Play-Count, damit beides
+   exakt im selben Moment einmal pro echtem Hördurchlauf feuert. */
+const PLAY_HISTORY_KEY = "playHistory";
+const PLAY_HISTORY_MAX = 300;
+
+function loadPlayHistory() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(PLAY_HISTORY_KEY) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) {
+    return [];
+  }
+}
+function bumpPlayHistory() {
+  if (!nowPlayingMeta) return;
+  const hist = loadPlayHistory();
+  hist.unshift({
+    playlist: nowPlayingMeta.playlist,
+    file: nowPlayingMeta.file,
+    title: nowPlayingMeta.title,
+    artist: nowPlayingMeta.artist,
+    cover: nowPlayingMeta.cover,
+    playedAt: Date.now(),
+  });
+  localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(hist.slice(0, PLAY_HISTORY_MAX)));
+}
+function clearPlayHistory() {
+  localStorage.removeItem(PLAY_HISTORY_KEY);
+}
+
 let playCountedForTrack = null; // verhindert Mehrfachzählung innerhalb desselben Songs
 audioEl.addEventListener("timeupdate", () => {
   if (!nowPlayingMeta || !audioEl.duration || !isFinite(audioEl.duration)) return;
@@ -258,6 +300,7 @@ audioEl.addEventListener("timeupdate", () => {
   if (audioEl.currentTime / audioEl.duration >= 0.5) {
     playCountedForTrack = key;
     bumpPlayCount(nowPlayingMeta.playlist, nowPlayingMeta.file);
+    bumpPlayHistory();
   }
 });
 
@@ -385,7 +428,8 @@ function showView(view) {
   // bleiben (Trash: alles könnte im Papierkorb liegen; Statistik/Duplikate:
   // sollen einfach "nichts da" anzeigen statt hinter dem Empty-State
   // verschwinden).
-  const alwaysReachable = view === "trash" || view === "duplicates" || view === "stats" || view === "health";
+  const alwaysReachable =
+    view === "trash" || view === "duplicates" || view === "stats" || view === "health" || view === "history";
   if (!library.length && !alwaysReachable) {
     emptyState.classList.remove("hidden");
     homeView.classList.add("hidden");
@@ -395,6 +439,7 @@ function showView(view) {
     duplicatesView.classList.add("hidden");
     statsView.classList.add("hidden");
     healthView.classList.add("hidden");
+    historyView.classList.add("hidden");
     navBackBtn.disabled = true;
     return;
   }
@@ -407,6 +452,7 @@ function showView(view) {
   duplicatesView.classList.toggle("hidden", view !== "duplicates");
   statsView.classList.toggle("hidden", view !== "stats");
   healthView.classList.toggle("hidden", view !== "health");
+  historyView.classList.toggle("hidden", view !== "history");
 
   document.querySelectorAll(".nav-item[data-view]").forEach((el) => {
     el.classList.toggle("active", el.dataset.view === view);
@@ -421,6 +467,7 @@ function showView(view) {
   if (view === "duplicates") loadDuplicates();
   if (view === "stats") renderStats();
   if (view === "health") loadHealthCheck();
+  if (view === "history") renderHistory();
 
   currentView = view;
 }
@@ -624,6 +671,78 @@ function renderStats() {
   renderStatsList(document.getElementById("statsTopArtists"), topArtists);
 }
 
+/* ===== Verlauf-Seite ===== */
+function historyGroupLabel(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  const locale = getLanguage() === "en" ? "en-US" : "de-DE";
+  if (diffDays === 0) return t("Heute");
+  if (diffDays === 1) return t("Gestern");
+  if (diffDays > 1 && diffDays < 7) return d.toLocaleDateString(locale, { weekday: "long" });
+  return d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function findLibraryIndicesByKey(playlistName, file) {
+  const plIdx = library.findIndex((pl) => pl.name === playlistName);
+  if (plIdx === -1) return null;
+  const trackIdx = library[plIdx].tracks.findIndex((tr) => tr.file === file);
+  if (trackIdx === -1) return null;
+  return { plIdx, trackIdx };
+}
+
+function renderHistory() {
+  const entries = loadPlayHistory();
+  historyList.innerHTML = "";
+  historyEmpty.classList.toggle("hidden", entries.length > 0);
+  if (!entries.length) return;
+
+  const locale = getLanguage() === "en" ? "en-US" : "de-DE";
+  let lastGroup = null;
+  entries.forEach((entry) => {
+    const group = historyGroupLabel(entry.playedAt);
+    if (group !== lastGroup) {
+      const heading = document.createElement("div");
+      heading.className = "history-group-heading";
+      heading.textContent = group;
+      historyList.appendChild(heading);
+      lastGroup = group;
+    }
+
+    const row = document.createElement("div");
+    row.className = "history-row";
+    const thumb = document.createElement("img");
+    thumb.className = "history-row-thumb";
+    thumb.src = coverFor(entry);
+    thumb.alt = "";
+    const text = document.createElement("div");
+    text.className = "history-row-text";
+    const title = document.createElement("div");
+    title.className = "history-row-title";
+    title.textContent = entry.title;
+    const artist = document.createElement("div");
+    artist.className = "history-row-artist";
+    artist.textContent = entry.artist || t("Unbekannter Interpret");
+    text.append(title, artist);
+    const time = document.createElement("div");
+    time.className = "history-row-time";
+    time.textContent = new Date(entry.playedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    row.append(thumb, text, time);
+    row.addEventListener("click", () => {
+      const found = findLibraryIndicesByKey(entry.playlist, entry.file);
+      if (found) playTrackIn(found.plIdx, found.trackIdx);
+      else showToast(t("Song ist nicht mehr in der Bibliothek."));
+    });
+    historyList.appendChild(row);
+  });
+}
+
+historyClearBtn.addEventListener("click", () => {
+  clearPlayHistory();
+  renderHistory();
+});
+
 /* ===== Mood-Playlists (Home) =====
    Keine echte Audio-Analyse (BPM/Energy) - würde einen schweren Decoder
    als neue Rust-Abhängigkeit brauchen (Cross-Compile-Risiko, siehe
@@ -675,6 +794,28 @@ function playMoodPlaylist(entries) {
   userQueue = rest.map((e) => queueEntryForTrack(e.track, library[e.plIdx].name));
   renderQueuePanel();
 }
+
+/* ===== Ganze Bibliothek mischen =====
+   Bewusst ein eigener, separater Button (Home-Kopfzeile) statt am
+   bestehenden Playlist-Shuffle dranzuhaengen - der mischt nur innerhalb
+   EINER Playlist, das hier soll ausdruecklich ueber alle Playlists
+   gleichzeitig gehen. Baut dieselbe {track, plIdx, trackIdx}-Liste wie
+   playMoodPlaylist und nutzt dessen Shuffle+Queue-Aufbau 1:1 - kein Grund,
+   Fisher-Yates + Queue-Befuellung ein zweites Mal zu schreiben.*/
+function shuffleWholeLibrary() {
+  const allTracks = [];
+  library.forEach((pl, plIdx) => {
+    pl.tracks.forEach((track, trackIdx) => {
+      allTracks.push({ track, plIdx, trackIdx });
+    });
+  });
+  if (!allTracks.length) {
+    showToast(t("Bibliothek ist leer."));
+    return;
+  }
+  playMoodPlaylist(allTracks);
+}
+shuffleLibraryBtn.addEventListener("click", shuffleWholeLibrary);
 
 // queueEntryFor() (siehe Warteschlange weiter unten) geht von currentPlaylist
 // aus - hier kommen die Tracks aber potenziell aus VIELEN verschiedenen
@@ -5676,6 +5817,85 @@ healthCleanupBtn.addEventListener("click", async () => {
   } catch (err) {
     showToast(err.message || t("Bereinigen fehlgeschlagen."));
     healthCleanupBtn.disabled = false;
+  }
+});
+
+/* ===== Auto-Trim Stille (Health-Check-Erweiterung) =====
+   Bewusst NICHT Teil von loadHealthCheck() oben - der laeuft automatisch
+   bei jedem Oeffnen der Seite, ein ffmpeg-Scan pro Track waere dafuer zu
+   langsam. Eigener Button, eigener Scan, nur auf expliziten Klick. */
+function renderSilenceHits(hits) {
+  silenceList.innerHTML = "";
+  silenceOk.classList.toggle("hidden", hits.length > 0);
+  hits.forEach((hit) => {
+    const row = document.createElement("div");
+    row.className = "stats-list-row";
+    const label = document.createElement("span");
+    label.className = "stats-list-label";
+    label.textContent = `${hit.playlist} — ${hit.title}`;
+    const detail = document.createElement("span");
+    detail.className = "stats-list-count";
+    const parts = [];
+    if (hit.leading >= 0.5) parts.push(t("Anfang: {s}s", { s: hit.leading.toFixed(1) }));
+    if (hit.trailing >= 0.5) parts.push(t("Ende: {s}s", { s: hit.trailing.toFixed(1) }));
+    detail.textContent = parts.join(" · ");
+    const trimBtn = document.createElement("button");
+    trimBtn.type = "button";
+    trimBtn.className = "btn-secondary";
+    trimBtn.textContent = t("Trimmen");
+    trimBtn.addEventListener("click", async () => {
+      trimBtn.disabled = true;
+      trimBtn.textContent = t("Wird getrimmt …");
+      try {
+        const res = await fetch("/api/health-check/silence/trim", {
+          method: "POST",
+          body: JSON.stringify({ playlist: hit.playlist, filename: hit.filename }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || t("Trimmen fehlgeschlagen."));
+        row.remove();
+        if (!silenceList.children.length) silenceOk.classList.remove("hidden");
+        showUndoToast(t('🔇 Stille entfernt: „{title}"', { title: hit.title }), async () => {
+          try {
+            const undoRes = await fetch("/api/health-check/silence/undo", {
+              method: "POST",
+              body: JSON.stringify({ trashId: data.trash_id, playlist: hit.playlist, filename: hit.filename }),
+            });
+            if (!undoRes.ok) throw new Error();
+            showToast(t("Rückgängig gemacht."));
+            await refreshLibrary();
+          } catch (_) {
+            showToast(t("Rückgängig machen fehlgeschlagen."));
+          }
+        });
+        await refreshLibrary();
+      } catch (err) {
+        showToast(err.message || t("Trimmen fehlgeschlagen."));
+        trimBtn.disabled = false;
+        trimBtn.textContent = t("Trimmen");
+      }
+    });
+    row.append(label, detail, trimBtn);
+    silenceList.appendChild(row);
+  });
+}
+
+silenceScanBtn.addEventListener("click", async () => {
+  silenceScanBtn.disabled = true;
+  const origLabel = silenceScanBtn.textContent;
+  silenceScanBtn.textContent = t("Scanne …");
+  silenceOk.classList.add("hidden");
+  silenceList.innerHTML = "";
+  try {
+    const res = await fetch("/api/health-check/silence");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || t("Scan fehlgeschlagen."));
+    renderSilenceHits(data.hits || []);
+  } catch (err) {
+    showToast(err.message || t("Scan fehlgeschlagen."));
+  } finally {
+    silenceScanBtn.disabled = false;
+    silenceScanBtn.textContent = origLabel;
   }
 });
 
