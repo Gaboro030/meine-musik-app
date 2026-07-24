@@ -20,14 +20,16 @@
   const scroller = document.querySelector(".content-scroll");
   if (!scroller) return;
 
-  const mq = window.matchMedia("(max-width: 900px)");
-  // Nur echte Touch-Geraete duerfen die Bar per Scroll auto-ausblenden -
-  // ein Desktop-Fenster im Vollbild auf einem Hochkant-2.-Monitor faellt
-  // CSS-Breiten-technisch auch unter 900px, wird aber mit der Maus bedient.
-  // Ohne diese Sperre versteckte sich die Player-Bar (samt Songtext-Button)
-  // dort beim normalen Mausrad-Scrollen genauso wie auf dem Handy und blieb
-  // unklickbar stehen ("Songtext auf 2. Monitor im Vollbild blockiert").
-  const pointerMq = window.matchMedia("(pointer: coarse)");
+  // "and (pointer: coarse)" ist Absicht, nicht nur eine Optimierung: ein
+  // Desktop-Fenster im Vollbild auf einem Hochkant-2.-Monitor faellt CSS-
+  // breitentechnisch genauso unter 900px, wird aber mit der Maus bedient.
+  // Ohne die Pointer-Bedingung griff hier (und in den identisch erweiterten
+  // @media(max-width:900/640/400px)-Bloecken in styles.css) die komplette
+  // Handy-Ansicht - inklusive Auto-Ausblenden der Player-Bar beim normalen
+  // Mausrad-Scrollen, was den Songtext-Button dort dauerhaft unklickbar
+  // machte ("Songtext auf 2. Monitor im Vollbild blockiert"). JS und CSS
+  // muessen dieselbe Bedingung nutzen, sonst entsteht ein Hybrid-Layout.
+  const mq = window.matchMedia("(max-width: 900px) and (pointer: coarse)");
 
   // Touchmove wird global auf `document` beobachtet (siehe unten) - ohne
   // diese Sperre zaehlte Scrollen INNERHALB eines offenen Vollbild-Overlays
@@ -68,7 +70,7 @@
 
   function evaluate() {
     ticking = false;
-    if (!mq.matches || !pointerMq.matches) return;
+    if (!mq.matches) return;
     const top = docScrollTop() + scroller.scrollTop;
     if (nearTop() || nearBottom()) {
       setHidden(false);

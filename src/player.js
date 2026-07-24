@@ -5082,7 +5082,11 @@ function refreshLyricsIfOpen() {
   if (key !== lyricsShownForKey) openLyrics();
 }
 
-pbLyrics.addEventListener("click", openLyrics);
+// NICHT direkt openLyrics als Listener registrieren: der Klick-Handler
+// bekaeme das MouseEvent als ersten Parameter durchgereicht, also als
+// `force` - jeder normale Klick wuerde dann wie der Retry-Button Memory-
+// UND Backend-Cache umgehen und einen kompletten Netz-Refetch erzwingen.
+pbLyrics.addEventListener("click", () => openLyrics());
 lyricsCloseBtn.addEventListener("click", closeLyrics);
 lyricsOverlay.addEventListener("click", (e) => {
   if (e.target === lyricsOverlay) closeLyrics();
