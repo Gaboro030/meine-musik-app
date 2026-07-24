@@ -295,6 +295,21 @@
             <button type="button" id="bulkEditCancelBtn" class="btn-secondary" data-i18n="Fertig">Fertig</button>
           </div>
 
+          <div class="playlist-toolbar">
+            <div class="playlist-search-wrap">
+              <input type="search" id="playlistSearchInput" class="playlist-search-input" data-i18n-placeholder="In dieser Playlist suchen …" placeholder="In dieser Playlist suchen …" />
+            </div>
+            <select id="playlistSortSelect" class="playlist-sort-select">
+              <option value="manual" data-i18n="Playlist-Reihenfolge">Playlist-Reihenfolge</option>
+              <option value="title" data-i18n="Titel (A–Z)">Titel (A–Z)</option>
+              <option value="artist" data-i18n="Interpret (A–Z)">Interpret (A–Z)</option>
+              <option value="album" data-i18n="Album (A–Z)">Album (A–Z)</option>
+              <option value="added" data-i18n="Zuletzt hinzugefügt">Zuletzt hinzugefügt</option>
+              <option value="duration" data-i18n="Dauer">Dauer</option>
+            </select>
+            <button type="button" id="playlistSortDirBtn" class="playlist-sort-dir-btn hidden" data-i18n-title="Reihenfolge umkehren" title="Reihenfolge umkehren">⬆️</button>
+          </div>
+
           <table class="track-table" id="trackTable">
             <thead>
               <tr>
@@ -309,6 +324,7 @@
             </thead>
             <tbody id="trackTableBody"></tbody>
           </table>
+          <div id="playlistSearchEmpty" class="card-sub hidden" style="padding: 20px 6px;" data-i18n="Keine Songs gefunden.">Keine Songs gefunden.</div>
 
           <section class="recs-section" id="recsSection">
             <div class="recs-header">

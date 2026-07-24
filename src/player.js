@@ -16,6 +16,10 @@ const playlistCover = document.getElementById("playlistCover");
 const playlistTitle = document.getElementById("playlistTitle");
 const playlistTrackCount = document.getElementById("playlistTrackCount");
 const trackTableBody = document.getElementById("trackTableBody");
+const playlistSearchInput = document.getElementById("playlistSearchInput");
+const playlistSearchEmpty = document.getElementById("playlistSearchEmpty");
+const playlistSortSelect = document.getElementById("playlistSortSelect");
+const playlistSortDirBtn = document.getElementById("playlistSortDirBtn");
 const playAllBtn = document.getElementById("playAllBtn");
 const shuffleAllBtn = document.getElementById("shuffleAllBtn");
 const recsGrid = document.getElementById("recsGrid");
@@ -1139,6 +1143,11 @@ function selectPlaylist(idx) {
   playlistCover.src = currentPlaylist.cover || PLACEHOLDER_COVER;
   playlistTitle.textContent = currentPlaylist.name;
   playlistTrackCount.textContent = `${currentPlaylist.tracks.length} Titel`;
+  // Eine Suche in der vorherigen Playlist soll nicht unsichtbar in die neue
+  // durchschlagen - die Sortierung dagegen ist eine allgemeine Vorliebe
+  // ("ich will Playlists immer nach Titel sehen") und bleibt bewusst erhalten.
+  playlistSearchQuery = "";
+  playlistSearchInput.value = "";
   // Keep the shuffle *setting* across playlist switches, but regenerate
   // the order for the new playlist - the old order's indices belong to a
   // different track list and would freeze/duplicate the queue. Same for
@@ -1381,16 +1390,24 @@ function toggleTrackSelection(file, selected) {
 // mehrere aus", ohne jede Zeile einzeln anklicken zu müssen.
 function selectTrackRange(fromIndex, toIndex) {
   if (!currentPlaylist) return;
-  const [lo, hi] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex];
-  for (let i = lo; i <= hi; i++) {
-    const t = currentPlaylist.tracks[i];
-    if (t) bulkSelectedFiles.add(t.file);
-  }
-  trackTable.querySelectorAll(".track-row").forEach((row) => {
-    const i = Number(row.dataset.index);
+  // Bewusst ueber die ANGEZEIGTE (DOM-)Reihenfolge, nicht ueber die rohen
+  // Array-Indices: bei aktiver Sortierung/Suche liegen zwei benachbarte
+  // sichtbare Zeilen nicht mehr zwingend bei benachbarten currentPlaylist.
+  // tracks-Indices - ein Bereich "von Index X bis Y" waere dann eine ganz
+  // andere (und falsche) Auswahl als das, was der Nutzer optisch shift-
+  // geklickt hat.
+  const rows = [...trackTable.querySelectorAll(".track-row")];
+  const fromPos = rows.findIndex((r) => Number(r.dataset.index) === fromIndex);
+  const toPos = rows.findIndex((r) => Number(r.dataset.index) === toIndex);
+  if (fromPos === -1 || toPos === -1) return;
+  const [lo, hi] = fromPos < toPos ? [fromPos, toPos] : [toPos, fromPos];
+  for (let pos = lo; pos <= hi; pos++) {
+    const row = rows[pos];
+    const track = currentPlaylist.tracks[Number(row.dataset.index)];
+    if (track) bulkSelectedFiles.add(track.file);
     const cb = row.querySelector(".track-select-checkbox");
-    if (cb && i >= lo && i <= hi) cb.checked = true;
-  });
+    if (cb) cb.checked = true;
+  }
   updateBulkEditBar();
 }
 
@@ -1480,14 +1497,19 @@ bulkEditCoverInput.addEventListener("change", async () => {
    (< CHUNK_SIZE Titel) unveraendertes Verhalten - ein einziger Batch. */
 const TRACK_TABLE_CHUNK_SIZE = 150;
 
-function buildTrackRow(track, i) {
+function buildTrackRow(track, i, displayNum) {
     const tr = document.createElement("tr");
     tr.className = "track-row";
     tr.dataset.index = i;
 
     const tdIndex = document.createElement("td");
     tdIndex.className = "col-index";
-    tdIndex.innerHTML = `<span class="track-num">${i + 1}</span><span class="track-play-icon">▶</span>`;
+    // displayNum ist die sichtbare Position (1., 2., 3. ... in der GERADE
+    // angezeigten, evtl. sortierten/gefilterten Reihenfolge) - i bleibt der
+    // echte Index in currentPlaylist.tracks, den Wiedergabe/Loeschen/etc.
+    // brauchen. Beides absichtlich getrennt, sonst wuerde Sortieren die
+    // Nummerierung wild durcheinanderwuerfeln statt sauber 1..N zu zeigen.
+    tdIndex.innerHTML = `<span class="track-num">${displayNum ?? i + 1}</span><span class="track-play-icon">▶</span>`;
     const selectCb = document.createElement("input");
     selectCb.type = "checkbox";
     selectCb.className = "track-select-checkbox";
@@ -1593,25 +1615,87 @@ function buildTrackRow(track, i) {
     return tr;
 }
 
+/* ===== Playlist-Sortierung + Songsuche =====
+   Sortiert/filtert NUR die Anzeige - currentPlaylist.tracks selbst bleibt
+   unangetastet (Wiedergabereihenfolge/Shuffle/Warteschlange hängen weiter
+   an der echten Array-Reihenfolge). renderTrackTable() berechnet bei jedem
+   Aufruf frisch, welche Original-Indices in welcher Reihenfolge angezeigt
+   werden - dadurch bleibt Sortierung/Suche automatisch auch nach einem
+   Neu-Rendern (Playlist-Wechsel, Löschen, Undo, ...) erhalten, ohne dass
+   jede Stelle, die renderTrackTable() aufruft, selbst daran denken müsste. */
+let playlistSortKey = "manual"; // "manual" | "title" | "artist" | "album" | "added" | "duration"
+let playlistSortDir = 1; // 1 = aufsteigend, -1 = absteigend
+let playlistSearchQuery = "";
+
+const PLAYLIST_SORT_COMPARATORS = {
+  title: (a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }),
+  artist: (a, b) => (a.artist || "").localeCompare(b.artist || "", undefined, { sensitivity: "base" }),
+  album: (a, b) => (a.album || "").localeCompare(b.album || "", undefined, { sensitivity: "base" }),
+  added: (a, b) => (a.added || 0) - (b.added || 0),
+  duration: (a, b) => (a.duration || 0) - (b.duration || 0),
+};
+
+function getSortedFilteredIndices() {
+  const tracks = currentPlaylist.tracks;
+  let indices = tracks.map((_, i) => i);
+
+  const q = playlistSearchQuery.trim().toLowerCase();
+  if (q) {
+    indices = indices.filter((i) => {
+      const tr = tracks[i];
+      return (tr.title || "").toLowerCase().includes(q) || (tr.artist || "").toLowerCase().includes(q);
+    });
+  }
+
+  const cmp = PLAYLIST_SORT_COMPARATORS[playlistSortKey];
+  if (cmp) {
+    indices.sort((ia, ib) => cmp(tracks[ia], tracks[ib]) * playlistSortDir);
+  }
+  return indices;
+}
+
 let trackTableRenderToken = 0;
 function renderTrackTable() {
   trackTableBody.innerHTML = "";
-  const tracks = currentPlaylist.tracks;
+  const indices = getSortedFilteredIndices();
+  playlistSearchEmpty.classList.toggle("hidden", !(playlistSearchQuery.trim() && !indices.length));
   const token = ++trackTableRenderToken; // Playlist-Wechsel mitten im Chunking bricht den alten Lauf sauber ab
-  let i = 0;
+  let pos = 0;
   function renderChunk() {
     if (token !== trackTableRenderToken) return;
-    const end = Math.min(i + TRACK_TABLE_CHUNK_SIZE, tracks.length);
+    const end = Math.min(pos + TRACK_TABLE_CHUNK_SIZE, indices.length);
     const fragment = document.createDocumentFragment();
-    for (; i < end; i++) {
-      fragment.appendChild(buildTrackRow(tracks[i], i));
+    for (; pos < end; pos++) {
+      const origIdx = indices[pos];
+      fragment.appendChild(buildTrackRow(currentPlaylist.tracks[origIdx], origIdx, pos + 1));
     }
     trackTableBody.appendChild(fragment);
     highlightPlayingRow();
-    if (i < tracks.length) requestAnimationFrame(renderChunk);
+    if (pos < indices.length) requestAnimationFrame(renderChunk);
   }
   renderChunk();
 }
+
+playlistSearchInput.addEventListener("input", () => {
+  playlistSearchQuery = playlistSearchInput.value;
+  renderTrackTable();
+});
+
+function updateSortDirBtn() {
+  playlistSortDirBtn.classList.toggle("hidden", playlistSortKey === "manual");
+  playlistSortDirBtn.classList.toggle("desc", playlistSortDir === -1);
+}
+playlistSortSelect.addEventListener("change", () => {
+  playlistSortKey = playlistSortSelect.value;
+  playlistSortDir = 1;
+  updateSortDirBtn();
+  renderTrackTable();
+});
+playlistSortDirBtn.addEventListener("click", () => {
+  playlistSortDir *= -1;
+  updateSortDirBtn();
+  renderTrackTable();
+});
 
 function highlightPlayingRow() {
   trackTableBody.querySelectorAll(".track-row").forEach((row) => {
