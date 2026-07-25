@@ -427,6 +427,25 @@
             <div id="silenceOk" class="card-sub hidden" style="padding: 12px 0;" data-i18n="✅ Keine nennenswerte Stille gefunden.">✅ Keine nennenswerte Stille gefunden.</div>
             <div id="silenceList" class="stats-list"></div>
           </div>
+
+          <div class="health-silence-section">
+            <h2 class="stats-section-heading" data-i18n="Lautstärke angleichen">Lautstärke angleichen</h2>
+            <div class="card-sub" style="padding: 0 0 16px;" data-i18n="Misst jeden Titel einmal per ffmpeg aus und merkt sich, wie viel lauter oder leiser er gegenüber den anderen ist. Beim Abspielen wird das automatisch ausgeglichen - kein Lautstärke-Sprung mehr beim Songwechsel. Die Messung läuft nur auf Knopfdruck und kann bei grossen Bibliotheken einige Minuten dauern. Braucht ein auf dem System installiertes ffmpeg.">
+              Misst jeden Titel einmal per ffmpeg aus und merkt sich, wie viel lauter oder leiser er gegenüber den
+              anderen ist. Beim Abspielen wird das automatisch ausgeglichen - kein Lautstärke-Sprung mehr beim
+              Songwechsel. Die Messung läuft nur auf Knopfdruck und kann bei grossen Bibliotheken einige Minuten
+              dauern. Braucht ein auf dem System installiertes ffmpeg.
+            </div>
+            <div class="health-actions">
+              <button type="button" id="loudnessScanBtn" class="btn-secondary" data-i18n="🔊 Lautstärke analysieren">🔊 Lautstärke analysieren</button>
+              <button type="button" id="loudnessRescanBtn" class="btn-secondary" data-i18n="Alles neu messen">Alles neu messen</button>
+            </div>
+            <div id="loudnessProgressWrap" class="health-progress-wrap hidden">
+              <div class="health-progress-track"><div id="loudnessProgressBar" class="health-progress-bar"></div></div>
+              <div id="loudnessProgressLabel" class="card-sub health-progress-label"></div>
+            </div>
+            <div id="loudnessStatus" class="card-sub" style="padding: 12px 0;"></div>
+          </div>
         </div>
 
         <div id="historyView" class="view-section hidden">
@@ -497,7 +516,7 @@
           <div class="settings-row">
             <div>
               <div class="settings-row-label" data-i18n="Lautstärke-Normalisierung">Lautstärke-Normalisierung</div>
-              <div class="settings-row-desc" data-i18n="Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln">Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln</div>
+              <div class="settings-row-desc" data-i18n="Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln. Am genauesten nach „Lautstärke analysieren“ im Health-Check.">Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln. Am genauesten nach „Lautstärke analysieren“ im Health-Check.</div>
             </div>
             <button type="button" id="normalizeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
           </div>

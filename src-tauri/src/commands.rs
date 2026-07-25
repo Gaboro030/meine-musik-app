@@ -11,6 +11,13 @@ pub struct AppState {
     pub music_root: PathBuf,
     pub trash_dir: PathBuf,
     pub trash_index_file: PathBuf,
+    // App-Datenverzeichnis (nicht die Bibliothek) fuer kleine Zustands-
+    // dateien, die keinem einzelnen Track gehoeren - z.B. die gemessenen
+    // ReplayGain-Werte (health.rs). Bewusst NICHT in music_root: das dort
+    // liegende Dateisystem IST die Bibliothek (siehe LIBRARY_LOCK unten),
+    // eine fremde JSON-Datei mittendrin waere sonst ein "verwaister
+    // Sidecar" fuer den Health-Check selbst.
+    pub data_dir: PathBuf,
 }
 
 /// music_root/<playlist>/*.mp3 on disk IS the library - no separate JSON

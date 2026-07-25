@@ -78,6 +78,7 @@ pub fn run() {
                 music_root: root.clone(),
                 trash_dir,
                 trash_index_file: data_dir.join("trash_index.json"),
+                data_dir,
             });
 
             // Party mode: shared hub (queue + party state + event bus) and
@@ -126,6 +127,8 @@ pub fn run() {
             health::scan_silence,
             health::trim_silence,
             health::undo_trim_silence,
+            health::scan_loudness,
+            health::get_loudness,
             commands::get_app_version,
             playlist::resolve_playlist,
             trash::list_trash,

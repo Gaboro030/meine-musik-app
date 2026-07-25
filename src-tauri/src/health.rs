@@ -154,6 +154,13 @@ pub fn health_check_cleanup(state: tauri::State<AppState>) -> Result<HealthClean
    Desktop-only wie yt-dlp selbst - Android hat weder das eine noch das
    andere. */
 
+/// Wird auch als Abbruch-Erkennung benutzt (scan_loudness bricht bei
+/// genau diesem Text ab, statt sinnlos ueber die ganze Bibliothek zu
+/// laufen) - deshalb eine Konstante statt drei getippter Kopien.
+const FFMPEG_MISSING: &str =
+    "ffmpeg nicht gefunden - dafuer wird ein auf System-PATH installiertes ffmpeg benoetigt.";
+const ANDROID_NO_FFMPEG: &str = "Auf Android nicht verfuegbar (kein ffmpeg).";
+
 #[derive(Serialize, Clone)]
 pub struct SilenceHit {
     pub playlist: String,
@@ -239,7 +246,7 @@ async fn ffmpeg_analyze(app: &tauri::AppHandle, path: &Path) -> Result<(f64, f64
         ])
         .output()
         .await
-        .map_err(|_| "ffmpeg nicht gefunden - fuer Stille-Erkennung/Trimmen wird ein auf System-PATH installiertes ffmpeg benoetigt.".to_string())?;
+        .map_err(|_| FFMPEG_MISSING.to_string())?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     let total = parse_ffmpeg_duration(&stderr).ok_or_else(|| "Audiodauer konnte nicht ermittelt werden.".to_string())?;
     let (leading, trailing) = parse_edge_silence(&stderr, total);
@@ -259,7 +266,7 @@ fn track_full_path(state: &AppState, playlist: &str, filename: &str) -> Result<s
 #[tauri::command]
 pub async fn scan_silence(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Vec<SilenceHit>, String> {
     if cfg!(target_os = "android") {
-        return Err("Auf Android nicht verfuegbar (kein ffmpeg).".into());
+        return Err(ANDROID_NO_FFMPEG.into());
     }
     let playlists = crate::commands::list_playlists_inner(&state.music_root);
     let mut hits = Vec::new();
@@ -302,7 +309,7 @@ pub async fn trim_silence(
     filename: String,
 ) -> Result<String, String> {
     if cfg!(target_os = "android") {
-        return Err("Auf Android nicht verfuegbar (kein ffmpeg).".into());
+        return Err(ANDROID_NO_FFMPEG.into());
     }
     let full = track_full_path(&state, &playlist, &filename)?;
     if !full.is_file() {
@@ -386,6 +393,204 @@ pub fn undo_trim_silence(
     Ok(())
 }
 
+/* ===== Lautstaerke-Normalisierung (echtes ReplayGain) =====
+   Vorher machte das nur ein DynamicsCompressorNode im Frontend: Echtzeit-
+   Leveling ohne jede Vorab-Analyse. Das nimmt zwar die groebsten Spruenge
+   raus, veraendert aber die Dynamik JEDES Songs dauerhaft (leise Stellen
+   werden mit hochgezogen) und kann per Definition nicht wissen, wie laut
+   ein Song insgesamt gemeistert ist.
+
+   Jetzt: ffmpegs loudnorm-Filter misst pro Datei einmal die integrierte
+   Lautheit (LUFS) und den True-Peak, daraus faellt EIN Korrekturwert in dB
+   pro Track ab. Den legt das Frontend auf einen eigenen GainNode - die
+   Dynamik im Song bleibt unangetastet, nur das Gesamtniveau wird
+   angeglichen. Gemessen wird nur auf ausdruecklichen Knopfdruck (ein
+   kompletter Decode pro Track ist zu teuer fuer einen Automatismus), das
+   Ergebnis landet in loudness.json im App-Datenverzeichnis und ueberlebt
+   damit Neustarts.
+
+   ffmpeg-Abhaengigkeit + Android-Ausschluss: exakt wie beim Auto-Trim
+   oben, siehe dortigen Kommentar. */
+
+#[derive(Serialize, serde::Deserialize, Clone, Copy)]
+pub struct LoudnessEntry {
+    /// Korrektur in dB, die das Frontend auf den Track legen soll.
+    pub gain_db: f64,
+    /// Gemessene integrierte Lautheit (LUFS) - nur zur Anzeige/Diagnose.
+    pub lufs: f64,
+    /// Gemessener True-Peak (dBTP) - nur zur Anzeige/Diagnose.
+    pub peak_db: f64,
+}
+
+pub type LoudnessMap = std::collections::HashMap<String, LoudnessEntry>;
+
+/// Referenzpegel nach ReplayGain 2.0. Bewusst nicht die -14 LUFS der
+/// Streaming-Dienste: die Bibliothek wird lokal ueber die eigene
+/// Systemlautstaerke gehoert, und -18 laesst mehr Headroom, sodass fuer
+/// laute Tracks seltener stark heruntergeregelt werden muss.
+const LOUDNESS_TARGET_LUFS: f64 = -18.0;
+/// Ueber diesen True-Peak wird nie hochverstaerkt (Clipping-Schutz).
+const LOUDNESS_PEAK_CEILING_DB: f64 = -1.0;
+/// Deckel gegen Ausreisser: eine kaputt gemasterte oder fast stille Datei
+/// soll nicht mit +25 dB ins Ohr springen.
+const LOUDNESS_MAX_GAIN_DB: f64 = 12.0;
+
+fn loudness_file(state: &AppState) -> std::path::PathBuf {
+    state.data_dir.join("loudness.json")
+}
+
+pub(crate) fn load_loudness(state: &AppState) -> LoudnessMap {
+    std::fs::read_to_string(loudness_file(state))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_loudness(state: &AppState, map: &LoudnessMap) {
+    let _ = std::fs::create_dir_all(&state.data_dir);
+    if let Ok(s) = serde_json::to_string(map) {
+        let _ = std::fs::write(loudness_file(state), s);
+    }
+}
+
+/// Schluessel eines Tracks in loudness.json. Playlist + Dateiname, weil
+/// dieselbe Datei in zwei Playlists liegen darf und dann zweimal (aber
+/// identisch) gemessen wird - eine reine Dateinamen-Kennung waere dagegen
+/// zwischen zwei wirklich verschiedenen Songs kollisionsgefaehrdet.
+pub(crate) fn loudness_key(playlist: &str, filename: &str) -> String {
+    format!("{playlist}/{filename}")
+}
+
+/// Zieht die Messwerte aus loudnorms JSON-Block. Der steht mitten in
+/// ffmpegs stderr (danach kommen noch Zusammenfassungszeilen), deshalb
+/// wird gezielt der Block um "input_i" herum ausgeschnitten statt einfach
+/// die letzte geschweifte Klammer im Text zu nehmen.
+fn parse_loudnorm_json(stderr: &str) -> Option<(f64, f64)> {
+    let marker = stderr.find("\"input_i\"")?;
+    let start = stderr[..marker].rfind('{')?;
+    let end = start + stderr[start..].find('}')?;
+    let v: serde_json::Value = serde_json::from_str(&stderr[start..=end]).ok()?;
+    // Achtung: eine komplett stille Datei liefert "-inf", und Rusts
+    // f64::from_str parst genau das erfolgreich zu f64::NEG_INFINITY. Ohne
+    // die is_finite()-Pruefung waere der Korrekturwert dafuer rechnerisch
+    // +inf und wuerde am Deckel zu vollen +12 dB - fuer eine stumme Datei.
+    let num = |key: &str| -> Option<f64> {
+        let n = v.get(key)?.as_str()?.trim().parse::<f64>().ok()?;
+        n.is_finite().then_some(n)
+    };
+    Some((num("input_i")?, num("input_tp")?))
+}
+
+/// Absenken ist immer erlaubt, Anheben nur so weit, wie der True-Peak noch
+/// Luft bis LOUDNESS_PEAK_CEILING_DB hat - sonst wuerde ein leise
+/// gemasterter, aber bis Vollaussteuerung gepeakter Track beim Anheben
+/// clippen.
+fn gain_for(lufs: f64, peak_db: f64) -> f64 {
+    let raw = LOUDNESS_TARGET_LUFS - lufs;
+    let gain = if raw > 0.0 {
+        raw.min((LOUDNESS_PEAK_CEILING_DB - peak_db).max(0.0))
+    } else {
+        raw
+    };
+    gain.clamp(-LOUDNESS_MAX_GAIN_DB, LOUDNESS_MAX_GAIN_DB)
+}
+
+async fn ffmpeg_loudness(app: &tauri::AppHandle, path: &Path) -> Result<LoudnessEntry, String> {
+    use tauri_plugin_shell::ShellExt;
+    let output = app
+        .shell()
+        .command("ffmpeg")
+        .args([
+            "-nostdin",
+            "-i",
+            &path.to_string_lossy(),
+            "-af",
+            &format!("loudnorm=I={LOUDNESS_TARGET_LUFS}:print_format=json"),
+            "-f",
+            "null",
+            "-",
+        ])
+        .output()
+        .await
+        .map_err(|_| FFMPEG_MISSING.to_string())?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let (lufs, peak_db) = parse_loudnorm_json(&stderr).ok_or_else(|| "Lautheit konnte nicht gemessen werden.".to_string())?;
+    Ok(LoudnessEntry { gain_db: gain_for(lufs, peak_db), lufs, peak_db })
+}
+
+#[derive(Serialize)]
+pub struct LoudnessScanResult {
+    pub analyzed: usize,
+    pub skipped: usize,
+    pub failed: usize,
+    pub gains: LoudnessMap,
+}
+
+/// Misst jeden noch nicht vermessenen Track der Bibliothek. `rescan=true`
+/// wirft die alten Werte weg und misst alles neu (z.B. nachdem Tracks per
+/// Trim/Qualitaets-Upgrade veraendert wurden).
+///
+/// Der Fortschritt geht als "loudness-progress"-Event ans Frontend - ein
+/// Durchlauf ueber eine groessere Bibliothek dauert Minuten, ein
+/// wortloses, minutenlang haengendes invoke() waere nicht zumutbar.
+#[tauri::command]
+pub async fn scan_loudness(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    rescan: bool,
+) -> Result<LoudnessScanResult, String> {
+    use tauri::Emitter;
+    if cfg!(target_os = "android") {
+        return Err(ANDROID_NO_FFMPEG.into());
+    }
+    let mut map = if rescan { LoudnessMap::new() } else { load_loudness(&state) };
+    let playlists = crate::commands::list_playlists_inner(&state.music_root);
+
+    let todo: Vec<(String, String)> = playlists
+        .iter()
+        .flat_map(|pl| pl.tracks.iter().map(move |tr| (pl.name.clone(), tr.file.clone())))
+        .filter(|(pl, file)| !map.contains_key(&loudness_key(pl, file)))
+        .collect();
+    let total = todo.len();
+
+    let (mut analyzed, mut failed) = (0usize, 0usize);
+    for (i, (playlist, filename)) in todo.into_iter().enumerate() {
+        let _ = app.emit(
+            "loudness-progress",
+            serde_json::json!({ "done": i, "total": total, "file": filename }),
+        );
+        let Ok(full) = track_full_path(&state, &playlist, &filename) else {
+            failed += 1;
+            continue;
+        };
+        if !full.is_file() {
+            failed += 1;
+            continue;
+        }
+        match ffmpeg_loudness(&app, &full).await {
+            Ok(entry) => {
+                map.insert(loudness_key(&playlist, &filename), entry);
+                analyzed += 1;
+            }
+            // Ein einzelner kaputter/nicht dekodierbarer Track darf den
+            // ganzen Durchlauf nicht abbrechen - fehlendes ffmpeg schon,
+            // sonst laeuft der Scan sinnlos ueber die ganze Bibliothek.
+            Err(e) if e == FFMPEG_MISSING => return Err(e),
+            Err(_) => failed += 1,
+        }
+    }
+
+    save_loudness(&state, &map);
+    let _ = app.emit("loudness-progress", serde_json::json!({ "done": total, "total": total, "file": "" }));
+    Ok(LoudnessScanResult { analyzed, skipped: map.len() - analyzed, failed, gains: map })
+}
+
+/// Die gespeicherten Werte, die das Frontend beim Start einmal einliest.
+#[tauri::command]
+pub fn get_loudness(state: tauri::State<AppState>) -> LoudnessMap {
+    load_loudness(&state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -429,6 +634,63 @@ mod tests {
         // Gesamtdauer -> weder Anfang noch Ende betroffen.
         let stderr = "Duration: 00:00:10.00, start: 0.0\nsilence_start: 4.0\nsilence_end: 4.8 | silence_duration: 0.8\n";
         assert_eq!(parse_edge_silence(stderr, 10.0), (0.0, 0.0));
+    }
+
+    // Echte ffmpeg-8-Ausgabe (loudnorm=I=-18:print_format=json) fuer eine
+    // synthetische 440-Hz-Testdatei bei -12 dB - per Hand gegen ein reales
+    // ffmpeg verifiziert, nicht ausgedacht. Wichtig fuer den Parser: nach
+    // dem JSON-Block kommen noch weitere ffmpeg-Zeilen, der Block ist also
+    // NICHT einfach "alles ab der letzten geschweiften Klammer".
+    const SAMPLE_LOUDNORM: &str = "  Stream #0:0: Audio: pcm_s16le, 192000 Hz, mono\n[Parsed_loudnorm_0 @ 00000000007281c0] \n{\n\t\"input_i\" : \"-34.25\",\n\t\"input_tp\" : \"-30.49\",\n\t\"input_lra\" : \"0.00\",\n\t\"input_thresh\" : \"-44.25\",\n\t\"output_i\" : \"-17.95\",\n\t\"normalization_type\" : \"dynamic\",\n\t\"target_offset\" : \"-0.05\"\n}\n[out#0/null @ 00000000007283c0] video:0KiB audio:1125KiB\nsize=N/A time=00:00:03.00 bitrate=N/A speed=95x\n";
+
+    #[test]
+    fn parses_loudnorm_measurements() {
+        let (lufs, peak) = parse_loudnorm_json(SAMPLE_LOUDNORM).unwrap();
+        assert!((lufs - (-34.25)).abs() < 0.001);
+        assert!((peak - (-30.49)).abs() < 0.001);
+    }
+
+    #[test]
+    fn loudnorm_parser_rejects_output_without_measurements() {
+        assert!(parse_loudnorm_json("kein json hier").is_none());
+        // Voellig stille Datei: ffmpeg liefert "-inf", nicht parsebar.
+        assert!(parse_loudnorm_json("{\n\"input_i\" : \"-inf\",\n\"input_tp\" : \"-inf\"\n}").is_none());
+    }
+
+    #[test]
+    fn quiet_track_gets_boosted_towards_target() {
+        // -34.25 LUFS liegt 16.25 dB unter dem -18er Ziel, der Peak laesst
+        // mit -30.49 dBTP reichlich Luft - begrenzt also nur der Deckel.
+        let gain = gain_for(-34.25, -30.49);
+        assert!((gain - LOUDNESS_MAX_GAIN_DB).abs() < 0.001, "gain war {gain}");
+    }
+
+    #[test]
+    fn loud_track_gets_turned_down() {
+        // Modernes lautes Mastering: -6 LUFS -> 12 dB leiser.
+        let gain = gain_for(-6.0, -0.1);
+        assert!((gain - (-12.0)).abs() < 0.001, "gain war {gain}");
+    }
+
+    #[test]
+    fn boost_is_capped_by_available_true_peak_headroom() {
+        // Leise gemastert (-24 LUFS, waeren +6 dB), aber schon bis 0 dBTP
+        // ausgesteuert: mehr als bis -1 dBTP darf nicht angehoben werden.
+        let gain = gain_for(-24.0, 0.0);
+        assert!(gain.abs() < 0.001, "gain war {gain}");
+    }
+
+    #[test]
+    fn attenuation_is_never_blocked_by_peak_headroom() {
+        // Absenken kann nie clippen - der fehlende Headroom darf hier also
+        // nichts begrenzen (sonst wuerde ein zu lauter Track laut bleiben).
+        let gain = gain_for(-8.0, 0.5);
+        assert!((gain - (-10.0)).abs() < 0.001, "gain war {gain}");
+    }
+
+    #[test]
+    fn track_at_reference_level_needs_no_correction() {
+        assert!(gain_for(LOUDNESS_TARGET_LUFS, -3.0).abs() < 0.001);
     }
 
     fn temp_dir() -> std::path::PathBuf {

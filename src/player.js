@@ -1779,6 +1779,10 @@ function playTrack(index, opts = {}) {
   const track = currentPlaylist.tracks[index];
 
   initAudioGraph();
+  // Auch im handoff-Fall nötig: der Gain-Node des Ghosts trägt zwar schon
+  // den richtigen Wert (beim Vorladen gesetzt), aber der Kompressor-Zustand
+  // hängt am jetzt neuen aktiven Track und muss mitziehen.
+  applyReplayGainForActiveTrack(track.stream_url);
   // A-B-Loop gehört an die Zeitachse EINES Songs - bei jedem Trackwechsel
   // (auch per Crossfade-Handoff, sonst erbt der neue Song die alten Punkte
   // und springt scheinbar zufällig zurück) muss er verworfen werden.
@@ -1854,6 +1858,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
   if (currentTrackIndex >= 0) queueResumeIndex = currentTrackIndex;
 
   initAudioGraph();
+  applyReplayGainForActiveTrack(entry.stream_url); // siehe playTrack
   clearAbLoop(); // siehe playTrack - Loop-Punkte gehören nie zu einem neuen Song
   // handoff: siehe playTrack - Element spielt schon, nichts neu laden.
   if (!opts.handoff) {
@@ -3083,26 +3088,41 @@ let audioCtx = null;
 let eqBass, eqMid, eqTreble, masterGain, normalizerCompressor;
 let visualizerAnalyser = null;
 let gainA = null, gainB = null; // ein Gain pro <audio>-Element - die beiden Crossfade-Rampen
+let rgA = null, rgB = null; // ReplayGain pro Element, VOR den Crossfade-Rampen (siehe applyReplayGainFor)
 let audioGraphReady = false;
 const eqSettings = { bass: 0, mid: 0, treble: 0 };
 
 const activeGain = () => (audioEl === audioElA ? gainA : gainB);
 const otherGain = () => (audioEl === audioElA ? gainB : gainA);
 
-/* Lautstärke-Normalisierung zwischen Tracks: echtes per-Track-ReplayGain
-   (vorab die ganze Datei analysieren) würde einen schweren Audio-Decoder
-   als neue Rust-Abhängigkeit brauchen (Cross-Compile-Risiko fürs Android-
-   NDK, siehe Cargo.toml-Kommentare zu reqwest/rustls-tls). Der schon
-   vorhandene DynamicsCompressorNode (broadcast-artiges Leveling in
-   Echtzeit) liefert denselben praktischen Nutzen - Downloads aus
-   unterschiedlichsten YouTube-Quellen klingen nicht mehr sprunghaft
-   lauter/leiser - ganz ohne Vorab-Analyse. Standardmäßig an (war vorher
-   fest verdrahtet, jetzt nur zusätzlich abschaltbar).*/
+/* ===== Lautstärke-Normalisierung =====
+   Zwei Stufen, die sich gegenseitig ablösen:
+
+   1. ReplayGain (bevorzugt): health.rs hat den Track per ffmpeg-loudnorm
+      einmal vermessen und daraus EINEN Korrekturwert in dB abgeleitet.
+      Der landet auf einem eigenen GainNode pro <audio>-Element - exakt,
+      und die Dynamik im Song bleibt komplett unangetastet.
+   2. Kompressor (Notnagel): für alles, was noch nicht vermessen wurde.
+      Broadcast-artiges Echtzeit-Leveling, braucht keine Vorab-Analyse,
+      zieht aber leise Stellen innerhalb eines Songs mit hoch.
+
+   Für einen vermessenen Track wird der Kompressor bewusst überbrückt: er
+   würde die gerade sauber berechnete Korrektur sonst gleich wieder
+   zusammendrücken. Beides gemeinsam ergäbe kein besseres, nur ein
+   plattgedrücktes Ergebnis. */
 const NORMALIZE_ENABLED_KEY = "loudnessNormalize";
 let normalizeEnabled = localStorage.getItem(NORMALIZE_ENABLED_KEY) !== "0";
+/* "<Playlist>/<Datei>" -> { gain_db, lufs, peak_db }, gemessen von
+   health::scan_loudness und dort persistiert. Bleibt leer, solange der
+   Nutzer den Scan nie gestartet hat - dann greift überall Stufe 2. */
+let loudnessGains = {};
+/* Ob der GERADE laufende Track einen gemessenen Wert hat - entscheidet, ob
+   der Kompressor mitläuft (siehe oben). */
+let currentTrackHasReplayGain = false;
+
 function applyNormalizerSettings() {
   if (!normalizerCompressor) return;
-  if (normalizeEnabled) {
+  if (normalizeEnabled && !currentTrackHasReplayGain) {
     normalizerCompressor.threshold.value = -24;
     normalizerCompressor.knee.value = 30;
     normalizerCompressor.ratio.value = 12;
@@ -3115,7 +3135,68 @@ function applyNormalizerSettings() {
 function setNormalizeEnabled(enabled) {
   normalizeEnabled = enabled;
   localStorage.setItem(NORMALIZE_ENABLED_KEY, enabled ? "1" : "0");
+  // Beide Elemente nachziehen, nicht nur das aktive: während eines
+  // Crossfades läuft der Ghost bereits hörbar mit, seine Korrektur bliebe
+  // sonst stehen, bis er selbst zum aktiven Element wird.
+  applyReplayGainFor(rgA, audioElA.getAttribute("src") || "");
+  applyReplayGainFor(rgB, audioElB.getAttribute("src") || "");
+  // Setzt zusätzlich currentTrackHasReplayGain und damit den Kompressor.
+  applyReplayGainForActiveTrack(audioEl.getAttribute("src") || "");
+}
+
+/* stream_url ist "http://stream.localhost/<Playlist>/<Datei>" (bzw.
+   stream://... außerhalb von Windows/Android), beide Segmente
+   percent-encoded - siehe stream_url_for() in commands.rs. Daraus lässt
+   sich der loudness.json-Schlüssel zurückgewinnen, ohne die ganze
+   Bibliothek nach der URL durchsuchen zu müssen. Wichtig für den
+   Crossfade-Ghost: der kennt nur seine streamUrl, nicht Playlist+Datei. */
+function loudnessKeyFromStreamUrl(url) {
+  const parts = String(url || "").split("/");
+  if (parts.length < 2) return "";
+  try {
+    return `${decodeURIComponent(parts[parts.length - 2])}/${decodeURIComponent(parts[parts.length - 1])}`;
+  } catch (_) {
+    return "";
+  }
+}
+
+function replayGainFactorFor(streamUrl) {
+  if (!normalizeEnabled) return { factor: 1, measured: false };
+  const entry = loudnessGains[loudnessKeyFromStreamUrl(streamUrl)];
+  if (!entry || typeof entry.gain_db !== "number") return { factor: 1, measured: false };
+  // dB -> linearer Amplitudenfaktor.
+  return { factor: Math.pow(10, entry.gain_db / 20), measured: true };
+}
+
+/* Setzt den ReplayGain-Faktor auf dem Gain-Node, der zu genau diesem
+   <audio>-Element gehört. Bewusst PRO ELEMENT und vor den Crossfade-Gains
+   im Graphen: während einer Überblendung laufen zwei Songs mit
+   unterschiedlichen Korrekturwerten gleichzeitig, ein gemeinsamer Node
+   hinter der Mischung könnte nur einen von beiden bedienen. */
+function applyReplayGainFor(node, streamUrl) {
+  if (!node) return;
+  const { factor } = replayGainFactorFor(streamUrl);
+  node.gain.value = factor;
+}
+
+/* Für den Track, der jetzt aktiv wird: Gain setzen UND den Kompressor
+   entsprechend an-/abschalten. */
+function applyReplayGainForActiveTrack(streamUrl) {
+  const { factor, measured } = replayGainFactorFor(streamUrl);
+  const node = audioEl === audioElA ? rgA : rgB;
+  if (node) node.gain.value = factor;
+  currentTrackHasReplayGain = measured;
   applyNormalizerSettings();
+}
+
+async function loadLoudnessGains() {
+  try {
+    const res = await fetch("/api/health-check/loudness");
+    const data = await res.json();
+    if (res.ok && data.gains) loudnessGains = data.gains;
+  } catch (_) {
+    // Kein Backend (Browser-Preview) oder noch nie gescannt - Stufe 2 reicht.
+  }
 }
 
 /* ===== Skip-Silence =====
@@ -3242,6 +3323,15 @@ function initAudioGraph() {
   gainB = audioCtx.createGain();
   gainB.gain.value = 0; // B startet stumm - wird erst als Crossfade-Partner hochgerampt
 
+  // ReplayGain-Korrektur pro Element. Sitzt VOR gainA/gainB, damit die
+  // Crossfade-Rampen weiterhin sauber zwischen 0 und 1 fahren können,
+  // ohne den Korrekturwert einrechnen zu müssen. 1 = keine Korrektur
+  // (Track nicht vermessen oder Normalisierung aus).
+  rgA = audioCtx.createGain();
+  rgA.gain.value = 1;
+  rgB = audioCtx.createGain();
+  rgB.gain.value = 1;
+
   eqBass = audioCtx.createBiquadFilter();
   eqBass.type = "lowshelf";
   eqBass.frequency.value = 200;
@@ -3278,8 +3368,8 @@ function initAudioGraph() {
   visualizerAnalyser.fftSize = 128;
   visualizerAnalyser.smoothingTimeConstant = 0.8;
 
-  sourceA.connect(gainA).connect(eqBass);
-  sourceB.connect(gainB).connect(eqBass);
+  sourceA.connect(rgA).connect(gainA).connect(eqBass);
+  sourceB.connect(rgB).connect(gainB).connect(eqBass);
   eqBass.connect(eqMid).connect(eqTreble).connect(normalizerCompressor).connect(masterGain);
   masterGain.connect(visualizerAnalyser).connect(audioCtx.destination);
   audioGraphReady = true;
@@ -3495,6 +3585,10 @@ function maybeStartFadeOut() {
     o.src = next.streamUrl;
     o.currentTime = 0;
     o.load();
+    // Korrekturwert des NÄCHSTEN Titels schon jetzt auf dessen Gain-Node
+    // legen: beim Rollentausch spielt der Ghost bereits, ein erst dort
+    // gesetzter Wert käme hörbar zu spät.
+    applyReplayGainFor(o === audioElA ? rgA : rgB, next.streamUrl);
     crossfadePrepared = next;
     return;
   }
@@ -3525,6 +3619,9 @@ function maybeStartFadeOut() {
       o.volume = audioEl.volume;
       o.src = next.streamUrl;
       o.currentTime = 0;
+      // Siehe Gapless-Zweig oben: der Ghost blendet sich hier sogar schon
+      // hörbar ein, sein Korrekturwert muss vorher stehen.
+      applyReplayGainFor(o === audioElA ? rgA : rgB, next.streamUrl);
       og.gain.cancelScheduledValues(now);
       og.gain.setValueAtTime(0.0001, now);
       og.gain.linearRampToValueAtTime(1, now + remaining);
@@ -5983,6 +6080,80 @@ silenceScanBtn.addEventListener("click", async () => {
   }
 });
 
+/* ===== Lautstärke-Messung (Health-Check-Erweiterung) =====
+   Wie der Stille-Scan bewusst nur auf Knopfdruck: ffmpeg muss dafür jede
+   Datei einmal komplett dekodieren. Der Fortschritt kommt als Tauri-Event
+   ("loudness-progress") herein, weil ein einzelner invoke() über eine
+   grössere Bibliothek minutenlang wortlos hängen würde. */
+const loudnessScanBtn = document.getElementById("loudnessScanBtn");
+const loudnessRescanBtn = document.getElementById("loudnessRescanBtn");
+const loudnessProgressWrap = document.getElementById("loudnessProgressWrap");
+const loudnessProgressBar = document.getElementById("loudnessProgressBar");
+const loudnessProgressLabel = document.getElementById("loudnessProgressLabel");
+const loudnessStatus = document.getElementById("loudnessStatus");
+
+function renderLoudnessSummary() {
+  const count = Object.keys(loudnessGains).length;
+  if (!count) {
+    loudnessStatus.textContent = t("Noch nichts gemessen - bis dahin gleicht ein Kompressor grob aus.");
+    return;
+  }
+  const values = Object.values(loudnessGains).map((e) => e.gain_db);
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  loudnessStatus.textContent = t("{count} Titel vermessen · Korrektur im Schnitt {avg} dB", {
+    count,
+    avg: avg.toFixed(1),
+  });
+}
+
+async function runLoudnessScan(rescan) {
+  loudnessScanBtn.disabled = true;
+  loudnessRescanBtn.disabled = true;
+  loudnessProgressWrap.classList.remove("hidden");
+  loudnessProgressBar.style.width = "0%";
+  loudnessProgressLabel.textContent = t("Vorbereitung …");
+
+  let unlisten = null;
+  try {
+    if (window.__TAURI__) {
+      unlisten = await window.__TAURI__.event.listen("loudness-progress", (e) => {
+        const { done, total, file } = e.payload || {};
+        const pct = total ? (done / total) * 100 : 0;
+        loudnessProgressBar.style.width = `${pct}%`;
+        loudnessProgressLabel.textContent = total
+          ? `${done} / ${total}${file ? ` — ${file}` : ""}`
+          : t("Alles bereits vermessen.");
+      });
+    }
+    const res = await fetch("/api/health-check/loudness/scan", {
+      method: "POST",
+      body: JSON.stringify({ rescan: !!rescan }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || t("Messung fehlgeschlagen."));
+    loudnessGains = data.gains || {};
+    // Der gerade laufende Titel soll die frische Messung sofort nutzen,
+    // nicht erst beim nächsten Songwechsel.
+    applyReplayGainForActiveTrack(audioEl.getAttribute("src") || "");
+    renderLoudnessSummary();
+    showToast(
+      data.failed
+        ? t("{n} Titel vermessen, {f} fehlgeschlagen.", { n: data.analyzed, f: data.failed })
+        : t("{n} Titel vermessen.", { n: data.analyzed })
+    );
+  } catch (err) {
+    showToast(err.message || t("Messung fehlgeschlagen."));
+  } finally {
+    if (unlisten) unlisten();
+    loudnessProgressWrap.classList.add("hidden");
+    loudnessScanBtn.disabled = false;
+    loudnessRescanBtn.disabled = false;
+  }
+}
+
+loudnessScanBtn.addEventListener("click", () => runLoudnessScan(false));
+loudnessRescanBtn.addEventListener("click", () => runLoudnessScan(true));
+
 async function deleteTrashEntryForever(id) {
   showConfirmModal(
     t("Endgültig löschen?"),
@@ -6005,3 +6176,5 @@ async function deleteTrashEntryForever(id) {
 audioEl.volume = 0.8;
 loadQueueOnce();
 loadLibrary();
+// Gemessene ReplayGain-Werte einmal einlesen, bevor der erste Titel läuft.
+loadLoudnessGains().then(renderLoudnessSummary);

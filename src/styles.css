@@ -1835,7 +1835,33 @@ body.has-dynamic-colors .playlist-hero {
   background: var(--sp-black);
   border-top: 1px solid var(--sp-border);
   display: grid;
-  grid-template-columns: 1fr minmax(0, 722px) 1fr;
+  /* Play/Pause MUSS exakt in der Bar-Mitte sitzen, egal wie lang der
+     Songtitel/die "Weiter: ..."-Zeile links ist. Das alte
+     "1fr minmax(0,722px) 1fr" konnte das nicht: ein blankes `1fr` ist
+     `minmax(auto, 1fr)`, und dieses auto-Minimum ist die min-content-Breite
+     der Spalte. Die linke Spalte (Cover + Titel + 4 Buttons) hat eine
+     groessere min-content-Breite als die rechte (Lautstaerke + 3 Icons),
+     also wuchs links ueber seinen fr-Anteil hinaus und schob die Mittel-
+     spalte mit - gemessen +155px nach rechts, sobald ein Song mit langem
+     Titel lief.
+
+     Jetzt: beide Aussenspalten haben dieselbe explizite Unter- UND
+     Obergrenze, koennen sich also nie unterschiedlich breit machen -> die
+     Mittelspalte liegt immer exakt mittig (gemessen: Abweichung 0px bei
+     560-1920px Fensterbreite).
+
+     Das `min(190px, 22%)` ist der Boden fuer die Aussenspalten: 190px
+     reichen fuer Cover + Herz/Songtext/Warteschlange, ohne dass eine Spalte
+     wie in 28d074a auf 0 zusammenfaellt und ihre Klicks an die
+     Nachbarspalte verliert. Bei sehr schmalen Fenstern (<~860px) wuerden
+     zweimal 190px + Mittelspalte nicht mehr passen und die Zentrierung
+     kippen - deshalb dort der prozentuale Boden, der symmetrisch
+     mitschrumpft. min-content als Untergrenze der Mittelspalte haelt die
+     Transport-Buttons davon ab, gequetscht zu werden. */
+  grid-template-columns:
+    minmax(min(190px, 22%), 1fr)
+    minmax(min-content, 722px)
+    minmax(min(190px, 22%), 1fr);
   align-items: center;
   padding: 0 16px;
   gap: 16px;
@@ -2762,6 +2788,25 @@ body.has-dynamic-colors .playlist-hero {
 .health-silence-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--sp-border); }
 .health-silence-section .stats-list-row { justify-content: space-between; }
 .health-silence-section .stats-list-label { flex: 1 1 auto; }
+
+/* Fortschritt beim Lautheits-Scan - der laeuft ueber die ganze Bibliothek
+   und dauert Minuten, ein blosser "Scanne ..."-Button waere zu wenig
+   Rueckmeldung. Gleiche Optik wie der Sync-Fortschritt. */
+.health-progress-wrap { padding: 4px 0 12px; }
+.health-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.health-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--sp-green);
+  transition: width 0.2s ease;
+}
+.health-progress-label { padding: 6px 0 0; }
 
 /* ========= RESPONSIVE ========= */
 @media (max-width: 900px) and (pointer: coarse) {

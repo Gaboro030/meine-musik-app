@@ -38,6 +38,19 @@
     "Eigener, separater Scan (nicht Teil des normalen Health-Checks oben) - prueft jede MP3-Datei per ffmpeg auf laengere Stille am Anfang oder Ende und kann sie verlustfrei wegschneiden. Braucht ein auf dem System installiertes ffmpeg.":
       "Separate scan (not part of the regular health check above) - checks every MP3 file with ffmpeg for longer silence at the start or end and can trim it losslessly. Requires ffmpeg installed on the system.",
     "🔇 Auf Stille prüfen": "🔇 Check for silence",
+    "Lautstärke angleichen": "Match volume",
+    "Misst jeden Titel einmal per ffmpeg aus und merkt sich, wie viel lauter oder leiser er gegenüber den anderen ist. Beim Abspielen wird das automatisch ausgeglichen - kein Lautstärke-Sprung mehr beim Songwechsel. Die Messung läuft nur auf Knopfdruck und kann bei grossen Bibliotheken einige Minuten dauern. Braucht ein auf dem System installiertes ffmpeg.":
+      "Measures every track once with ffmpeg and remembers how much louder or quieter it is than the rest. Playback then evens that out automatically - no more volume jump when the song changes. The measurement only runs when you ask for it and can take a few minutes on large libraries. Requires ffmpeg installed on the system.",
+    "🔊 Lautstärke analysieren": "🔊 Analyse volume",
+    "Alles neu messen": "Measure everything again",
+    "Noch nichts gemessen - bis dahin gleicht ein Kompressor grob aus.":
+      "Nothing measured yet - until then a compressor evens things out roughly.",
+    "{count} Titel vermessen · Korrektur im Schnitt {avg} dB":
+      "{count} tracks measured · average correction {avg} dB",
+    "Alles bereits vermessen.": "Everything already measured.",
+    "{n} Titel vermessen.": "{n} tracks measured.",
+    "{n} Titel vermessen, {f} fehlgeschlagen.": "{n} tracks measured, {f} failed.",
+    "Messung fehlgeschlagen.": "Measurement failed.",
     "✅ Keine nennenswerte Stille gefunden.": "✅ No significant silence found.",
     "Anfang: {s}s": "Start: {s}s",
     "Ende: {s}s": "End: {s}s",
@@ -171,7 +184,8 @@
     "Erkennt das Tempo (BPM) automatisch und startet den Übergang auf dem nächsten Beat statt an einem beliebigen Punkt":
       "Automatically detects tempo (BPM) and starts the transition on the next beat instead of an arbitrary point",
     "Lautstärke-Normalisierung": "Volume normalization",
-    "Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln": "Automatically levels loud/quiet songs on transition instead of you adjusting manually",
+    "Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln. Am genauesten nach „Lautstärke analysieren“ im Health-Check.":
+      "Evens out loud/quiet songs when the track changes so you don't have to ride the volume knob. Most accurate after running „Analyse volume“ in the health check.",
     "Stille überspringen (Skip-Silence)": "Skip silence",
     "Leise Anfänge/Enden bei jedem Song automatisch überspringen": "Automatically skip quiet starts/ends on every song",
     "Mini-Player (Picture-in-Picture)": "Mini player (Picture-in-Picture)",

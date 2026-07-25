@@ -199,6 +199,14 @@
       if (parts[2] === "silence") {
         return jsonResponse({ hits: await invoke("scan_silence") });
       }
+      if (parts[2] === "loudness" && parts[3] === "scan" && method === "POST") {
+        // rescan=true wirft die bisherigen Messwerte weg; ohne Flag werden
+        // nur noch nicht vermessene Tracks angefasst.
+        return jsonResponse(await invoke("scan_loudness", { rescan: !!jsonBody().rescan }));
+      }
+      if (parts[2] === "loudness") {
+        return jsonResponse({ gains: await invoke("get_loudness") });
+      }
       return jsonResponse(await invoke("health_check"));
     }
 
