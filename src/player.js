@@ -220,6 +220,154 @@ const PLACEHOLDER_COVER =
       "</svg>"
   );
 
+/* ===== Playlist-Cover-Collage =====
+   Statt immer nur das Cover des ersten Titels zu zeigen (sah bei jeder
+   Playlist gleich aus, sobald vorne dieselbe Platte lag) wird aus den
+   ersten VIER unterschiedlichen Track-Covern eine 2x2-Kachel gebaut.
+
+   Rein im Frontend per Canvas: die Cover liegen ohnehin schon als
+   data:-URLs in jedem Track-Objekt (compressed_cover in commands.rs), es
+   muss also nichts nachgeladen, nichts auf Platte geschrieben und keine
+   Rust-Bildbearbeitung angeworfen werden.
+
+   Aufbau ist asynchron (Bilder müssen erst dekodieren), Listen werden aber
+   synchron gerendert. Deshalb setzt applyPlaylistCover() sofort das
+   bisherige Einzel-Cover und tauscht es aus, sobald die Collage fertig
+   ist - kein Neu-Rendern der ganzen Liste nötig, keine leere Kachel
+   zwischendurch. */
+const COLLAGE_SIZE = 300;
+/* Playlist-Name -> { key, url }. `key` wird aus den vier Quell-Covern
+   abgeleitet: ändern sich die Titel der Playlist, ändert sich der Key und
+   die Collage wird neu gebaut - ohne dass jede Stelle, die Tracks löscht
+   oder hinzufügt, daran denken muss. */
+const collageCache = new Map();
+const collagePending = new Set();
+
+/* Manuell gesetztes Cover hat immer Vorrang - eine automatisch erzeugte
+   Collage darf es nie überschreiben. Aktuell setzt noch nichts diesen
+   Schlüssel (die App kennt bisher keine Cover-Auswahl pro Playlist); die
+   Abfrage steht hier, damit eine spätere Auswahl sofort greift, statt vom
+   Automatismus wieder überfahren zu werden. */
+function manualPlaylistCover(name) {
+  try {
+    return localStorage.getItem(`playlistCover:${name}`) || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+/* Die ersten vier UNTERSCHIEDLICHEN Cover. Ohne die Dedup-Prüfung wäre ein
+   Album als Playlist eine Kachel aus viermal demselben Bild - also genau
+   das, was die Collage vermeiden soll. */
+function collageSourceCovers(pl) {
+  const seen = new Set();
+  const out = [];
+  for (const track of pl.tracks || []) {
+    const cover = track.cover;
+    if (!cover || seen.has(cover)) continue;
+    seen.add(cover);
+    out.push(cover);
+    if (out.length === 4) break;
+  }
+  return out;
+}
+
+// Kurzer Fingerabdruck statt der kompletten data:-URLs - die sind je
+// mehrere zehntausend Zeichen lang, als Map-Key wäre das reine Verschwendung.
+function collageKey(covers) {
+  return covers.map((c) => `${c.length}:${c.slice(-24)}`).join("|");
+}
+
+function loadImageEl(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+// Zuschnitt wie CSS object-fit: cover - mittiger Ausschnitt, nie verzerrt.
+function drawCoverFit(ctx, img, x, y, size) {
+  const side = Math.min(img.naturalWidth, img.naturalHeight);
+  const sx = (img.naturalWidth - side) / 2;
+  const sy = (img.naturalHeight - side) / 2;
+  ctx.drawImage(img, sx, sy, side, side, x, y, size, size);
+}
+
+async function buildCollage(covers) {
+  const imgs = await Promise.all(covers.map(loadImageEl));
+  if (imgs.some((im) => !im)) return "";
+  const canvas = document.createElement("canvas");
+  canvas.width = COLLAGE_SIZE;
+  canvas.height = COLLAGE_SIZE;
+  const ctx = canvas.getContext("2d");
+  const half = COLLAGE_SIZE / 2;
+  ctx.fillStyle = "#282828";
+  ctx.fillRect(0, 0, COLLAGE_SIZE, COLLAGE_SIZE);
+  const spots = [[0, 0], [half, 0], [0, half], [half, half]];
+  imgs.forEach((img, i) => drawCoverFit(ctx, img, spots[i][0], spots[i][1], half));
+  try {
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } catch (_) {
+    // Ein Cover von einer fremden Herkunft würde das Canvas "verunreinigen"
+    // und toDataURL werfen lassen. Dann eben kein Collage-Bild.
+    return "";
+  }
+}
+
+/* Setzt das Cover einer Playlist auf ein <img>. Sofort das bisherige
+   Einzel-Cover, danach - falls möglich - die Collage. */
+function applyPlaylistCover(img, pl) {
+  const manual = manualPlaylistCover(pl.name);
+  if (manual) {
+    img.src = manual;
+    return;
+  }
+  const covers = collageSourceCovers(pl);
+  // Unter vier verschiedenen Covern ergibt eine 2x2-Kachel keinen Sinn -
+  // dann bleibt es beim bisherigen Verhalten.
+  if (covers.length < 4) {
+    img.src = pl.cover || PLACEHOLDER_COVER;
+    return;
+  }
+  const key = collageKey(covers);
+  const cached = collageCache.get(pl.name);
+  if (cached && cached.key === key) {
+    img.src = cached.url;
+    return;
+  }
+  img.src = pl.cover || PLACEHOLDER_COVER;
+
+  // Mehrere <img> derselben Playlist (Sidebar + Home-Kachel) dürfen den
+  // Aufbau nicht mehrfach anstoßen. Wer zu spät kommt, bekommt das
+  // Ergebnis beim nächsten Render aus dem Cache.
+  const pendingKey = `${pl.name}\u0000${key}`;
+  if (collagePending.has(pendingKey)) return;
+  collagePending.add(pendingKey);
+  buildCollage(covers)
+    .then((url) => {
+      collagePending.delete(pendingKey);
+      if (!url) return;
+      collageCache.set(pl.name, { key, url });
+      // Nur setzen, wenn das Bild inzwischen nicht schon zu einer anderen
+      // Playlist umgehängt wurde (Liste in der Zwischenzeit neu gerendert).
+      document.querySelectorAll(`img[data-collage-for="${cssEscape(pl.name)}"]`).forEach((el) => {
+        el.src = url;
+      });
+    })
+    .catch(() => collagePending.delete(pendingKey));
+  img.dataset.collageFor = pl.name;
+}
+
+/* CSS.escape gibt es in jeder WebView, die diese App sonst auch trägt -
+   der Fallback ist nur für den Fall, dass eine ältere Android-WebView es
+   nicht kennt (Playlist-Namen dürfen Anführungszeichen enthalten). */
+function cssEscape(value) {
+  if (window.CSS && typeof CSS.escape === "function") return CSS.escape(value);
+  return String(value).replace(/["\\]/g, "\\$&");
+}
+
 /* ===== State ===== */
 let library = [];
 let currentPlaylist = null;
@@ -1046,7 +1194,7 @@ function renderLibraryGrid() {
     coverWrap.className = "card-cover-wrap";
     const img = document.createElement("img");
     img.className = "card-cover";
-    img.src = pl.cover || PLACEHOLDER_COVER;
+    applyPlaylistCover(img, pl);
     img.alt = "";
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
@@ -1108,7 +1256,7 @@ function renderSidebar() {
 
     const img = document.createElement("img");
     img.className = "playlist-item-cover";
-    img.src = pl.cover || PLACEHOLDER_COVER;
+    applyPlaylistCover(img, pl);
     img.alt = "";
 
     const info = document.createElement("div");
@@ -1140,7 +1288,7 @@ function selectPlaylist(idx) {
     el.classList.toggle("active", i === idx);
   });
 
-  playlistCover.src = currentPlaylist.cover || PLACEHOLDER_COVER;
+  applyPlaylistCover(playlistCover, currentPlaylist);
   playlistTitle.textContent = currentPlaylist.name;
   playlistTrackCount.textContent = `${currentPlaylist.tracks.length} Titel`;
   // Eine Suche in der vorherigen Playlist soll nicht unsichtbar in die neue
@@ -4646,7 +4794,7 @@ function renderSearchPlaylists(matches) {
     coverWrap.className = "card-cover-wrap";
     const img = document.createElement("img");
     img.className = "card-cover";
-    img.src = pl.cover || PLACEHOLDER_COVER;
+    applyPlaylistCover(img, pl);
     img.alt = "";
     coverWrap.appendChild(img);
 
