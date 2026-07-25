@@ -701,7 +701,7 @@ pub async fn download_track(
 /// for, and whether this is the last-resort attempt (loosest possible
 /// format selector, alternate extractor client, no thumbnail embed - in
 /// case any of those were themselves what broke the earlier tries).
-struct DlAttempt {
+pub(crate) struct DlAttempt {
     bitrate: &'static str,
     quality: &'static str,
     fallback: bool,
@@ -713,7 +713,7 @@ const QUALITY_LEVELS: [&str; 4] = ["best", "1080", "720", "480"];
 /// Requested quality first, then step down through the remaining levels
 /// (a bitrate/resolution genuinely unavailable for this video is the most
 /// common failure), and finally one maximally permissive attempt.
-fn build_attempts(format: &str, bitrate: &str, quality: &str) -> Vec<DlAttempt> {
+pub(crate) fn build_attempts(format: &str, bitrate: &str, quality: &str) -> Vec<DlAttempt> {
     let mut out = Vec::new();
     if format == "mp4" {
         let start = QUALITY_LEVELS.iter().position(|q| *q == quality).unwrap_or(0);
@@ -731,7 +731,7 @@ fn build_attempts(format: &str, bitrate: &str, quality: &str) -> Vec<DlAttempt> 
     out
 }
 
-fn build_ytdlp_args(out_template: &Path, video_id: &str, format: &str, a: &DlAttempt) -> Vec<String> {
+pub(crate) fn build_ytdlp_args(out_template: &Path, video_id: &str, format: &str, a: &DlAttempt) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "--newline".into(),
         "--no-mtime".into(),
@@ -791,7 +791,7 @@ fn speed_re() -> &'static regex::Regex {
     CELL.get_or_init(|| regex::Regex::new(r"at\s+([\d.]+\w+/s)").unwrap())
 }
 
-fn friendly_download_error(stderr: &str) -> String {
+pub(crate) fn friendly_download_error(stderr: &str) -> String {
     if stderr.contains("Sign in to confirm") || stderr.contains("not a bot") {
         return "YouTube blockiert die Anfrage (Bot-Schutz). Später erneut versuchen.".into();
     }

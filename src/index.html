@@ -446,6 +446,26 @@
             </div>
             <div id="loudnessStatus" class="card-sub" style="padding: 12px 0;"></div>
           </div>
+
+          <div class="health-silence-section">
+            <h2 class="stats-section-heading" data-i18n="Qualität aufwerten">Qualität aufwerten</h2>
+            <div class="card-sub" style="padding: 0 0 16px;" data-i18n="Sucht MP3s unter 192 kbps und holt auf Wunsch eine bessere Fassung nach - bevorzugt die reine Audiospur („- Topic“) statt der Videoversion. Ersetzt wird nur, wenn die gefundene Fassung wirklich höher aufgelöst ist; das Original wandert vorher in den Papierkorb und lässt sich zurückholen. Braucht ffmpeg auf dem System.">
+              Sucht MP3s unter 192 kbps und holt auf Wunsch eine bessere Fassung nach - bevorzugt die reine
+              Audiospur („- Topic“) statt der Videoversion. Ersetzt wird nur, wenn die gefundene Fassung wirklich
+              höher aufgelöst ist; das Original wandert vorher in den Papierkorb und lässt sich zurückholen.
+              Braucht ffmpeg auf dem System.
+            </div>
+            <div class="health-actions">
+              <button type="button" id="qualityScanBtn" class="btn-secondary" data-i18n="🎧 Bitraten prüfen">🎧 Bitraten prüfen</button>
+              <button type="button" id="qualityUpgradeAllBtn" class="btn-secondary hidden" data-i18n="Alle aufwerten">Alle aufwerten</button>
+            </div>
+            <div id="qualityProgressWrap" class="health-progress-wrap hidden">
+              <div class="health-progress-track"><div id="qualityProgressBar" class="health-progress-bar"></div></div>
+              <div id="qualityProgressLabel" class="card-sub health-progress-label"></div>
+            </div>
+            <div id="qualityOk" class="card-sub hidden" style="padding: 12px 0;" data-i18n="✅ Keine Titel unter 192 kbps gefunden.">✅ Keine Titel unter 192 kbps gefunden.</div>
+            <div id="qualityList" class="stats-list"></div>
+          </div>
         </div>
 
         <div id="historyView" class="view-section hidden">

@@ -207,6 +207,18 @@
       if (parts[2] === "loudness") {
         return jsonResponse({ gains: await invoke("get_loudness") });
       }
+      if (parts[2] === "quality" && parts[3] === "upgrade" && method === "POST") {
+        const { playlist, filename, title, artist } = jsonBody();
+        return jsonResponse(await invoke("upgrade_track", { playlist, filename, title, artist: artist || "" }));
+      }
+      if (parts[2] === "quality" && parts[3] === "undo" && method === "POST") {
+        const { trashId, playlist, filename } = jsonBody();
+        await invoke("undo_upgrade_track", { trashId, playlist, filename });
+        return jsonResponse({ ok: true });
+      }
+      if (parts[2] === "quality") {
+        return jsonResponse({ hits: await invoke("scan_bitrates") });
+      }
       return jsonResponse(await invoke("health_check"));
     }
 

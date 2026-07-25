@@ -6154,6 +6154,154 @@ async function runLoudnessScan(rescan) {
 loudnessScanBtn.addEventListener("click", () => runLoudnessScan(false));
 loudnessRescanBtn.addEventListener("click", () => runLoudnessScan(true));
 
+/* ===== Qualitäts-Upgrade (Health-Check-Erweiterung) =====
+   Scan und Aufwerten sind bewusst getrennt: der Scan liest nur ffmpeg-
+   Kopfzeilen (schnell), das Aufwerten lädt pro Titel eine komplette Datei
+   neu (langsam, kostet Bandbreite) - das soll niemand aus Versehen für die
+   halbe Bibliothek auslösen.
+
+   "Alle aufwerten" läuft hier im Frontend über dieselbe Einzel-Route statt
+   über einen eigenen Batch-Befehl im Backend: so bleibt jeder Titel für
+   sich rückgängig machbar, und ein Fehlschlag bei einem stoppt die
+   anderen nicht. */
+const qualityScanBtn = document.getElementById("qualityScanBtn");
+const qualityUpgradeAllBtn = document.getElementById("qualityUpgradeAllBtn");
+const qualityProgressWrap = document.getElementById("qualityProgressWrap");
+const qualityProgressBar = document.getElementById("qualityProgressBar");
+const qualityProgressLabel = document.getElementById("qualityProgressLabel");
+const qualityOk = document.getElementById("qualityOk");
+const qualityList = document.getElementById("qualityList");
+
+/* Wertet einen Titel auf und pflegt dabei seine Zeile in der Liste.
+   Liefert true bei Erfolg - "Alle aufwerten" zählt damit mit. */
+async function upgradeOneTrack(hit, row, btn) {
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = t("Suche …");
+  try {
+    const res = await fetch("/api/health-check/quality/upgrade", {
+      method: "POST",
+      body: JSON.stringify({
+        playlist: hit.playlist,
+        filename: hit.filename,
+        title: hit.title,
+        artist: hit.artist || "",
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || t("Aufwerten fehlgeschlagen."));
+    row.remove();
+    if (!qualityList.children.length) {
+      qualityOk.classList.remove("hidden");
+      qualityUpgradeAllBtn.classList.add("hidden");
+    }
+    showUndoToast(
+      t('🎧 {title}: {old} → {new} kbps', { title: hit.title, old: data.old_kbps, new: data.new_kbps }),
+      async () => {
+        try {
+          const undoRes = await fetch("/api/health-check/quality/undo", {
+            method: "POST",
+            body: JSON.stringify({ trashId: data.trash_id, playlist: hit.playlist, filename: hit.filename }),
+          });
+          if (!undoRes.ok) throw new Error();
+          showToast(t("Rückgängig gemacht."));
+          await refreshLibrary();
+        } catch (_) {
+          showToast(t("Rückgängig machen fehlgeschlagen."));
+        }
+      }
+    );
+    await refreshLibrary();
+    return true;
+  } catch (err) {
+    showToast(err.message || t("Aufwerten fehlgeschlagen."));
+    btn.disabled = false;
+    btn.textContent = origLabel;
+    return false;
+  }
+}
+
+function renderQualityHits(hits) {
+  qualityList.innerHTML = "";
+  qualityOk.classList.toggle("hidden", hits.length > 0);
+  qualityUpgradeAllBtn.classList.toggle("hidden", hits.length === 0);
+  hits.forEach((hit) => {
+    const row = document.createElement("div");
+    row.className = "stats-list-row";
+    const label = document.createElement("span");
+    label.className = "stats-list-label";
+    label.textContent = `${hit.playlist} — ${hit.title}`;
+    const detail = document.createElement("span");
+    detail.className = "stats-list-count";
+    detail.textContent = `${hit.kbps} kbps`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-secondary";
+    btn.textContent = t("Bessere Quelle suchen");
+    btn.addEventListener("click", () => upgradeOneTrack(hit, row, btn));
+    row.append(label, detail, btn);
+    // Für "Alle aufwerten": Zeile und ihr Button müssen später wieder
+    // auffindbar sein, ohne die Trefferliste ein zweites Mal zu führen.
+    row._qualityHit = { hit, btn };
+    qualityList.appendChild(row);
+  });
+}
+
+qualityScanBtn.addEventListener("click", async () => {
+  qualityScanBtn.disabled = true;
+  qualityUpgradeAllBtn.classList.add("hidden");
+  qualityOk.classList.add("hidden");
+  qualityList.innerHTML = "";
+  qualityProgressWrap.classList.remove("hidden");
+  qualityProgressBar.style.width = "0%";
+  qualityProgressLabel.textContent = t("Vorbereitung …");
+
+  let unlisten = null;
+  try {
+    if (window.__TAURI__) {
+      unlisten = await window.__TAURI__.event.listen("bitrate-progress", (e) => {
+        const { done, total, file } = e.payload || {};
+        qualityProgressBar.style.width = `${total ? (done / total) * 100 : 0}%`;
+        qualityProgressLabel.textContent = `${done} / ${total}${file ? ` — ${file}` : ""}`;
+      });
+    }
+    const res = await fetch("/api/health-check/quality");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || t("Scan fehlgeschlagen."));
+    renderQualityHits(data.hits || []);
+  } catch (err) {
+    showToast(err.message || t("Scan fehlgeschlagen."));
+  } finally {
+    if (unlisten) unlisten();
+    qualityProgressWrap.classList.add("hidden");
+    qualityScanBtn.disabled = false;
+  }
+});
+
+qualityUpgradeAllBtn.addEventListener("click", async () => {
+  // Reihen erst einsammeln: upgradeOneTrack entfernt erfolgreiche Zeilen
+  // aus dem DOM, eine Live-HTMLCollection würde darunter wegrutschen.
+  const rows = [...qualityList.children].filter((r) => r._qualityHit);
+  if (!rows.length) return;
+  qualityScanBtn.disabled = true;
+  qualityUpgradeAllBtn.disabled = true;
+  qualityProgressWrap.classList.remove("hidden");
+  let done = 0;
+  let ok = 0;
+  for (const row of rows) {
+    const { hit, btn } = row._qualityHit;
+    qualityProgressBar.style.width = `${(done / rows.length) * 100}%`;
+    qualityProgressLabel.textContent = `${done} / ${rows.length} — ${hit.title}`;
+    if (await upgradeOneTrack(hit, row, btn)) ok++;
+    done++;
+  }
+  qualityProgressBar.style.width = "100%";
+  qualityProgressWrap.classList.add("hidden");
+  qualityScanBtn.disabled = false;
+  qualityUpgradeAllBtn.disabled = false;
+  showToast(t("{ok} von {total} aufgewertet.", { ok, total: rows.length }));
+});
+
 async function deleteTrashEntryForever(id) {
   showConfirmModal(
     t("Endgültig löschen?"),

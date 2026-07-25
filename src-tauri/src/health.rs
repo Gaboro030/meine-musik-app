@@ -367,13 +367,14 @@ pub async fn trim_silence(
     crate::trash::save_index(&state.trash_index_file, &entries);
 
     std::fs::rename(&tmp, &full).map_err(|e| e.to_string())?;
+    // Getrimmte Datei ist eine andere Datei - abgeleitete Zwischenstaende
+    // (Cover-Cache, ReplayGain-Messwert) muessen neu entstehen.
+    invalidate_derived_data(&state, &playlist, &filename, &full);
     Ok(id)
 }
 
-/// Macht trim_silence rueckgaengig: die per trash_id gesicherte Original-
-/// Kopie ersetzt die getrimmte Datei an derselben Stelle (nicht der normale
-/// restore_trash-Weg - der wuerde bei einem noch existierenden Ziel-Dateinamen
-/// stattdessen "Song (2).mp3" danebenlegen statt den Trim zu ersetzen).
+/// Macht trim_silence rueckgaengig - siehe restore_backup_over_track weiter
+/// unten, dieselbe Umsetzung nutzt auch das Qualitaets-Upgrade.
 #[tauri::command]
 pub fn undo_trim_silence(
     state: tauri::State<AppState>,
@@ -381,16 +382,7 @@ pub fn undo_trim_silence(
     playlist: String,
     filename: String,
 ) -> Result<(), String> {
-    let backup = state.trash_dir.join(format!("{trash_id}.mp3"));
-    if !backup.is_file() {
-        return Err("Sicherung nicht mehr vorhanden.".into());
-    }
-    let full = track_full_path(&state, &playlist, &filename)?;
-    std::fs::rename(&backup, &full).map_err(|e| e.to_string())?;
-    let mut entries = crate::trash::load_index(&state.trash_index_file);
-    entries.retain(|e| e.id != trash_id);
-    crate::trash::save_index(&state.trash_index_file, &entries);
-    Ok(())
+    restore_backup_over_track(&state, &trash_id, &playlist, &filename)
 }
 
 /* ===== Lautstaerke-Normalisierung (echtes ReplayGain) =====
@@ -591,6 +583,258 @@ pub fn get_loudness(state: tauri::State<AppState>) -> LoudnessMap {
     load_loudness(&state)
 }
 
+/* ===== Qualitaets-Upgrade-Scan =====
+   Findet Tracks, die als schlechte Kopie in der Bibliothek gelandet sind
+   (z.B. ein 96-kbps-Rip, weil damals nichts Besseres verfuegbar war), und
+   holt ueber dieselbe Discovery-Logik wie beim normalen Download eine
+   bessere Quelle nach - bevorzugt einen "- Topic"-Upload, also YouTube
+   Musics automatisch erzeugte, reine Audiospur.
+
+   Bewusst nur .mp3: der Ersatz behaelt zwingend den ALTEN Dateinamen, denn
+   an dem haengen Playlist-Reihenfolge, Wiedergabe-Zaehler, Verlauf, die
+   ReplayGain-Messwerte und saemtliche Sidecars. Eine .m4a durch eine .mp3
+   zu ersetzen wuerde den Namen aendern und all das reissen. */
+
+#[derive(Serialize, Clone)]
+pub struct LowQualityHit {
+    pub playlist: String,
+    pub filename: String,
+    pub title: String,
+    pub artist: String,
+    pub kbps: u32,
+}
+
+/// Unterhalb dieser Rate gilt ein Track als aufwertbar. 192 ist die
+/// Grenze, ab der ein MP3 gemeinhin als "transparent genug" durchgeht -
+/// darunter hoert man Artefakte auf ordentlichen Kopfhoerern.
+const LOW_BITRATE_KBPS: u32 = 192;
+
+fn audio_bitrate_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    // Bewusst die "Stream ... Audio:"-Zeile und nicht die "bitrate:"-Angabe
+    // der Duration-Kopfzeile: letztere ist die Container-Gesamtrate (bei
+    // einer 128er-MP3 z.B. 130 kb/s, inkl. Tag-/Framing-Overhead) und bei
+    // einer Datei mit Videospur voellig danebenliegend.
+    CELL.get_or_init(|| Regex::new(r"Audio:[^\n]*?(\d+)\s*kb/s").unwrap())
+}
+
+fn parse_audio_bitrate(stderr: &str) -> Option<u32> {
+    audio_bitrate_re().captures(stderr)?[1].parse().ok()
+}
+
+async fn ffmpeg_bitrate(app: &tauri::AppHandle, path: &Path) -> Result<u32, String> {
+    use tauri_plugin_shell::ShellExt;
+    let output = app
+        .shell()
+        .command("ffmpeg")
+        .args(["-nostdin", "-i", &path.to_string_lossy(), "-f", "null", "-"])
+        .output()
+        .await
+        .map_err(|_| FFMPEG_MISSING.to_string())?;
+    parse_audio_bitrate(&String::from_utf8_lossy(&output.stderr))
+        .ok_or_else(|| "Bitrate konnte nicht gelesen werden.".to_string())
+}
+
+/// Listet alle .mp3-Tracks unterhalb von LOW_BITRATE_KBPS. Reines Lesen
+/// der ffmpeg-Kopfzeilen, kein Decoding - deutlich schneller als der
+/// Lautheits-Scan, aber aus demselben Grund trotzdem ein eigener Knopf.
+#[tauri::command]
+pub async fn scan_bitrates(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Vec<LowQualityHit>, String> {
+    use tauri::Emitter;
+    if cfg!(target_os = "android") {
+        return Err(ANDROID_NO_FFMPEG.into());
+    }
+    let playlists = crate::commands::list_playlists_inner(&state.music_root);
+    let all: Vec<_> = playlists
+        .iter()
+        .flat_map(|pl| pl.tracks.iter().map(move |tr| (pl.name.clone(), tr.clone())))
+        .filter(|(_, tr)| tr.file.to_lowercase().ends_with(".mp3"))
+        .collect();
+    let total = all.len();
+
+    let mut hits = Vec::new();
+    for (i, (playlist, tr)) in all.into_iter().enumerate() {
+        let _ = app.emit("bitrate-progress", serde_json::json!({ "done": i, "total": total, "file": tr.file }));
+        let Ok(full) = track_full_path(&state, &playlist, &tr.file) else { continue };
+        if !full.is_file() {
+            continue;
+        }
+        match ffmpeg_bitrate(&app, &full).await {
+            Ok(kbps) if kbps < LOW_BITRATE_KBPS => hits.push(LowQualityHit {
+                playlist,
+                filename: tr.file.clone(),
+                title: tr.title.clone(),
+                artist: tr.artist.clone(),
+                kbps,
+            }),
+            Ok(_) => {}
+            Err(e) if e == FFMPEG_MISSING => return Err(e),
+            Err(_) => {}
+        }
+    }
+    let _ = app.emit("bitrate-progress", serde_json::json!({ "done": total, "total": total, "file": "" }));
+    Ok(hits)
+}
+
+#[derive(Serialize)]
+pub struct UpgradeResult {
+    pub trash_id: String,
+    pub old_kbps: u32,
+    pub new_kbps: u32,
+    pub source_title: String,
+}
+
+/// Sucht die beste Audio-Quelle zum Track und ersetzt die Datei damit -
+/// aber nur, wenn sie wirklich besser ist. Das Original wandert vorher als
+/// Kopie in den Papierkorb-Index, "Rueckgaengig" laeuft also ueber
+/// denselben Weg wie beim Auto-Trim.
+#[tauri::command]
+pub async fn upgrade_track(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    playlist: String,
+    filename: String,
+    title: String,
+    artist: String,
+) -> Result<UpgradeResult, String> {
+    use tauri_plugin_shell::ShellExt;
+    if cfg!(target_os = "android") {
+        return Err(ANDROID_NO_FFMPEG.into());
+    }
+    if !filename.to_lowercase().ends_with(".mp3") {
+        return Err("Nur MP3-Dateien koennen aufgewertet werden.".into());
+    }
+    let full = track_full_path(&state, &playlist, &filename)?;
+    if !full.is_file() {
+        return Err("Datei nicht gefunden.".into());
+    }
+    let old_kbps = ffmpeg_bitrate(&app, &full).await?;
+
+    let best = crate::discovery::best_audio_match(&app, &title, &artist)
+        .await
+        .ok_or_else(|| "Keine passende Quelle gefunden.".to_string())?;
+
+    // In eine Nebendatei laden: schlaegt der Download fehl oder ist das
+    // Ergebnis nicht besser, bleibt das Original voellig unangetastet.
+    let tmp = full.with_extension("upgrade_tmp.mp3");
+    let tmp_template = full.with_extension("upgrade_tmp.%(ext)s");
+    let _ = std::fs::remove_file(&tmp);
+
+    let mut last_err = String::new();
+    let mut ok = false;
+    for attempt in &crate::commands::build_attempts("mp3", "320", "best") {
+        let args = crate::commands::build_ytdlp_args(&tmp_template, &best.video_id, "mp3", attempt);
+        let out = match app.shell().sidecar("yt-dlp") {
+            Ok(cmd) => cmd.args(args).output().await.map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match out {
+            Ok(o) if o.status.success() && tmp.is_file() => {
+                ok = true;
+                break;
+            }
+            Ok(o) => last_err = String::from_utf8_lossy(&o.stderr).to_string(),
+            Err(e) => last_err = e,
+        }
+    }
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(crate::commands::friendly_download_error(&last_err));
+    }
+
+    let new_kbps = match ffmpeg_bitrate(&app, &tmp).await {
+        Ok(k) => k,
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+    };
+    if new_kbps <= old_kbps {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!(
+            "Keine bessere Quelle gefunden (beste gefundene Fassung: {new_kbps} kbps, vorhanden: {old_kbps} kbps)."
+        ));
+    }
+
+    // Original sichern, danach erst ersetzen.
+    std::fs::create_dir_all(&state.trash_dir).map_err(|e| e.to_string())?;
+    let id = uuid::Uuid::new_v4().to_string();
+    if let Err(e) = std::fs::copy(&full, state.trash_dir.join(format!("{id}.mp3"))) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    let trashed_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    let mut entries = crate::trash::load_index(&state.trash_index_file);
+    entries.push(crate::trash::TrashEntry {
+        id: id.clone(),
+        filename: filename.clone(),
+        playlist: playlist.clone(),
+        trashed_at,
+    });
+    crate::trash::save_index(&state.trash_index_file, &entries);
+
+    std::fs::rename(&tmp, &full).map_err(|e| e.to_string())?;
+    invalidate_derived_data(&state, &playlist, &filename, &full);
+
+    Ok(UpgradeResult {
+        trash_id: id,
+        old_kbps,
+        new_kbps,
+        source_title: best.title,
+    })
+}
+
+/// Nach einem Datei-Austausch gelten zwei zwischengespeicherte Sachen
+/// nicht mehr, obwohl der Dateiname gleich blieb: der aus der ALTEN Datei
+/// extrahierte Cover-Cache und der an ihr gemessene ReplayGain-Wert. Beide
+/// hier wegwerfen, damit sie beim naechsten Zugriff frisch entstehen -
+/// sonst zeigt die Bibliothek das Cover der alten Fassung und der Player
+/// korrigiert die neue mit einem Wert, der zu ihr gar nicht passt.
+fn invalidate_derived_data(state: &AppState, playlist: &str, filename: &str, full: &Path) {
+    let _ = std::fs::remove_file(full.with_extension("cover_cache.jpg"));
+    let mut gains = load_loudness(state);
+    if gains.remove(&loudness_key(playlist, filename)).is_some() {
+        save_loudness(state, &gains);
+    }
+}
+
+/// Gemeinsame Umsetzung fuer "Rueckgaengig" nach Trim und nach Upgrade:
+/// die gesicherte Original-Kopie ersetzt die veraenderte Datei an
+/// derselben Stelle. Bewusst NICHT der normale restore_trash-Weg - der
+/// wuerde bei einem noch existierenden Ziel-Dateinamen stattdessen
+/// "Song (2).mp3" danebenlegen, statt die Aenderung zurueckzunehmen.
+fn restore_backup_over_track(
+    state: &AppState,
+    trash_id: &str,
+    playlist: &str,
+    filename: &str,
+) -> Result<(), String> {
+    let backup = state.trash_dir.join(format!("{trash_id}.mp3"));
+    if !backup.is_file() {
+        return Err("Sicherung nicht mehr vorhanden.".into());
+    }
+    let full = track_full_path(state, playlist, filename)?;
+    std::fs::rename(&backup, &full).map_err(|e| e.to_string())?;
+    invalidate_derived_data(state, playlist, filename, &full);
+    let mut entries = crate::trash::load_index(&state.trash_index_file);
+    entries.retain(|e| e.id != trash_id);
+    crate::trash::save_index(&state.trash_index_file, &entries);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn undo_upgrade_track(
+    state: tauri::State<AppState>,
+    trash_id: String,
+    playlist: String,
+    filename: String,
+) -> Result<(), String> {
+    restore_backup_over_track(&state, &trash_id, &playlist, &filename)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -691,6 +935,38 @@ mod tests {
     #[test]
     fn track_at_reference_level_needs_no_correction() {
         assert!(gain_for(LOUDNESS_TARGET_LUFS, -3.0).abs() < 0.001);
+    }
+
+    // Echte ffmpeg-8-Kopfzeilen dreier per Hand erzeugter Testdateien
+    // (96k CBR / 320k CBR / VBR), gegen ein reales ffmpeg verifiziert.
+    const HDR_96: &str = "  Duration: 00:00:02.00, start: 0.025057, bitrate: 99 kb/s\n  Stream #0:0: Audio: mp3 (mp3float), 44100 Hz, mono, fltp, 96 kb/s, start 0.025057\n";
+    const HDR_320: &str = "  Duration: 00:00:02.00, start: 0.025057, bitrate: 330 kb/s\n  Stream #0:0: Audio: mp3 (mp3float), 44100 Hz, mono, fltp, 320 kb/s, start 0.025057\n";
+
+    #[test]
+    fn reads_audio_stream_bitrate_not_container_bitrate() {
+        // Die Container-Angabe der Duration-Zeile (99 bzw. 330) enthaelt
+        // Tag-/Framing-Overhead - gefragt ist die reine Audiorate.
+        assert_eq!(parse_audio_bitrate(HDR_96), Some(96));
+        assert_eq!(parse_audio_bitrate(HDR_320), Some(320));
+    }
+
+    #[test]
+    fn low_bitrate_threshold_separates_upgradable_from_fine() {
+        assert!(parse_audio_bitrate(HDR_96).unwrap() < LOW_BITRATE_KBPS);
+        assert!(parse_audio_bitrate(HDR_320).unwrap() >= LOW_BITRATE_KBPS);
+    }
+
+    #[test]
+    fn bitrate_parser_ignores_video_stream_line() {
+        // Bei einer Datei mit Videospur darf nicht deren (viel hoehere)
+        // Rate als Audioqualitaet durchgehen.
+        let stderr = "  Stream #0:0: Video: h264, yuv420p, 1920x1080, 2500 kb/s\n  Stream #0:1: Audio: aac (LC), 44100 Hz, stereo, fltp, 128 kb/s\n";
+        assert_eq!(parse_audio_bitrate(stderr), Some(128));
+    }
+
+    #[test]
+    fn bitrate_parser_returns_none_without_audio_line() {
+        assert_eq!(parse_audio_bitrate("  Duration: 00:00:02.00, bitrate: 99 kb/s\n"), None);
     }
 
     fn temp_dir() -> std::path::PathBuf {
