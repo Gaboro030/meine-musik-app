@@ -1,6 +1,7 @@
 mod backup;
 mod commands;
 mod cover;
+mod discord;
 mod discovery;
 mod duplicates;
 mod health;
@@ -168,6 +169,8 @@ pub fn run() {
             hotkeys::set_global_hotkeys,
             nowplaying::update_now_playing,
             nowplaying::clear_now_playing,
+            discord::discord_update,
+            discord::discord_clear,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

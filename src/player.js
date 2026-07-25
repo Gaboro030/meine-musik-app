@@ -4253,6 +4253,38 @@ normalizeToggleSwitch.addEventListener("click", () => {
   normalizeToggleSwitch.setAttribute("aria-checked", String(normalizeEnabled));
 });
 
+/* Discord-Status: Ein/Aus plus die Anwendungs-ID. Die eigentliche Logik
+   liegt in discord-presence.js; hier wird nur gespeichert und dort das
+   sofortige Nachziehen angestossen (sonst wuerde eine Aenderung erst beim
+   naechsten Songwechsel sichtbar). */
+const discordToggleSwitch = document.getElementById("discordToggleSwitch");
+const discordAppIdInput = document.getElementById("discordAppIdInput");
+let discordEnabled = localStorage.getItem("discordPresence") === "1";
+discordToggleSwitch.classList.toggle("active", discordEnabled);
+discordToggleSwitch.setAttribute("aria-checked", String(discordEnabled));
+discordAppIdInput.value = localStorage.getItem("discordAppId") || "";
+function refreshDiscord() {
+  if (typeof window.refreshDiscordPresence === "function") window.refreshDiscordPresence();
+}
+discordToggleSwitch.addEventListener("click", () => {
+  discordEnabled = !discordEnabled;
+  localStorage.setItem("discordPresence", discordEnabled ? "1" : "0");
+  discordToggleSwitch.classList.toggle("active", discordEnabled);
+  discordToggleSwitch.setAttribute("aria-checked", String(discordEnabled));
+  if (discordEnabled && !discordAppIdInput.value.trim()) {
+    showToast(t("Bitte zuerst die Discord-Anwendungs-ID eintragen."));
+  }
+  refreshDiscord();
+});
+discordAppIdInput.addEventListener("change", () => {
+  // Nur Ziffern: eine mitkopierte URL oder ein Leerzeichen wuerde sonst
+  // still zu einer Verbindung fuehren, die Discord nie annimmt.
+  const cleaned = discordAppIdInput.value.replace(/\D/g, "");
+  discordAppIdInput.value = cleaned;
+  localStorage.setItem("discordAppId", cleaned);
+  refreshDiscord();
+});
+
 const skipSilenceToggleSwitch = document.getElementById("skipSilenceToggleSwitch");
 skipSilenceToggleSwitch.classList.toggle("active", skipSilenceEnabled);
 skipSilenceToggleSwitch.setAttribute("aria-checked", String(skipSilenceEnabled));

@@ -1132,6 +1132,22 @@ body.has-dynamic-colors .playlist-hero {
 }
 .settings-row-label { font-size: 0.92rem; }
 .settings-row-desc { font-size: 0.78rem; color: var(--sp-muted); margin-top: 2px; }
+/* Einzeiliges Eingabefeld an der Stelle, an der sonst der Schalter sitzt
+   (Discord-Anwendungs-ID). flex-shrink: 0 verhindert, dass der lange
+   Beschreibungstext daneben es auf null zusammendrueckt. */
+.settings-text-input {
+  flex-shrink: 0;
+  width: 190px;
+  max-width: 45%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sp-border);
+  background: var(--sp-elevated);
+  color: var(--sp-text);
+  font-size: 0.82rem;
+  font-family: inherit;
+}
+.settings-text-input:focus { outline: none; border-color: var(--sp-green); }
 
 .toggle-switch {
   position: relative;

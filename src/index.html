@@ -542,6 +542,20 @@
           </div>
           <div class="settings-row">
             <div>
+              <div class="settings-row-label" data-i18n="Discord-Status">Discord-Status</div>
+              <div class="settings-row-desc" data-i18n="Zeigt Freunden auf Discord „Hört … von …“ inklusive Cover und Fortschrittsbalken. Nur am PC. Discord braucht dafür eine eigene Anwendungs-ID - die legst du in einer Minute kostenlos unter discord.com/developers/applications an; der Name der Anwendung ist auch der Name, der bei deinen Freunden erscheint.">Zeigt Freunden auf Discord „Hört … von …“ inklusive Cover und Fortschrittsbalken. Nur am PC. Discord braucht dafür eine eigene Anwendungs-ID - die legst du in einer Minute kostenlos unter discord.com/developers/applications an; der Name der Anwendung ist auch der Name, der bei deinen Freunden erscheint.</div>
+            </div>
+            <button type="button" id="discordToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Discord-Anwendungs-ID">Discord-Anwendungs-ID</div>
+              <div class="settings-row-desc" data-i18n="Die lange Zahl aus deiner Discord-Anwendung („Application ID“)">Die lange Zahl aus deiner Discord-Anwendung („Application ID“)</div>
+            </div>
+            <input type="text" id="discordAppIdInput" class="settings-text-input" inputmode="numeric" placeholder="123456789012345678" data-i18n-placeholder="123456789012345678" />
+          </div>
+          <div class="settings-row">
+            <div>
               <div class="settings-row-label" data-i18n="Stille überspringen (Skip-Silence)">Stille überspringen (Skip-Silence)</div>
               <div class="settings-row-desc" data-i18n="Leise Anfänge/Enden bei jedem Song automatisch überspringen">Leise Anfänge/Enden bei jedem Song automatisch überspringen</div>
             </div>
@@ -837,6 +851,7 @@
   <script src="player.js"></script>
   <script src="hotkeys-native.js"></script>
   <script src="nowplaying-native.js"></script>
+  <script src="discord-presence.js"></script>
   <script src="themes.js"></script>
   <script src="sync.js"></script>
   <script src="m3u-export.js"></script>

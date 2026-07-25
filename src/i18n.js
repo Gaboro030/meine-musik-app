@@ -62,6 +62,12 @@
     "Aufwerten fehlgeschlagen.": "Improving failed.",
     "🎧 {title}: {old} → {new} kbps": "🎧 {title}: {old} → {new} kbps",
     "{ok} von {total} aufgewertet.": "{ok} of {total} improved.",
+    "Discord-Status": "Discord status",
+    "Zeigt Freunden auf Discord „Hört … von …“ inklusive Cover und Fortschrittsbalken. Nur am PC. Discord braucht dafür eine eigene Anwendungs-ID - die legst du in einer Minute kostenlos unter discord.com/developers/applications an; der Name der Anwendung ist auch der Name, der bei deinen Freunden erscheint.":
+      "Shows friends on Discord „Listening to … by …“ including cover art and a progress bar. Desktop only. Discord needs its own application ID for this - you can create one for free in a minute at discord.com/developers/applications; the application's name is also the name your friends will see.",
+    "Discord-Anwendungs-ID": "Discord application ID",
+    "Die lange Zahl aus deiner Discord-Anwendung („Application ID“)": "The long number from your Discord application („Application ID“)",
+    "Bitte zuerst die Discord-Anwendungs-ID eintragen.": "Please enter the Discord application ID first.",
     "✅ Keine nennenswerte Stille gefunden.": "✅ No significant silence found.",
     "Anfang: {s}s": "Start: {s}s",
     "Ende: {s}s": "End: {s}s",
