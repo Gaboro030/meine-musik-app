@@ -1,11 +1,17 @@
-/* ===== Handy-Sync =====
-   Peer-to-peer library sync between devices on the same WiFi (PC<->Handy,
-   either direction) - separate from Party Mode, which mirrors playback
-   rather than moving files. Discovery is a small UDP broadcast beacon
-   (sync.rs); the actual transfer rides on the same embedded HTTP server
-   Party Mode already runs at all times (POST /sync/receive), one file per
-   request. This is an app-native addition (no equivalent in the old Flask
-   frontend), so it lives in its own file instead of touching player.js. */
+/* ===== Geräte-Sync =====
+   Playlists von Gerät zu Gerät schieben (PC<->Handy, beide Richtungen) -
+   nicht zu verwechseln mit dem Party-Modus, der Wiedergabe spiegelt statt
+   Dateien zu bewegen. Die Übertragung reitet auf dem HTTP-Server, den der
+   Party-Modus ohnehin dauerhaft laufen lässt (POST /sync/receive), eine
+   Datei pro Anfrage. App-eigene Ergänzung ohne Vorbild im alten
+   Flask-Frontend, deshalb eine eigene Datei statt player.js.
+
+   Zwei Wege zum Gegenüber (Details siehe sync.rs):
+   - Gleiches WLAN: UDP-Broadcast, die Geräte finden sich von allein.
+   - Sonst: das EMPFANGENDE Gerät erzeugt einen Code (QR zum Scannen plus
+     Text zum Tippen, weil ein Freund am eigenen PC nicht scannen kann).
+     Wer den Code einlöst, hat das Gerät danach in derselben Liste stehen
+     wie einen WLAN-Nachbarn - ab da ist der Ablauf identisch. */
 (function () {
   "use strict";
   const { invoke } = window.__TAURI__.core;
@@ -52,26 +58,45 @@
 
   function renderPeers(peers) {
     peerListEl.innerHTML = "";
-    if (!syncOn) return;
-    if (!peers.length) {
-      peerListEl.innerHTML = '<div class="sync-peer-empty">Suche Geräte …</div>';
+    // Gekoppelte Geräte bleiben sichtbar, auch wenn der Sync-Modus (die
+    // WLAN-Suche) aus ist - die hat der Nutzer bewusst per Code verbunden.
+    const visible = syncOn ? peers : peers.filter((p) => p.paired);
+    if (!visible.length) {
+      if (syncOn) peerListEl.innerHTML = `<div class="sync-peer-empty">${t("Suche Geräte …")}</div>`;
       return;
     }
-    for (const p of peers) {
+    for (const p of visible) {
+      const row = document.createElement("div");
+      row.className = "sync-peer-row";
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "sync-peer-item";
-      btn.textContent = `📱 ${p.name}`;
+      btn.textContent = `${p.paired ? "🔗" : "📱"} ${p.name}`;
       btn.addEventListener("click", () => {
         popover.classList.add("hidden");
         openSendModal(p);
       });
-      peerListEl.appendChild(btn);
+      row.appendChild(btn);
+      if (p.paired) {
+        const off = document.createElement("button");
+        off.type = "button";
+        off.className = "sync-peer-unpair";
+        off.textContent = "✕";
+        off.title = t("Verbindung trennen");
+        off.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            await invoke("sync_unpair", { peerId: p.id });
+          } catch (_) {}
+          refreshPeers();
+        });
+        row.appendChild(off);
+      }
+      peerListEl.appendChild(row);
     }
   }
 
   async function refreshPeers() {
-    if (!syncOn) return;
     try {
       renderPeers(await invoke("sync_list_peers"));
     } catch (_) {}
@@ -97,7 +122,8 @@
       } catch (_) {}
       clearInterval(pollTimer);
       pollTimer = null;
-      peerListEl.innerHTML = "";
+      // Nicht einfach leeren: gekoppelte Geräte bleiben stehen.
+      refreshPeers();
     }
   }
 
@@ -183,8 +209,7 @@
     try {
       const result = await invoke("sync_send_playlists", {
         taskId,
-        peerIp: currentPeer.ip,
-        peerPort: currentPeer.port,
+        peerId: currentPeer.id,
         playlistNames: names,
       });
       if (result.failed && result.failed.length) {
@@ -206,7 +231,120 @@
     }
   });
 
+  /* --- Einladung ausstellen (dieses Gerät empfängt) --------------------- */
+  const inviteModal = document.getElementById("syncInviteModal");
+  const inviteStatus = document.getElementById("syncInviteStatus");
+  const inviteContent = document.getElementById("syncInviteContent");
+  const inviteQr = document.getElementById("syncInviteQr");
+  const inviteCodeEl = document.getElementById("syncInviteCode");
+  const inviteCopyBtn = document.getElementById("syncInviteCopy");
+  const inviteValidEl = document.getElementById("syncInviteValid");
+  const invitePairedEl = document.getElementById("syncInvitePaired");
+  const inviteBtn = document.getElementById("syncInviteBtn");
+  let invitePollTimer = null;
+
+  function closeInviteModal() {
+    inviteModal.classList.add("hidden");
+    clearInterval(invitePollTimer);
+    invitePollTimer = null;
+  }
+
+  async function openInvite() {
+    popover.classList.add("hidden");
+    inviteModal.classList.remove("hidden");
+    inviteContent.classList.add("hidden");
+    invitePairedEl.textContent = "";
+    inviteStatus.textContent = t("Verbindung wird vorbereitet …");
+    try {
+      // Baut beim ersten Mal den cloudflared-Tunnel auf - das dauert ein
+      // paar Sekunden, deshalb der Zwischenstand oben.
+      const data = await invoke("sync_create_invite");
+      inviteStatus.textContent = t("Auf dem anderen Gerät scannen oder den Code eintippen.");
+      inviteQr.src = data.qr;
+      inviteCodeEl.textContent = data.code;
+      inviteValidEl.textContent = t("Gültig für {min} Minuten, danach einmalig verbraucht.", { min: data.valid_minutes });
+      inviteContent.classList.remove("hidden");
+
+      // Rückmeldung, sobald das Gegenüber den Code eingelöst hat - sonst
+      // sieht der Empfänger nur seinen QR-Code und weiß nicht, ob es klappt.
+      clearInterval(invitePollTimer);
+      invitePollTimer = setInterval(async () => {
+        try {
+          const names = await invoke("sync_paired_senders");
+          invitePairedEl.textContent = names.length
+            ? t("✅ Verbunden: {names}", { names: names.join(", ") })
+            : "";
+        } catch (_) {}
+      }, 2000);
+    } catch (err) {
+      inviteStatus.textContent = String(err);
+    }
+  }
+
+  inviteBtn.addEventListener("click", openInvite);
+  document.getElementById("syncInviteClose").addEventListener("click", closeInviteModal);
+  document.getElementById("syncInviteCancel").addEventListener("click", closeInviteModal);
+  inviteModal.addEventListener("click", (e) => { if (e.target === inviteModal) closeInviteModal(); });
+  inviteCopyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(inviteCodeEl.textContent);
+      showToast(t("Code kopiert."));
+    } catch (_) {
+      showToast(t("Kopieren nicht möglich - Code bitte abtippen."));
+    }
+  });
+
+  /* --- Code einlösen (dieses Gerät sendet) ------------------------------ */
+  const codeModal = document.getElementById("syncCodeModal");
+  const codeInput = document.getElementById("syncCodeInput");
+  const codeError = document.getElementById("syncCodeError");
+  const codeConnectBtn = document.getElementById("syncCodeConnect");
+
+  function closeCodeModal() {
+    codeModal.classList.add("hidden");
+  }
+
+  document.getElementById("syncEnterCodeBtn").addEventListener("click", () => {
+    popover.classList.add("hidden");
+    codeError.classList.add("hidden");
+    codeInput.value = "";
+    codeModal.classList.remove("hidden");
+    codeInput.focus();
+  });
+  document.getElementById("syncCodeClose").addEventListener("click", closeCodeModal);
+  document.getElementById("syncCodeCancel").addEventListener("click", closeCodeModal);
+  codeModal.addEventListener("click", (e) => { if (e.target === codeModal) closeCodeModal(); });
+
+  async function connectWithCode() {
+    const code = codeInput.value.trim();
+    if (!code) return;
+    codeConnectBtn.disabled = true;
+    codeConnectBtn.textContent = t("Verbinde …");
+    codeError.classList.add("hidden");
+    try {
+      const peer = await invoke("sync_pair_with_code", { code });
+      closeCodeModal();
+      await refreshPeers();
+      showToast(t("Mit {name} verbunden.", { name: peer.name }));
+      // Direkt weiter zum eigentlichen Zweck: Playlists auswählen.
+      openSendModal(peer);
+    } catch (err) {
+      codeError.textContent = String(err);
+      codeError.classList.remove("hidden");
+    } finally {
+      codeConnectBtn.disabled = false;
+      codeConnectBtn.textContent = t("Verbinden");
+    }
+  }
+  codeConnectBtn.addEventListener("click", connectWithCode);
+  codeInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") connectWithCode();
+  });
+
   listen("sync-peers-changed", refreshPeers);
+  // Gekoppelte Geräte überleben das Schließen des Panels - beim Start
+  // einmal holen, damit sie sofort in der Liste stehen.
+  refreshPeers();
 
   // A received file lands straight on disk (sync.rs writes it directly) -
   // nothing else would ever tell this app's own library view to re-fetch.

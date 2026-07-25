@@ -321,7 +321,7 @@ fn lan_ip() -> String {
 
 // --- Tauri commands (host side, via tauri-shim.js) --------------------------
 
-fn qr_data_uri(url: &str) -> Result<String, String> {
+pub(crate) fn qr_data_uri(url: &str) -> Result<String, String> {
     let code = qrcode::QrCode::new(url.as_bytes()).map_err(|e| e.to_string())?;
     let svg = code
         .render::<qrcode::render::svg::Color>()
@@ -339,44 +339,35 @@ fn qr_data_uri(url: &str) -> Result<String, String> {
 #[tauri::command]
 pub fn party_info(hub: tauri::State<Hub>) -> Result<serde_json::Value, String> {
     let public = hub.0.public_url.lock().unwrap().clone();
-    let url = public.clone().unwrap_or_else(|| {
-        format!("http://{}:{}/guest", lan_ip(), hub.0.port.load(Ordering::Relaxed))
-    });
+    let url = public
+        .as_ref()
+        .map(|origin| format!("{origin}/guest"))
+        .unwrap_or_else(|| format!("http://{}:{}/guest", lan_ip(), hub.0.port.load(Ordering::Relaxed)));
     Ok(json!({ "url": url, "qr": qr_data_uri(&url)?, "internet": public.is_some() }))
 }
 
-/// Toggle the internet guest link: spawns a cloudflared "quick tunnel"
-/// (free, anonymous, no Cloudflare account needed) that forwards a public
-/// https://<random>.trycloudflare.com address to the embedded LAN server.
-/// Guests anywhere on the internet can then use the exact same guest page,
-/// SSE sync and audio streaming - the tunnel is outbound-only, so it works
-/// through NAT/firewalls without any port forwarding.
-#[tauri::command]
-pub async fn party_internet(
-    app: tauri::AppHandle,
-    hub: tauri::State<'_, Hub>,
-    enable: bool,
-) -> Result<serde_json::Value, String> {
+/// Sorgt dafuer, dass ein cloudflared-Tunnel laeuft, und liefert dessen
+/// oeffentliche Adresse (nur die Herkunft, ohne Pfad - wer /guest oder
+/// /sync/pair braucht, haengt das selbst an).
+///
+/// Ausgelagert, weil inzwischen zwei Dinge denselben Tunnel brauchen: der
+/// Party-Gastlink und der Geraete-Sync (sync.rs). Beide teilen sich EINEN
+/// Tunnel - cloudflared zweimal zu starten waere nicht nur verschwenderisch,
+/// die zweite Adresse wuerde auch anders lauten und den jeweils anderen
+/// Link nicht ersetzen.
+pub(crate) async fn ensure_tunnel(app: &tauri::AppHandle, hub: &Hub) -> Result<String, String> {
     use tauri_plugin_shell::process::CommandEvent;
     use tauri_plugin_shell::ShellExt;
 
-    if !enable {
-        if let Some(child) = hub.0.tunnel.lock().unwrap().take() {
-            let _ = child.kill();
-        }
-        *hub.0.public_url.lock().unwrap() = None;
-        return Ok(json!({ "ok": true, "public_url": serde_json::Value::Null }));
-    }
-
     if let Some(existing) = hub.0.public_url.lock().unwrap().clone() {
-        return Ok(json!({ "ok": true, "public_url": existing }));
+        return Ok(existing);
     }
 
     let port = hub.0.port.load(Ordering::Relaxed);
     let spawned = app
         .shell()
         .sidecar("cloudflared")
-        .map_err(|_| "Internet-Link ist nur in der Desktop-App verfügbar.".to_string())?
+        .map_err(|_| "Internet-Verbindung ist nur in der Desktop-App verfügbar.".to_string())?
         .args([
             "tunnel",
             "--no-autoupdate",
@@ -399,15 +390,15 @@ pub async fn party_internet(
             Ok(Some(CommandEvent::Stdout(bytes))) | Ok(Some(CommandEvent::Stderr(bytes))) => {
                 let line = String::from_utf8_lossy(&bytes);
                 if let Some(m) = url_re.find(&line) {
-                    let url = format!("{}/guest", m.as_str());
-                    *hub.0.public_url.lock().unwrap() = Some(url.clone());
+                    let origin = m.as_str().to_string();
+                    *hub.0.public_url.lock().unwrap() = Some(origin.clone());
                     // Keep draining cloudflared's output so its pipe never
                     // fills up and blocks the tunnel process.
                     let mut rx_bg = rx_opt.take().unwrap();
                     tauri::async_runtime::spawn(async move {
                         while rx_bg.recv().await.is_some() {}
                     });
-                    return Ok(json!({ "ok": true, "public_url": url }));
+                    return Ok(origin);
                 }
             }
             Ok(Some(_)) => {}
@@ -419,7 +410,37 @@ pub async fn party_internet(
     if let Some(child) = hub.0.tunnel.lock().unwrap().take() {
         let _ = child.kill();
     }
-    Err("Internet-Link konnte nicht erstellt werden (Internetverbindung prüfen).".into())
+    Err("Internet-Verbindung konnte nicht aufgebaut werden (Internetverbindung prüfen).".into())
+}
+
+/// Toggle the internet guest link: spawns a cloudflared "quick tunnel"
+/// (free, anonymous, no Cloudflare account needed) that forwards a public
+/// https://<random>.trycloudflare.com address to the embedded LAN server.
+/// Guests anywhere on the internet can then use the exact same guest page,
+/// SSE sync and audio streaming - the tunnel is outbound-only, so it works
+/// through NAT/firewalls without any port forwarding.
+#[tauri::command]
+pub async fn party_internet(
+    app: tauri::AppHandle,
+    hub: tauri::State<'_, Hub>,
+    enable: bool,
+) -> Result<serde_json::Value, String> {
+    if !enable {
+        // Wichtig: der Tunnel gehoert inzwischen nicht mehr allein der
+        // Party - laeuft gerade eine Sync-Einladung darueber, wuerde sie
+        // hier mit abgerissen. Deshalb erst nachfragen.
+        if crate::sync::has_active_invite() {
+            return Err("Der Internet-Zugang wird gerade von einer Sync-Einladung genutzt. Erst dort beenden.".into());
+        }
+        if let Some(child) = hub.0.tunnel.lock().unwrap().take() {
+            let _ = child.kill();
+        }
+        *hub.0.public_url.lock().unwrap() = None;
+        return Ok(json!({ "ok": true, "public_url": serde_json::Value::Null }));
+    }
+
+    let origin = ensure_tunnel(&app, &hub).await?;
+    Ok(json!({ "ok": true, "public_url": format!("{origin}/guest") }))
 }
 
 #[tauri::command]
@@ -510,6 +531,10 @@ pub async fn run_server(hub: Hub) {
             post(crate::sync::api_sync_receive)
                 .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 1024)),
         )
+        // Einloesen eines Einladungscodes (sync.rs) - anders als
+        // /sync/receive nur ein winziges JSON, hier ist die 2MB-Vorgabe
+        // von axum genau richtig.
+        .route("/sync/pair", post(crate::sync::api_sync_pair))
         .with_state(hub.clone());
 
     let listener = match tokio::net::TcpListener::bind(("0.0.0.0", DEFAULT_PORT)).await {

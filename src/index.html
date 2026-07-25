@@ -90,6 +90,11 @@
             </div>
             <button type="button" id="syncModeBtn" class="party-toggle-switch" data-i18n="Sync-Modus starten">Sync-Modus starten</button>
             <div id="syncPeerList" class="sync-peer-list"></div>
+            <div class="sync-remote-actions">
+              <div class="sync-remote-hint" data-i18n="Nicht im selben WLAN? Dann per Code verbinden:">Nicht im selben WLAN? Dann per Code verbinden:</div>
+              <button type="button" id="syncInviteBtn" class="btn-secondary sync-remote-btn" data-i18n="📥 Code zum Empfangen erstellen">📥 Code zum Empfangen erstellen</button>
+              <button type="button" id="syncEnterCodeBtn" class="btn-secondary sync-remote-btn" data-i18n="📤 Code eingeben und senden">📤 Code eingeben und senden</button>
+            </div>
           </div>
         </div>
         <div class="sidebar-tool-wrap">
@@ -699,6 +704,50 @@
         <div class="modal-actions">
           <button type="button" id="syncModalCancel" class="btn-secondary" data-i18n="Abbrechen">Abbrechen</button>
           <button type="button" id="syncSendBtn" class="btn-primary-sm" data-i18n="Senden">Senden</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Einladung ausstellen: das EMPFANGENDE Gerät zeigt hier QR-Code und
+       Tippcode. Das Handy scannt, ein Freund am eigenen PC tippt. -->
+  <div id="syncInviteModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 data-i18n="Code zum Empfangen">Code zum Empfangen</h3>
+        <button type="button" id="syncInviteClose" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="syncInviteStatus" class="card-sub" data-i18n="Verbindung wird vorbereitet …">Verbindung wird vorbereitet …</div>
+        <div id="syncInviteContent" class="sync-invite-content hidden">
+          <img id="syncInviteQr" class="sync-invite-qr" alt="" />
+          <div class="sync-invite-code-label" data-i18n="Oder diesen Code eintippen:">Oder diesen Code eintippen:</div>
+          <div id="syncInviteCode" class="sync-invite-code"></div>
+          <button type="button" id="syncInviteCopy" class="btn-secondary" data-i18n="Code kopieren">Code kopieren</button>
+          <div id="syncInviteValid" class="card-sub"></div>
+          <div id="syncInvitePaired" class="card-sub"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="syncInviteCancel" class="btn-secondary" data-i18n="Schließen">Schließen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Code einlösen: das SENDENDE Gerät. -->
+  <div id="syncCodeModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 data-i18n="Code eingeben">Code eingeben</h3>
+        <button type="button" id="syncCodeClose" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="card-sub" data-i18n="Den Code eingeben, den das andere Gerät anzeigt. Danach erscheint es in der Geräteliste und du kannst ihm Playlists schicken.">Den Code eingeben, den das andere Gerät anzeigt. Danach erscheint es in der Geräteliste und du kannst ihm Playlists schicken.</div>
+        <input type="text" id="syncCodeInput" class="sync-code-input" autocomplete="off" spellcheck="false" placeholder="blaue-wolke-schnell-482913" data-i18n-placeholder="blaue-wolke-schnell-482913" />
+        <div id="syncCodeError" class="sync-code-error hidden"></div>
+        <div class="modal-actions">
+          <button type="button" id="syncCodeCancel" class="btn-secondary" data-i18n="Abbrechen">Abbrechen</button>
+          <button type="button" id="syncCodeConnect" class="btn-primary-sm" data-i18n="Verbinden">Verbinden</button>
         </div>
       </div>
     </div>

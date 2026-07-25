@@ -8,9 +8,9 @@
 //! Target-Dependency, damit der Android-Build den Crate gar nicht erst
 //! sieht (gleiche Bauart wie tauri-plugin-global-shortcut).
 //!
-//! Cover: Discord kann nur oeffentlich erreichbare Bild-URLs anzeigen. Die
-//! Cover dieser App liegen als eingebettete ID3-Bilder bzw. data:-URLs vor
-//! - beides fuer Discord unbrauchbar. Deshalb wird pro Titel EINMAL bei
+//! Cover: Discord kann nur oeffentlich erreichbare Bild-URLs anzeigen, die
+//! Cover dieser App liegen aber als eingebettete ID3-Bilder bzw. als
+//! data:-URLs vor - beides unbrauchbar. Deshalb wird pro Titel EINMAL bei
 //! Deezer nachgeschlagen (dieselbe Quelle, die cover.rs schon fuer
 //! fehlende Cover nutzt; deren `cover_medium` ist eine oeffentliche
 //! HTTPS-URL) und das Ergebnis fuer die Laufzeit gemerkt. Findet Deezer
