@@ -1903,6 +1903,26 @@ body.has-dynamic-colors .playlist-hero {
 }
 
 /* ========= PLAYER BAR ========= */
+/* ===== Ein-/Ausblenden der Player-Leiste =====
+   Ohne Track wird die Leiste gar nicht erst gerendert (display:none, nicht
+   opacity/visibility) - der Platz gehoert dann dem Inhalt, und ein
+   "Kein Titel ausgewaehlt / 0:00" ohne Funktion steht niemandem im Weg.
+
+   Der Auftritt laeuft ueber den Anker, nicht ueber .player-bar selbst:
+   dort haengt bereits die transform-Animation fuers Ein-/Ausblenden beim
+   Scrollen auf dem Handy (body.mobile-bars-hidden), beides auf derselben
+   Eigenschaft wuerde sich gegenseitig ueberschreiben.
+
+   Wenn keine der beiden Klassen gesetzt ist, hat der Anker GAR KEIN
+   transform - ein bleibendes translateY(0) wuerde einen neuen
+   Bezugsrahmen fuer position:fixed-Kinder aufspannen. */
+.player-bar-anchor { transition: transform 0.2s ease; }
+.player-bar-anchor.player-hidden { display: none; }
+.player-bar-anchor.player-offscreen { transform: translateY(110%); }
+@media (prefers-reduced-motion: reduce) {
+  .player-bar-anchor { transition: none; }
+}
+
 .player-bar {
   height: 90px;
   background: var(--sp-black);

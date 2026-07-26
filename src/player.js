@@ -368,6 +368,36 @@ function cssEscape(value) {
   return String(value).replace(/["\\]/g, "\\$&");
 }
 
+/* ===== Bild-Rückfall für die ganze App =====
+   Ein <img>, dessen Quelle nicht lädt, zeigt sonst das kaputte Bildsymbol
+   des Browsers. Genau das passierte beim Start: pbCover/playlistCover/
+   visualizerCover standen im HTML auf src="" - eine leere Quelle löst der
+   Browser gegen die Seiten-URL auf, lädt also das HTML-Dokument als Bild
+   und scheitert zwangsläufig. Die leeren src sind raus; zusätzlich fängt
+   dieser eine Zuhörer JEDES fehlgeschlagene Bild ab, auch künftige und
+   dynamisch erzeugte - deutlich verlässlicher, als an ~12 Stellen einzeln
+   einen onerror-Handler zu setzen und beim nächsten neuen <img> wieder
+   einen zu vergessen.
+
+   "error" steigt nicht auf, deshalb die Erfassungsphase (true).
+
+   Ausgenommen: QR-Bilder (data-no-cover-fallback). Ein Notensymbol
+   anstelle eines Codes wäre irreführender als ein leeres Feld. */
+document.addEventListener(
+  "error",
+  (e) => {
+    const el = e.target;
+    if (!el || el.tagName !== "IMG") return;
+    if (el.hasAttribute("data-no-cover-fallback")) return;
+    // Ohne diese Marke käme es zur Endlosschleife, falls selbst der
+    // Platzhalter einmal nicht lädt.
+    if (el.dataset.coverFallbackApplied) return;
+    el.dataset.coverFallbackApplied = "1";
+    el.src = PLACEHOLDER_COVER;
+  },
+  true
+);
+
 /* ===== State ===== */
 let library = [];
 let currentPlaylist = null;
@@ -1429,6 +1459,7 @@ async function deleteTrack(index) {
       audioEl.removeAttribute("src");
       currentTrackIndex = -1;
       nowPlayingMeta = null;
+      hidePlayerBar();
       updatePlayButton(false);
       pbTitle.textContent = t("Kein Titel ausgewählt");
       pbArtist.textContent = "—";
@@ -1920,12 +1951,48 @@ function trackRecentlyPlayed(index) {
   if (recentlyPlayed.length > cap) recentlyPlayed = recentlyPlayed.slice(-cap);
 }
 
+/* ===== Sichtbarkeit der Player-Leiste =====
+   Solange nichts läuft, ist die Leiste komplett aus dem Layout (siehe
+   .player-hidden) - vorher stand dort beim Start eine funktionslose Hülle
+   aus "Kein Titel ausgewählt", kaputtem Cover und 0:00 / 0:00. */
+const playerBarAnchor = document.querySelector(".player-bar-anchor");
+let playerBarShown = false;
+
+function showPlayerBar() {
+  if (playerBarShown) return;
+  playerBarShown = true;
+  playerBarAnchor.classList.remove("player-hidden");
+  // Erst unterhalb des Bildschirms platzieren, dann hochfahren. Das
+  // erzwungene Neuberechnen dazwischen ist nötig, sonst fasst der Browser
+  // beide Klassenwechsel zu einem Schritt zusammen und die Leiste
+  // erscheint ohne Bewegung.
+  //
+  // Bewusst KEIN requestAnimationFrame dafür: das ruht, solange das
+  // Fenster nicht zeichnet (Handy im Hintergrund, App minimiert). Startet
+  // dort ein Titel - etwa über die Benachrichtigung - bliebe die Leiste
+  // sonst unter dem Bildschirmrand hängen, bis die App wieder nach vorn
+  // kommt. Das Auslesen von offsetHeight erzwingt die Neuberechnung
+  // dagegen sofort und unabhängig davon, ob gerade gezeichnet wird.
+  playerBarAnchor.classList.add("player-offscreen");
+  void playerBarAnchor.offsetHeight;
+  playerBarAnchor.classList.remove("player-offscreen");
+}
+
+/* Wird aufgerufen, wenn der laufende Titel verschwindet (gelöscht) - dann
+   soll die Leiste nicht als leere Hülle stehen bleiben. */
+function hidePlayerBar() {
+  playerBarShown = false;
+  playerBarAnchor.classList.add("player-hidden");
+  playerBarAnchor.classList.remove("player-offscreen");
+}
+
 function playTrack(index, opts = {}) {
   if (!currentPlaylist || !currentPlaylist.tracks[index]) return;
   currentTrackIndex = index;
   trackRecentlyPlayed(index);
   const track = currentPlaylist.tracks[index];
 
+  showPlayerBar();
   initAudioGraph();
   // Auch im handoff-Fall nötig: der Gain-Node des Ghosts trägt zwar schon
   // den richtigen Wert (beim Vorladen gesetzt), aber der Kompressor-Zustand
@@ -2005,6 +2072,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
   // macht nextTrack() dort weiter statt wieder bei Track 0 anzufangen.
   if (currentTrackIndex >= 0) queueResumeIndex = currentTrackIndex;
 
+  showPlayerBar();
   initAudioGraph();
   applyReplayGainForActiveTrack(entry.stream_url); // siehe playTrack
   clearAbLoop(); // siehe playTrack - Loop-Punkte gehören nie zu einem neuen Song
@@ -6231,6 +6299,7 @@ function renderDuplicates(groups) {
             audioEl.removeAttribute("src");
             currentTrackIndex = -1;
             nowPlayingMeta = null;
+            hidePlayerBar();
             updatePlayButton(false);
             pbTitle.textContent = t("Kein Titel ausgewählt");
             pbArtist.textContent = "—";

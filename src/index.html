@@ -56,7 +56,7 @@
           <button type="button" id="qrToggleBtn" class="sidebar-tool-btn" data-i18n-title="Freunde einladen" title="Freunde einladen">👥</button>
           <div id="qrPopover" class="sidebar-tool-popover hidden">
             <div class="sidebar-tool-popover-title" data-i18n="Freunde einladen">Freunde einladen</div>
-            <img id="qrImage" class="qr-image" src="/api/qr" alt="QR-Code zur Gäste-Seite" />
+            <img id="qrImage" class="qr-image" src="/api/qr" alt="QR-Code zur Gäste-Seite" data-no-cover-fallback />
             <div id="qrHint" class="qr-hint" data-i18n="Scannen &amp; Songs zur Warteschlange hinzufügen">Scannen &amp; Songs zur Warteschlange hinzufügen</div>
             <div id="qrParticipantsTitle" class="qr-participants-title hidden" data-i18n="Hören gerade zu">Hören gerade zu</div>
             <div id="qrParticipantList" class="qr-participant-list"></div>
@@ -268,7 +268,7 @@
 
         <div id="playlistView" class="view-section hidden">
           <div class="playlist-hero">
-            <img id="playlistCover" class="playlist-cover" src="" alt="" />
+            <img id="playlistCover" class="playlist-cover" alt="" />
             <div class="playlist-meta">
               <span class="playlist-kind" data-i18n="PLAYLIST">PLAYLIST</span>
               <div class="playlist-title-row">
@@ -775,7 +775,7 @@
       <div class="modal-body">
         <div id="syncInviteStatus" class="card-sub" data-i18n="Verbindung wird vorbereitet …">Verbindung wird vorbereitet …</div>
         <div id="syncInviteContent" class="sync-invite-content hidden">
-          <img id="syncInviteQr" class="sync-invite-qr" alt="" />
+          <img id="syncInviteQr" class="sync-invite-qr" alt="" data-no-cover-fallback />
           <div class="sync-invite-code-label" data-i18n="Oder diesen Code eintippen:">Oder diesen Code eintippen:</div>
           <div id="syncInviteCode" class="sync-invite-code"></div>
           <button type="button" id="syncInviteCopy" class="btn-secondary" data-i18n="Code kopieren">Code kopieren</button>
@@ -828,10 +828,10 @@
     </div>
   </div>
 
-  <div class="player-bar-anchor">
+  <div class="player-bar-anchor player-hidden">
   <footer class="player-bar">
     <div class="player-bar-left">
-      <img id="pbCover" class="pb-cover" src="" alt="" />
+      <img id="pbCover" class="pb-cover" alt="" />
       <div class="pb-info">
         <div id="pbTitle" class="pb-title" data-i18n="Kein Titel ausgewählt">Kein Titel ausgewählt</div>
         <div id="pbArtist" class="pb-artist">—</div>
@@ -906,7 +906,7 @@
   <div id="visualizerOverlay" class="visualizer-overlay hidden">
     <canvas id="visualizerCanvas" class="visualizer-canvas"></canvas>
     <div class="visualizer-content">
-      <img id="visualizerCover" class="visualizer-cover" src="" alt="" />
+      <img id="visualizerCover" class="visualizer-cover" alt="" />
       <div id="visualizerTitle" class="visualizer-title">—</div>
       <div id="visualizerArtist" class="visualizer-artist">—</div>
     </div>
