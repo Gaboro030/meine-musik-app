@@ -147,6 +147,19 @@ const pbVolumeWrap = document.getElementById("pbVolumeWrap");
 const pbVolumeBar = document.getElementById("pbVolumeBar");
 const pbVolumeHandle = document.getElementById("pbVolumeHandle");
 const pbVolIcon = document.getElementById("pbVolIcon");
+const pbProgressTrack = pbProgressWrap.querySelector(".pb-progress-track");
+const pbVolumeTrack = pbVolumeWrap.querySelector(".pb-volume-track");
+
+/* Zieht der Nutzer gerade am Fortschrittsbalken? Solange das läuft, darf
+   nichts anderes die Anzeige beschreiben (timeupdate feuert 4x/s und würde
+   den Griff jedes Mal unter dem Finger weg zurückspringen lassen).
+   seekPreviewPct ist die Position unter dem Finger, die die Wellenform
+   statt audioEl.currentTime zeichnet - der Song selbst springt erst beim
+   Loslassen. Beide hier oben deklariert, weil drawWaveform() und der
+   timeupdate-Handler weiter oben in der Datei stehen als der Regler-Code. */
+let isSeeking = false;
+let seekPreviewPct = null;
+
 /* ===== Dual-Audio für echtes Crossfade =====
    Zwei <audio>-Elemente wechseln sich als "aktives" Element ab: während
    die letzten CROSSFADE_SECONDS eines Songs laufen, spielt das jeweils
@@ -1976,6 +1989,10 @@ function showPlayerBar() {
   playerBarAnchor.classList.add("player-offscreen");
   void playerBarAnchor.offsetHeight;
   playerBarAnchor.classList.remove("player-offscreen");
+  // Bahnbreiten der Regler nachmessen: vorher war die Leiste display:none
+  // und damit 0 breit. Der ResizeObserver holt das zwar auch nach, aber
+  // erst beim nächsten gezeichneten Bild - im Hintergrund also gar nicht.
+  measureSliderTracks();
 }
 
 /* Wird aufgerufen, wenn der laufende Titel verschwindet (gelöscht) - dann
@@ -2397,10 +2414,13 @@ audioEl.addEventListener("pause", () => {
 
 audioEl.addEventListener("timeupdate", () => {
   if (!audioEl.duration) return;
-  const pct = (audioEl.currentTime / audioEl.duration) * 100;
-  pbProgressHandle.style.left = `${pct}%`;
-  drawWaveform();
-  pbTimeCurrent.textContent = fmtTime(audioEl.currentTime);
+  // Nur die ANZEIGE aussetzen, solange gezogen wird - maybeStartFadeOut()
+  // und der Medien-Sitzungs-Stand müssen weiterlaufen, sonst verpasst ein
+  // langes Ziehen kurz vor Songende den Crossfade-Einsatz.
+  if (!isSeeking) {
+    renderProgress(audioEl.currentTime / audioEl.duration);
+    pbTimeCurrent.textContent = fmtTime(audioEl.currentTime);
+  }
   maybeStartFadeOut();
 
   if ("mediaSession" in navigator && "setPositionState" in navigator.mediaSession) {
@@ -2937,7 +2957,11 @@ function drawWaveform() {
   const barCount = peaks.length;
   const gap = Math.max(1, (w / barCount) * 0.3);
   const barWidth = Math.max(1, (w - gap * (barCount - 1)) / barCount);
-  const playedPct = audioEl.duration ? audioEl.currentTime / audioEl.duration : 0;
+  // Beim Ziehen zeigt die Wellenform die Position unter dem Finger, nicht
+  // die (noch unveränderte) Abspielposition - sonst gäbe es keine
+  // Rückmeldung, wohin man gerade zielt.
+  const playedPct =
+    seekPreviewPct != null ? seekPreviewPct : audioEl.duration ? audioEl.currentTime / audioEl.duration : 0;
   const playedBars = Math.round(playedPct * barCount);
 
   for (let i = 0; i < barCount; i++) {
@@ -3100,51 +3124,202 @@ window.addEventListener("resize", () => {
   drawWaveform();
 });
 
-/* ===== Scrubber (click + drag) ===== */
-function seekFromEvent(e) {
-  const rect = pbProgressWrap.querySelector(".pb-progress-track").getBoundingClientRect();
-  const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
-  const pct = rect.width ? x / rect.width : 0;
-  if (audioEl.duration) {
-    audioEl.currentTime = pct * audioEl.duration;
-  }
-}
-let scrubbing = false;
-pbProgressWrap.addEventListener("mousedown", (e) => {
-  scrubbing = true;
-  seekFromEvent(e);
-});
-window.addEventListener("mousemove", (e) => {
-  if (scrubbing) seekFromEvent(e);
-});
-window.addEventListener("mouseup", () => {
-  scrubbing = false;
-});
+/* ===== Fortschritts- und Lautstärkeregler (Zeigereingabe) =====
+   Beide Regler sind selbstgebaute <div>s. Vorher hingen sie ausschließlich
+   an mousedown/mousemove/mouseup. Ein Touchscreen liefert Maus-Events aber
+   erst NACH dem Loslassen (und nur, wenn der Browser die Geste nicht schon
+   vorher als Scrollen für sich beansprucht hat) - Ziehen war auf dem Handy
+   damit schlicht unmöglich, ein Tippen sprang bestenfalls verzögert.
 
-/* ===== Volume ===== */
-function setVolumeFromEvent(e) {
-  const rect = pbVolumeWrap.querySelector(".pb-volume-track").getBoundingClientRect();
+   Pointer-Events bedienen Maus, Finger und Stift mit einem Satz Handler.
+   setPointerCapture hält das Ziehen beim Regler, auch wenn der Zeiger ihn
+   verlässt - das ersetzt die fensterweiten mousemove/mouseup-Listener, die
+   sonst bei JEDER Mausbewegung in der App mitliefen.
+
+   Dazu gehört zwingend touch-action: none im CSS: ohne das reißt der
+   Browser die Geste nach wenigen Pixeln als Scrollen an sich und schickt
+   pointercancel mitten im Ziehen. */
+
+function pctFromPointer(track, e) {
+  const rect = track.getBoundingClientRect();
   const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
-  const pct = rect.width ? x / rect.width : 0;
-  // Beide Elemente: nach einem Crossfade-Rollentausch soll die Lautstärke
-  // nicht plötzlich auf einem alten Wert stehen.
-  audioElA.volume = pct;
-  audioElB.volume = pct;
-  pbVolumeBar.style.width = `${pct * 100}%`;
-  pbVolumeHandle.style.left = `${pct * 100}%`;
+  return rect.width ? x / rect.width : 0;
+}
+
+/* Griffe werden per transform statt per left gesetzt: eine Transformation
+   braucht kein neues Layout, ein left-Wechsel schon - und der Griff bewegt
+   sich bei jedem timeupdate bzw. bei jedem Zeigerpunkt.
+   translateX braucht dafür Pixel (Prozente würden sich auf die Breite des
+   Griffs selbst beziehen, nicht auf die Bahn), deshalb die gemessenen
+   Bahnbreiten unten. */
+function placeHandle(handle, trackWidth, pct) {
+  handle.style.transform = `translate(-50%, -50%) translateX(${pct * trackWidth}px)`;
+}
+
+/* Bahnbreiten gemessen halten statt bei jeder Bewegung neu abzufragen: ein
+   Lesen von clientWidth direkt nach dem Schreiben eines Stils erzwingt ein
+   Zwischen-Layout. Der ResizeObserver meldet sich nach dem Layout von
+   selbst - auch wenn die Player-Leiste aus display:none auftaucht
+   (Block 1) oder das Fenster die Rasterspalten neu verteilt. */
+let progressTrackWidth = 0;
+let volumeTrackWidth = 0;
+let lastProgressPct = 0;
+let lastVolumePct = 1;
+
+function measureSliderTracks() {
+  progressTrackWidth = pbProgressTrack.clientWidth;
+  volumeTrackWidth = pbVolumeTrack.clientWidth;
+}
+
+function renderProgress(pct) {
+  lastProgressPct = pct;
+  placeHandle(pbProgressHandle, progressTrackWidth, pct);
+  drawWaveform();
+}
+
+function renderVolume(pct) {
+  lastVolumePct = pct;
+  // scaleX statt width: gleiche Optik, aber ohne Layout pro Bild.
+  pbVolumeBar.style.transform = `scaleX(${pct})`;
+  placeHandle(pbVolumeHandle, volumeTrackWidth, pct);
   pbVolIcon.textContent = pct === 0 ? "🔇" : pct < 0.5 ? "🔉" : "🔊";
 }
-let scrubbingVolume = false;
-pbVolumeWrap.addEventListener("mousedown", (e) => {
-  scrubbingVolume = true;
-  setVolumeFromEvent(e);
+
+if (window.ResizeObserver) {
+  const trackObserver = new ResizeObserver(() => {
+    measureSliderTracks();
+    placeHandle(pbProgressHandle, progressTrackWidth, lastProgressPct);
+    placeHandle(pbVolumeHandle, volumeTrackWidth, lastVolumePct);
+  });
+  trackObserver.observe(pbProgressTrack);
+  trackObserver.observe(pbVolumeTrack);
+} else {
+  window.addEventListener("resize", () => {
+    measureSliderTracks();
+    placeHandle(pbProgressHandle, progressTrackWidth, lastProgressPct);
+    placeHandle(pbVolumeHandle, volumeTrackWidth, lastVolumePct);
+  });
+}
+
+/* Gemeinsames Ziehverhalten beider Regler.
+   onPreview läuft über requestAnimationFrame: ein Finger erzeugt auf
+   modernen Bildschirmen bis zu 120 Zeigerpunkte pro Sekunde, die Wellenform
+   muss aber höchstens einmal pro Bild neu gezeichnet werden. (Hier ist rAF
+   unbedenklich - anders als bei der Einblend-Animation der Player-Leiste
+   wird währenddessen garantiert gezeichnet, der Nutzer schaut ja hin.) */
+function attachDragSlider({ wrap, track, onStart, onPreview, onCommit }) {
+  let activePointerId = null;
+  let pendingPct = null;
+  let rafId = 0;
+
+  const flush = () => {
+    rafId = 0;
+    if (pendingPct === null) return;
+    const pct = pendingPct;
+    pendingPct = null;
+    onPreview(pct);
+  };
+
+  wrap.addEventListener("pointerdown", (e) => {
+    if (activePointerId !== null) return; // zweiter Finger wird ignoriert
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    activePointerId = e.pointerId;
+    try {
+      wrap.setPointerCapture(e.pointerId);
+    } catch (_) {
+      // Ohne Zeiger-Fang endet das Ziehen, sobald der Zeiger den Regler
+      // verlaesst - besser als ein geworfener Fehler, der den Rest des
+      // Handlers verschluckt.
+    }
+    wrap.classList.add("dragging");
+    measureSliderTracks();
+    if (onStart) onStart();
+    onPreview(pctFromPointer(track, e)); // sofort, ohne ein Bild Verzögerung
+    e.preventDefault(); // kein Text-Markieren, kein synthetischer Maus-Klick
+  });
+
+  wrap.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== activePointerId) return;
+    pendingPct = pctFromPointer(track, e);
+    if (!rafId) rafId = requestAnimationFrame(flush);
+  });
+
+  const finish = (e, keep) => {
+    if (e.pointerId !== activePointerId) return;
+    activePointerId = null;
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    // Maßgeblich ist immer die Stelle, an der losgelassen wurde: ein noch
+    // auf sein Bild wartender Zwischenwert ist damit veraltet. (Gilt auch
+    // fürs reine Tippen - da gab es nie ein pointermove.)
+    pendingPct = null;
+    wrap.classList.remove("dragging");
+    if (wrap.hasPointerCapture(e.pointerId)) wrap.releasePointerCapture(e.pointerId);
+    onCommit(keep ? pctFromPointer(track, e) : null);
+  };
+
+  wrap.addEventListener("pointerup", (e) => finish(e, true));
+  // pointercancel kommt vom System (eingehender Anruf, Geste vom Rand) -
+  // dann NICHT springen, sondern den alten Stand wiederherstellen.
+  wrap.addEventListener("pointercancel", (e) => finish(e, false));
+}
+
+attachDragSlider({
+  wrap: pbProgressWrap,
+  track: pbProgressTrack,
+  onStart: () => {
+    isSeeking = true;
+  },
+  onPreview: (pct) => {
+    seekPreviewPct = pct;
+    renderProgress(pct);
+    if (audioEl.duration) pbTimeCurrent.textContent = fmtTime(pct * audioEl.duration);
+  },
+  onCommit: (pct) => {
+    isSeeking = false;
+    seekPreviewPct = null;
+    if (pct !== null && audioEl.duration) audioEl.currentTime = pct * audioEl.duration;
+    // Anzeige sofort auf den echten Stand ziehen: das nächste timeupdate
+    // kann bis zu 250ms auf sich warten lassen - im pausierten Zustand
+    // sogar für immer.
+    renderProgress(audioEl.duration ? audioEl.currentTime / audioEl.duration : 0);
+    pbTimeCurrent.textContent = fmtTime(audioEl.currentTime || 0);
+  },
 });
-window.addEventListener("mousemove", (e) => {
-  if (scrubbingVolume) setVolumeFromEvent(e);
+
+// Beide Elemente: nach einem Crossfade-Rollentausch soll die Lautstärke
+// nicht plötzlich auf einem alten Wert stehen.
+function applyVolume(pct) {
+  audioElA.volume = pct;
+  audioElB.volume = pct;
+  renderVolume(pct);
+}
+
+attachDragSlider({
+  wrap: pbVolumeWrap,
+  track: pbVolumeTrack,
+  // Lautstärke wirkt sofort, nicht erst beim Loslassen - alles andere
+  // fühlte sich wie ein kaputter Regler an.
+  onPreview: applyVolume,
+  // Beim Loslassen trotzdem noch einmal: die letzte Bewegung wartet u.U.
+  // noch auf ihr Bild und ginge sonst verloren - ein schnelles Ziehen bis
+  // ganz nach links hätte dann nicht stummgeschaltet.
+  onCommit: (pct) => {
+    if (pct !== null) applyVolume(pct);
+  },
 });
-window.addEventListener("mouseup", () => {
-  scrubbingVolume = false;
+
+/* Anzeige folgt der tatsächlichen Lautstärke - egal wer sie setzt (der
+   Startwert weiter unten in dieser Datei, ein Tastenkürzel, der
+   Crossfade-Zwilling). Vorher stand im CSS fest "80%", während die
+   Prozentzahl daneben schon den echten Wert zeigte. */
+audioEl.addEventListener("volumechange", () => {
+  renderVolume(audioEl.volume);
 });
+measureSliderTracks();
+renderVolume(audioEl.volume);
 
 /* ===== Drag & Drop: add a playlist / add tracks by dropping a folder ===== */
 

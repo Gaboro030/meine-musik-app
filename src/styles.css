@@ -2108,10 +2108,32 @@ body.has-dynamic-colors .playlist-hero {
   flex-shrink: 0;
 }
 .pb-time:last-child { text-align: right; }
+/* touch-action: none ist die Bedingung dafuer, dass Ziehen auf dem Handy
+   ueberhaupt ankommt - ohne das wertet der Browser die Bewegung nach
+   wenigen Pixeln als Scrollen, bricht mit pointercancel ab und der Regler
+   bleibt stehen. Siehe attachDragSlider in player.js. */
 .pb-progress-wrap {
   flex: 1;
   padding: 8px 0;
   cursor: pointer;
+  position: relative;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Trefferflaeche auf die empfohlenen 44px bringen, OHNE die Zeilenhoehe
+   der Player-Leiste zu veraendern: das unsichtbare Pseudo-Element nimmt
+   Zeiger-Events entgegen (die beim Elternelement ankommen, Pseudo-
+   Elemente sind kein eigenes Ziel) und ragt dafuer ueber den Kasten
+   hinaus, statt ihn groesser zu machen. */
+.pb-progress-wrap::before,
+.pb-volume-wrap::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
 .pb-progress-track {
   position: relative;
@@ -2131,19 +2153,28 @@ body.has-dynamic-colors .playlist-hero {
   display: block;
 }
 .pb-progress-bar { display: none; }
+/* Position kommt aus player.js als transform: translateX(...px) - nicht
+   als left, weil eine Transformation ohne neues Layout auskommt und der
+   Griff sich viermal pro Sekunde bewegt. */
 .pb-progress-handle {
   position: absolute;
   top: 50%;
-  left: 0%;
+  left: 0;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: var(--sp-text);
   transform: translate(-50%, -50%);
   opacity: 0;
-  transition: opacity 0.1s ease;
+  transition: opacity 0.1s ease, width 0.12s ease, height 0.12s ease;
 }
-.pb-progress-wrap:hover .pb-progress-handle { opacity: 1; }
+.pb-progress-wrap:hover .pb-progress-handle,
+.pb-progress-wrap.dragging .pb-progress-handle { opacity: 1; }
+/* Waehrend des Ziehens groesser: auf dem Handy liegt der Finger sonst
+   komplett auf dem Griff und man sieht nicht, wo man gerade steht.
+   Breite/Hoehe statt scale(), damit das translate(-50%,-50%) von selbst
+   mitwaechst und der Griff mittig ueber der Zielstelle bleibt. */
+.pb-progress-wrap.dragging .pb-progress-handle { width: 18px; height: 18px; }
 
 .player-bar-right {
   display: flex;
@@ -2156,6 +2187,9 @@ body.has-dynamic-colors .playlist-hero {
   width: 100px;
   padding: 8px 0;
   cursor: pointer;
+  position: relative;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .pb-volume-track {
   position: relative;
@@ -2163,26 +2197,33 @@ body.has-dynamic-colors .playlist-hero {
   border-radius: 100px;
   background: rgba(255,255,255,0.3);
 }
+/* Fuellstand ueber scaleX statt ueber width: gleiche Optik, aber ohne
+   Layout waehrend des Ziehens. Startwert passend zum audioEl.volume = 0.8
+   weiter unten in player.js; danach setzt renderVolume() den echten Wert. */
 .pb-volume-bar {
   position: absolute;
   inset: 0;
-  width: 80%;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0.8);
   background: var(--sp-text);
   border-radius: 100px;
 }
-.pb-volume-wrap:hover .pb-volume-bar { background: var(--sp-green); }
+.pb-volume-wrap:hover .pb-volume-bar,
+.pb-volume-wrap.dragging .pb-volume-bar { background: var(--sp-green); }
 .pb-volume-handle {
   position: absolute;
   top: 50%;
-  left: 80%;
+  left: 0;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: var(--sp-text);
   transform: translate(-50%, -50%);
   opacity: 0;
-  transition: opacity 0.1s ease;
+  transition: opacity 0.1s ease, width 0.12s ease, height 0.12s ease;
 }
+.pb-volume-wrap.dragging .pb-volume-handle { opacity: 1; width: 18px; height: 18px; }
 
 /* ========= SHUFFLE+ (right-click re-roll) ========= */
 @keyframes shufflePulse {
