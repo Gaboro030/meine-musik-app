@@ -97,6 +97,11 @@
             </div>
           </div>
         </div>
+        <!-- Zweiter Auslöser für denselben Equalizer. Auf dem Handy der
+             einzige: die rechte Player-Leisten-Spalte ist dort ausgeblendet. -->
+        <div class="sidebar-tool-wrap">
+          <button type="button" id="eqDockBtn" class="sidebar-tool-btn" data-i18n-title="Equalizer" title="Equalizer">🎚️</button>
+        </div>
         <div class="sidebar-tool-wrap">
           <button type="button" id="themeToggleBtn" class="sidebar-tool-btn" data-i18n-title="Design" title="Design">🎨</button>
           <div id="themePopover" class="sidebar-tool-popover hidden">
@@ -709,6 +714,56 @@
     </div>
   </div>
 
+  <!-- Equalizer. Bewusst ein Modal statt eines Popovers an der Player-
+       Leiste: nur so ist er auch auf dem Handy erreichbar. -->
+  <div id="eqModal" class="modal-overlay hidden">
+    <div class="modal eq-modal">
+      <div class="modal-header">
+        <h3 data-i18n="Equalizer">Equalizer</h3>
+        <button type="button" id="eqModalClose" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="eq-section-title" data-i18n="Modus">Modus</div>
+        <!-- Die Modus-Schaltflächen erzeugt player.js aus EQ_PRESETS, damit
+             Werte und Beschriftung nur an einer Stelle stehen. -->
+        <div id="eqPresetRow" class="eq-preset-row"></div>
+
+        <div class="eq-section-title" data-i18n="Feineinstellung">Feineinstellung</div>
+        <div class="eq-sliders">
+          <div class="eq-slider-col">
+            <div class="eq-slider-box">
+              <input type="range" id="eqBassSlider" class="eq-slider" min="-12" max="12" step="1" value="0"
+                     data-i18n-title="Bass" title="Bass" />
+            </div>
+            <span id="eqBassValue" class="eq-slider-value">0 dB</span>
+            <span class="eq-slider-label" data-i18n="Bass">Bass</span>
+          </div>
+          <div class="eq-slider-col">
+            <div class="eq-slider-box">
+              <input type="range" id="eqMidSlider" class="eq-slider" min="-12" max="12" step="1" value="0"
+                     data-i18n-title="Mitten" title="Mitten" />
+            </div>
+            <span id="eqMidValue" class="eq-slider-value">0 dB</span>
+            <span class="eq-slider-label" data-i18n="Mitten">Mitten</span>
+          </div>
+          <div class="eq-slider-col">
+            <div class="eq-slider-box">
+              <input type="range" id="eqTrebleSlider" class="eq-slider" min="-12" max="12" step="1" value="0"
+                     data-i18n-title="Höhen" title="Höhen" />
+            </div>
+            <span id="eqTrebleValue" class="eq-slider-value">0 dB</span>
+            <span class="eq-slider-label" data-i18n="Höhen">Höhen</span>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="eqResetBtn" class="btn-secondary" data-i18n="Zurücksetzen">Zurücksetzen</button>
+          <button type="button" id="eqDoneBtn" class="btn-primary-sm" data-i18n="Fertig">Fertig</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Einladung ausstellen: das EMPFANGENDE Gerät zeigt hier QR-Code und
        Tippcode. Das Handy scannt, ein Freund am eigenen PC tippt. -->
   <div id="syncInviteModal" class="modal-overlay hidden">
@@ -828,26 +883,11 @@
           <div id="abLoopStatus" class="pbtools-abloop-status" data-i18n="Kein Loop aktiv">Kein Loop aktiv</div>
         </div>
       </div>
-      <div class="eq-wrap">
-        <button id="eqToggleBtn" class="pb-vol-icon eq-toggle-btn" data-i18n-title="Equalizer" title="Equalizer">🎚️</button>
-        <div id="eqPopover" class="eq-popover hidden">
-          <div class="eq-popover-title" data-i18n="Equalizer">Equalizer</div>
-          <div class="eq-sliders">
-            <div class="eq-slider-col">
-              <input type="range" id="eqBassSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
-              <span class="eq-slider-label" data-i18n="Bass">Bass</span>
-            </div>
-            <div class="eq-slider-col">
-              <input type="range" id="eqMidSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
-              <span class="eq-slider-label" data-i18n="Mid">Mid</span>
-            </div>
-            <div class="eq-slider-col">
-              <input type="range" id="eqTrebleSlider" class="eq-slider" min="-12" max="12" step="1" value="0" />
-              <span class="eq-slider-label" data-i18n="Treble">Treble</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- Der Equalizer selbst liegt als Modal weiter unten, nicht mehr als
+           Popover in dieser Spalte: .player-bar-right ist auf Mobilgeräten
+           display:none, ein Popover darin wäre auf Android nie zu öffnen
+           gewesen. Hier steht nur noch der Auslöser. -->
+      <button id="eqToggleBtn" class="pb-vol-icon eq-toggle-btn" data-i18n-title="Equalizer" title="Equalizer">🎚️</button>
       <span id="pbVolIcon" class="pb-vol-icon">🔊</span>
       <div class="pb-volume-wrap" id="pbVolumeWrap">
         <div class="pb-volume-track">

@@ -3238,7 +3238,26 @@ let visualizerAnalyser = null;
 let gainA = null, gainB = null; // ein Gain pro <audio>-Element - die beiden Crossfade-Rampen
 let rgA = null, rgB = null; // ReplayGain pro Element, VOR den Crossfade-Rampen (siehe applyReplayGainFor)
 let audioGraphReady = false;
-const eqSettings = { bass: 0, mid: 0, treble: 0 };
+/* Wurde bisher bei jedem Start auf 0 zurueckgesetzt - eine einmal
+   eingestellte Klangfarbe war nach dem naechsten Oeffnen der App weg.
+   initAudioGraph() liest diese Werte beim Aufbau des Graphen aus, das
+   Laden muss also vor dem ersten Abspielen passieren (hier oben, nicht
+   erst bei der UI-Verdrahtung weiter unten). */
+const EQ_STORAGE_KEY = "eqSettings";
+function loadEqSettings() {
+  const fallback = { bass: 0, mid: 0, treble: 0 };
+  try {
+    const raw = JSON.parse(localStorage.getItem(EQ_STORAGE_KEY) || "null");
+    if (!raw || typeof raw !== "object") return fallback;
+    // Fremde/kaputte Werte nie ungeprueft in einen Filter schreiben - ein
+    // NaN im gain wuerde den ganzen Audio-Graphen verstummen lassen.
+    const clean = (v) => (Number.isFinite(v) ? Math.max(-12, Math.min(12, Math.round(v))) : 0);
+    return { bass: clean(raw.bass), mid: clean(raw.mid), treble: clean(raw.treble) };
+  } catch (_) {
+    return fallback;
+  }
+}
+const eqSettings = loadEqSettings();
 
 const activeGain = () => (audioEl === audioElA ? gainA : gainB);
 const otherGain = () => (audioEl === audioElA ? gainB : gainA);
@@ -3523,32 +3542,148 @@ function initAudioGraph() {
   audioGraphReady = true;
 }
 
-[
-  ["eqBassSlider", "bass", () => eqBass],
-  ["eqMidSlider", "mid", () => eqMid],
-  ["eqTrebleSlider", "treble", () => eqTreble],
-].forEach(([id, key, getFilter]) => {
-  document.getElementById(id).addEventListener("input", (e) => {
+/* ===== Equalizer =====
+   Die Werte sind auf die drei tatsächlich vorhandenen Filter abgestimmt
+   (Bass = Kuhschwanz bei 200 Hz, Mitten = Glocke bei 1 kHz mit Q 0.9,
+   Höhen = Kuhschwanz ab 3 kHz - siehe initAudioGraph). Wer hier Modi
+   ergänzt, muss also im Kopf haben, dass "Mitten" ein recht breiter
+   Bereich um 1 kHz ist und nicht ein schmaler Präsenz-Peak.
+
+   "Flach" ist bewusst als Modus in derselben Reihe und nicht nur als
+   Zurücksetzen-Knopf: es ist die Neutralstellung, die man genauso
+   auswählt wie jede andere. */
+const EQ_PRESETS = [
+  { id: "flat", label: "Flach", bass: 0, mid: 0, treble: 0 },
+  { id: "bass", label: "Bass-Boost", bass: 8, mid: -1, treble: 1 },
+  { id: "brilliance", label: "Brillanz", bass: 0, mid: -1, treble: 7 },
+  { id: "vocal", label: "Stimme", bass: -3, mid: 5, treble: 2 },
+  { id: "rock", label: "Rock", bass: 4, mid: -2, treble: 4 },
+  { id: "electro", label: "Elektro", bass: 7, mid: -3, treble: 5 },
+  { id: "classic", label: "Klassik", bass: 2, mid: 0, treble: 3 },
+  // Leise hören: Bass runter (dröhnt nachts durch die Wand), Mitten hoch,
+  // damit Stimmen trotz geringer Lautstärke verständlich bleiben.
+  { id: "night", label: "Nachtmodus", bass: -4, mid: 4, treble: 0 },
+];
+
+const EQ_BANDS = [
+  { key: "bass", slider: "eqBassSlider", value: "eqBassValue", filter: () => eqBass },
+  { key: "mid", slider: "eqMidSlider", value: "eqMidValue", filter: () => eqMid },
+  { key: "treble", slider: "eqTrebleSlider", value: "eqTrebleValue", filter: () => eqTreble },
+];
+
+const eqPresetRow = document.getElementById("eqPresetRow");
+const eqModal = document.getElementById("eqModal");
+const eqToggleBtn = document.getElementById("eqToggleBtn");
+const eqDockBtn = document.getElementById("eqDockBtn");
+
+function saveEqSettings() {
+  localStorage.setItem(EQ_STORAGE_KEY, JSON.stringify(eqSettings));
+}
+
+/* Der Graph existiert erst nach der ersten Wiedergabe (AudioContext darf
+   nicht ohne Nutzergeste starten) - vorher gibt es schlicht nichts zu
+   setzen, initAudioGraph holt die Werte dann selbst ab. */
+function applyEqToGraph() {
+  EQ_BANDS.forEach((band) => {
+    const filter = band.filter();
+    if (filter) filter.gain.value = eqSettings[band.key];
+  });
+}
+
+/* Welcher Modus entspricht der aktuellen Einstellung? Leer, sobald von
+   Hand nachgeregelt wurde - dann ist keine Schaltfläche markiert. */
+function activeEqPresetId() {
+  const hit = EQ_PRESETS.find(
+    (p) => p.bass === eqSettings.bass && p.mid === eqSettings.mid && p.treble === eqSettings.treble
+  );
+  return hit ? hit.id : "";
+}
+
+function renderEqUi() {
+  const activeId = activeEqPresetId();
+  EQ_BANDS.forEach((band) => {
+    const val = eqSettings[band.key];
+    document.getElementById(band.slider).value = String(val);
+    // Vorzeichen mitschreiben: "+4 dB" liest sich eindeutig als Anhebung,
+    // "4 dB" könnte auch die Filterbreite o.ä. sein.
+    document.getElementById(band.value).textContent = `${val > 0 ? "+" : ""}${val} dB`;
+  });
+  eqPresetRow.querySelectorAll(".eq-preset-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.preset === activeId);
+    btn.setAttribute("aria-pressed", String(btn.dataset.preset === activeId));
+  });
+  // Auslöser leuchten, solange der Klang nicht neutral ist - sonst merkt
+  // man einen vergessenen Bass-Boost nie.
+  const shaped = activeId !== "flat";
+  eqToggleBtn.classList.toggle("active", shaped);
+  eqDockBtn.classList.toggle("active", shaped);
+}
+
+function applyEqPreset(preset) {
+  eqSettings.bass = preset.bass;
+  eqSettings.mid = preset.mid;
+  eqSettings.treble = preset.treble;
+  applyEqToGraph();
+  saveEqSettings();
+  renderEqUi();
+}
+
+EQ_PRESETS.forEach((preset) => {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "eq-preset-btn";
+  btn.dataset.preset = preset.id;
+  // data-i18n zusätzlich zum sofortigen t(): die Knöpfe entstehen erst
+  // nach dem ersten applyStaticI18n(), ohne das Attribut bliebe ihre
+  // Beschriftung beim späteren Sprachwechsel stehen.
+  btn.dataset.i18n = preset.label;
+  btn.textContent = t(preset.label);
+  btn.addEventListener("click", () => applyEqPreset(preset));
+  eqPresetRow.appendChild(btn);
+});
+
+EQ_BANDS.forEach((band) => {
+  document.getElementById(band.slider).addEventListener("input", (e) => {
     const val = Number(e.target.value);
-    eqSettings[key] = val;
-    const filter = getFilter();
+    if (!Number.isFinite(val)) return;
+    eqSettings[band.key] = val;
+    const filter = band.filter();
     if (filter) filter.gain.value = val;
+    saveEqSettings();
+    renderEqUi();
   });
 });
 
-const eqToggleBtn = document.getElementById("eqToggleBtn");
-const eqPopover = document.getElementById("eqPopover");
+function openEqModal() {
+  renderEqUi();
+  eqModal.classList.remove("hidden");
+}
+function closeEqModal() {
+  eqModal.classList.add("hidden");
+  // Nicht die Markierung mit zurücksetzen: die zeigt weiterhin an, ob der
+  // Klang gerade verbogen ist (siehe renderEqUi).
+  renderEqUi();
+}
 eqToggleBtn.addEventListener("click", (e) => {
   e.stopPropagation();
-  eqPopover.classList.toggle("hidden");
-  eqToggleBtn.classList.toggle("active", !eqPopover.classList.contains("hidden"));
+  openEqModal();
 });
-document.addEventListener("click", (e) => {
-  if (!eqPopover.classList.contains("hidden") && !eqPopover.contains(e.target) && e.target !== eqToggleBtn) {
-    eqPopover.classList.add("hidden");
-    eqToggleBtn.classList.remove("active");
-  }
+eqDockBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  openEqModal();
 });
+document.getElementById("eqModalClose").addEventListener("click", closeEqModal);
+document.getElementById("eqDoneBtn").addEventListener("click", closeEqModal);
+document.getElementById("eqResetBtn").addEventListener("click", () => {
+  applyEqPreset(EQ_PRESETS[0]); // "Flach"
+});
+eqModal.addEventListener("click", (e) => {
+  if (e.target === eqModal) closeEqModal();
+});
+
+// Gespeicherte Einstellung sofort sichtbar machen (der Graph zieht sie
+// sich beim ersten Abspielen selbst aus eqSettings).
+renderEqUi();
 
 /* ===== Wiedergabegeschwindigkeit + A-B-Loop ===== */
 const pbToolsToggleBtn = document.getElementById("pbToolsToggleBtn");

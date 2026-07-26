@@ -2530,22 +2530,105 @@ body.has-dynamic-colors .playlist-hero {
   text-align: center;
   margin-bottom: 12px;
 }
-.eq-sliders { display: flex; gap: 18px; }
+/* ===== Equalizer-Modal =====
+   Warum der Slider in einem eigenen Kasten steckt und nicht einfach
+   rotiert im Fluss liegt: `transform: rotate()` dreht nur die DARSTELLUNG,
+   das Layout-Kästchen bleibt liegend (90px breit, ~20px hoch). Die Spalte
+   reservierte dadurch nur diese ~20px, waehrend der gedrehte Regler
+   sichtbar 45px nach oben UND unten darueber hinausragte - genau deshalb
+   sass die Beschriftung vorher HINTER dem Regler. Jetzt gibt ein Wrapper
+   die tatsaechlich sichtbare Groesse vor und der Regler wird darin
+   absolut zentriert; Beschriftung und dB-Wert liegen sauber darunter.
+
+   Bewusst weiter `rotate` statt des moderneren `writing-mode: vertical-lr`
+   auf dem Range-Input: das kann erst neueres Chromium, und die
+   Android-WebView ist auf aelteren Geraeten genau das nicht. Rotation
+   funktioniert ueberall gleich. */
+.eq-modal { max-width: 420px; }
+.eq-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sp-muted);
+  margin: 4px 0 10px;
+}
+.eq-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.eq-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  /* 40px Mindesthoehe: darunter wird eine Schaltflaeche auf dem Handy zur
+     Zielscheibe, die man mehrfach treffen muss. */
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--sp-muted);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.eq-preset-btn:hover { background: rgba(255, 255, 255, 0.15); color: var(--sp-text); }
+.eq-preset-btn.active {
+  background: var(--sp-green);
+  color: #000;
+  font-weight: 600;
+}
+
+.eq-sliders {
+  display: flex;
+  justify-content: center;
+  gap: 26px;
+  padding: 4px 0 8px;
+}
 .eq-slider-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  height: 110px;
-  justify-content: center;
+  gap: 8px;
+}
+/* Legt die sichtbare Groesse des gedrehten Reglers als echtes Layout-Mass
+   fest - Hoehe muss der `width` des Reglers unten entsprechen. */
+.eq-slider-box {
+  position: relative;
+  width: 34px;
+  height: 130px;
 }
 .eq-slider {
-  width: 90px;
-  transform: rotate(-90deg);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 130px; /* = Hoehe von .eq-slider-box */
+  /* Nach der Drehung ist DAS die sichtbare Breite und damit die Flaeche,
+     die ein Finger treffen muss - ein Regler in Standardhoehe (~16px)
+     waere auf dem Handy kaum zu bedienen. */
+  height: 30px;
+  margin: 0;
+  transform: translate(-50%, -50%) rotate(-90deg);
   accent-color: var(--sp-green);
   cursor: pointer;
 }
+.eq-slider-value {
+  font-size: 0.75rem;
+  color: var(--sp-text);
+  font-variant-numeric: tabular-nums;
+}
 .eq-slider-label { font-size: 0.72rem; color: var(--sp-muted); }
+
+@media (max-width: 640px) {
+  /* Auf schmalen Handys sonst zu breit fuer eine Reihe; die Regler duerfen
+     dafuer laenger werden, das macht das Treffen eines dB-Werts leichter. */
+  .eq-sliders { gap: 12px; }
+  .eq-slider-box { width: 38px; height: 160px; }
+  .eq-slider { width: 160px; height: 38px; }
+  .eq-preset-btn { padding: 8px 14px; }
+}
 
 .pbtools-popover { width: 220px; }
 .pbtools-section-title { margin-top: 16px; }
