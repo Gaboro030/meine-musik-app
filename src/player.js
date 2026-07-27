@@ -3140,8 +3140,14 @@ window.addEventListener("resize", () => {
    Browser die Geste nach wenigen Pixeln als Scrollen an sich und schickt
    pointercancel mitten im Ziehen. */
 
-function pctFromPointer(track, e) {
+function pctFromPointer(track, e, axis) {
   const rect = track.getBoundingClientRect();
+  if (axis === "y") {
+    // Senkrechte Regler (die Equalizer-Bänder): oben ist der HÖCHSTE Wert,
+    // Bildschirmkoordinaten wachsen aber nach unten - deshalb gespiegelt.
+    const y = Math.min(Math.max(e.clientY - rect.top, 0), rect.height);
+    return rect.height ? 1 - y / rect.height : 0;
+  }
   const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
   return rect.width ? x / rect.width : 0;
 }
@@ -3201,16 +3207,26 @@ if (window.ResizeObserver) {
   });
 }
 
-/* Gemeinsames Ziehverhalten beider Regler.
+/* Gemeinsames Ziehverhalten aller selbstgebauten Regler (Fortschritt,
+   Lautstärke, Equalizer-Bänder, Vorverstärkung).
    onPreview läuft über requestAnimationFrame: ein Finger erzeugt auf
    modernen Bildschirmen bis zu 120 Zeigerpunkte pro Sekunde, die Wellenform
    muss aber höchstens einmal pro Bild neu gezeichnet werden. (Hier ist rAF
    unbedenklich - anders als bei der Einblend-Animation der Player-Leiste
-   wird währenddessen garantiert gezeichnet, der Nutzer schaut ja hin.) */
-function attachDragSlider({ wrap, track, onStart, onPreview, onCommit }) {
+   wird währenddessen garantiert gezeichnet, der Nutzer schaut ja hin.)
+
+   axis: "x" (Vorgabe) oder "y" für senkrechte Regler.
+   onDoubleTap: zweimal schnell auf dieselbe Stelle - bei den
+   Equalizer-Bändern das Zurücksetzen auf 0 dB. */
+function attachDragSlider({ wrap, track, axis, onStart, onPreview, onCommit, onDoubleTap }) {
   let activePointerId = null;
   let pendingPct = null;
   let rafId = 0;
+  let lastTapAt = 0;
+  let lastTapX = 0;
+  let lastTapY = 0;
+  let downX = 0;
+  let downY = 0;
 
   const flush = () => {
     rafId = 0;
@@ -3223,7 +3239,20 @@ function attachDragSlider({ wrap, track, onStart, onPreview, onCommit }) {
   wrap.addEventListener("pointerdown", (e) => {
     if (activePointerId !== null) return; // zweiter Finger wird ignoriert
     if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    if (onDoubleTap) {
+      const near = Math.abs(e.clientX - lastTapX) < 24 && Math.abs(e.clientY - lastTapY) < 24;
+      if (performance.now() - lastTapAt < 320 && near) {
+        lastTapAt = 0;
+        onDoubleTap();
+        e.preventDefault();
+        return; // kein Ziehen starten - der Doppeltipp war die ganze Geste
+      }
+    }
+
     activePointerId = e.pointerId;
+    downX = e.clientX;
+    downY = e.clientY;
     try {
       wrap.setPointerCapture(e.pointerId);
     } catch (_) {
@@ -3232,9 +3261,8 @@ function attachDragSlider({ wrap, track, onStart, onPreview, onCommit }) {
       // Handlers verschluckt.
     }
     wrap.classList.add("dragging");
-    measureSliderTracks();
     if (onStart) onStart();
-    onPreview(pctFromPointer(track, e)); // sofort, ohne ein Bild Verzögerung
+    onPreview(pctFromPointer(track, e, axis)); // sofort, ohne ein Bild Verzögerung
     e.preventDefault(); // kein Text-Markieren, kein synthetischer Maus-Klick
   });
 
@@ -3255,9 +3283,19 @@ function attachDragSlider({ wrap, track, onStart, onPreview, onCommit }) {
     // auf sein Bild wartender Zwischenwert ist damit veraltet. (Gilt auch
     // fürs reine Tippen - da gab es nie ein pointermove.)
     pendingPct = null;
+    // Nur ein echtes Tippen zählt als erste Hälfte eines Doppeltipps. Ein
+    // Ziehen darf nicht mitzählen, sonst setzt ein Tipp kurz nach dem
+    // Loslassen das Band ungewollt auf 0 zurück.
+    if (onDoubleTap && keep && Math.abs(e.clientX - downX) < 10 && Math.abs(e.clientY - downY) < 10) {
+      lastTapAt = performance.now();
+      lastTapX = e.clientX;
+      lastTapY = e.clientY;
+    } else {
+      lastTapAt = 0;
+    }
     wrap.classList.remove("dragging");
     if (wrap.hasPointerCapture(e.pointerId)) wrap.releasePointerCapture(e.pointerId);
-    onCommit(keep ? pctFromPointer(track, e) : null);
+    onCommit(keep ? pctFromPointer(track, e, axis) : null);
   };
 
   wrap.addEventListener("pointerup", (e) => finish(e, true));
@@ -3271,6 +3309,7 @@ attachDragSlider({
   track: pbProgressTrack,
   onStart: () => {
     isSeeking = true;
+    measureSliderTracks();
   },
   onPreview: (pct) => {
     seekPreviewPct = pct;
@@ -3297,17 +3336,24 @@ function applyVolume(pct) {
   renderVolume(pct);
 }
 
+let volumeBeforeDrag = 1;
 attachDragSlider({
   wrap: pbVolumeWrap,
   track: pbVolumeTrack,
+  onStart: () => {
+    measureSliderTracks();
+    volumeBeforeDrag = audioEl.volume;
+  },
   // Lautstärke wirkt sofort, nicht erst beim Loslassen - alles andere
   // fühlte sich wie ein kaputter Regler an.
   onPreview: applyVolume,
   // Beim Loslassen trotzdem noch einmal: die letzte Bewegung wartet u.U.
   // noch auf ihr Bild und ginge sonst verloren - ein schnelles Ziehen bis
   // ganz nach links hätte dann nicht stummgeschaltet.
+  // Abgebrochen (pct === null): auf den Stand vor der Geste zurück, sonst
+  // bliebe die Lautstärke dort stehen, wo der Finger zufällig aufsetzte.
   onCommit: (pct) => {
-    if (pct !== null) applyVolume(pct);
+    applyVolume(pct !== null ? pct : volumeBeforeDrag);
   },
 });
 
@@ -3476,7 +3522,15 @@ window.addEventListener("drop", (e) => e.preventDefault());
    playback goes silent. Built lazily on first user-gesture play, since
    AudioContext starts suspended until a real click/tap resumes it. */
 let audioCtx = null;
-let eqBass, eqMid, eqTreble, masterGain, normalizerCompressor;
+let masterGain, normalizerCompressor;
+/* Zehnband-Equalizer. eqInput/eqOutput sind feste Anschlusspunkte, zwischen
+   denen die Filterkette ein- oder ausgehängt wird - so kann "aus" ein
+   ECHTES Überbrücken sein (Signal läuft an den Filtern vorbei und die
+   Knoten werden freigegeben) statt bloss alle Verstärkungen auf 0 dB zu
+   stellen, was den Klang zwar unverändert liesse, aber weiterhin durch
+   zehn Filter rechnen würde. */
+let eqInput = null, eqOutput = null, eqPreampNode = null, eqLimiter = null;
+let eqFilters = [];
 let visualizerAnalyser = null;
 let gainA = null, gainB = null; // ein Gain pro <audio>-Element - die beiden Crossfade-Rampen
 let rgA = null, rgB = null; // ReplayGain pro Element, VOR den Crossfade-Rampen (siehe applyReplayGainFor)
@@ -3487,15 +3541,61 @@ let audioGraphReady = false;
    Laden muss also vor dem ersten Abspielen passieren (hier oben, nicht
    erst bei der UI-Verdrahtung weiter unten). */
 const EQ_STORAGE_KEY = "eqSettings";
+
+/* Die zehn Bänder folgen der ISO-Oktavreihe, wie sie jeder Equalizer
+   verwendet - jedes Band deckt die doppelte Frequenz des vorherigen ab.
+   Aussen Kuhschwanz-Filter (alles darunter bzw. darüber wird mitgenommen),
+   dazwischen Glocken mit Q ≈ 1.41: das ist genau eine Oktave Breite, also
+   lückenlos aneinander anschliessend, ohne sich gegenseitig aufzuschaukeln. */
+const EQ_BAND_DEFS = [
+  { hz: 31, type: "lowshelf", label: "31" },
+  { hz: 62, type: "peaking", label: "62" },
+  { hz: 125, type: "peaking", label: "125" },
+  { hz: 250, type: "peaking", label: "250" },
+  { hz: 500, type: "peaking", label: "500" },
+  { hz: 1000, type: "peaking", label: "1k" },
+  { hz: 2000, type: "peaking", label: "2k" },
+  { hz: 4000, type: "peaking", label: "4k" },
+  { hz: 8000, type: "peaking", label: "8k" },
+  { hz: 16000, type: "highshelf", label: "16k" },
+];
+const EQ_BAND_Q = 1.41;
+const EQ_GAIN_LIMIT = 12;
+const EQ_GAIN_STEP = 0.5;
+const EQ_PREAMP_MIN = -20;
+const EQ_PREAMP_MAX = 6;
+
+const clampEqGain = (v) =>
+  Number.isFinite(v) ? Math.max(-EQ_GAIN_LIMIT, Math.min(EQ_GAIN_LIMIT, Math.round(v / EQ_GAIN_STEP) * EQ_GAIN_STEP)) : 0;
+
 function loadEqSettings() {
-  const fallback = { bass: 0, mid: 0, treble: 0 };
+  const fallback = { enabled: true, preamp: 0, gains: EQ_BAND_DEFS.map(() => 0) };
   try {
     const raw = JSON.parse(localStorage.getItem(EQ_STORAGE_KEY) || "null");
     if (!raw || typeof raw !== "object") return fallback;
+
     // Fremde/kaputte Werte nie ungeprueft in einen Filter schreiben - ein
     // NaN im gain wuerde den ganzen Audio-Graphen verstummen lassen.
-    const clean = (v) => (Number.isFinite(v) ? Math.max(-12, Math.min(12, Math.round(v))) : 0);
-    return { bass: clean(raw.bass), mid: clean(raw.mid), treble: clean(raw.treble) };
+    if (Array.isArray(raw.gains)) {
+      return {
+        enabled: raw.enabled !== false,
+        preamp: Number.isFinite(raw.preamp)
+          ? Math.max(EQ_PREAMP_MIN, Math.min(EQ_PREAMP_MAX, raw.preamp))
+          : 0,
+        gains: EQ_BAND_DEFS.map((_, i) => clampEqGain(raw.gains[i])),
+      };
+    }
+
+    // Alter Dreiband-Stand (bass/mid/treble) - die Einstellung des Nutzers
+    // sinngemäss auf die neuen Bänder verteilen statt sie wegzuwerfen.
+    const gains = EQ_BAND_DEFS.map(() => 0);
+    const bass = clampEqGain(raw.bass);
+    const mid = clampEqGain(raw.mid);
+    const treble = clampEqGain(raw.treble);
+    [0, 1, 2].forEach((i) => (gains[i] = bass));
+    [4, 5, 6].forEach((i) => (gains[i] = mid));
+    [7, 8, 9].forEach((i) => (gains[i] = treble));
+    return { enabled: true, preamp: 0, gains };
   } catch (_) {
     return fallback;
   }
@@ -3742,21 +3842,25 @@ function initAudioGraph() {
   rgB = audioCtx.createGain();
   rgB.gain.value = 1;
 
-  eqBass = audioCtx.createBiquadFilter();
-  eqBass.type = "lowshelf";
-  eqBass.frequency.value = 200;
-  eqBass.gain.value = eqSettings.bass;
+  // Feste Anschlusspunkte des Equalizers. Was dazwischen liegt, hängt
+  // rebuildEqChain() ein bzw. aus - die Quellen und alles danach bleiben
+  // dabei unangetastet, es wird also nie am laufenden Signalweg
+  // herumgesteckt.
+  eqInput = audioCtx.createGain();
+  eqOutput = audioCtx.createGain();
 
-  eqMid = audioCtx.createBiquadFilter();
-  eqMid.type = "peaking";
-  eqMid.frequency.value = 1000;
-  eqMid.Q.value = 0.9;
-  eqMid.gain.value = eqSettings.mid;
-
-  eqTreble = audioCtx.createBiquadFilter();
-  eqTreble.type = "highshelf";
-  eqTreble.frequency.value = 3000;
-  eqTreble.gain.value = eqSettings.treble;
+  // Begrenzer als letzte Instanz vor dem Ausgang. Zehn Bänder mit je bis
+  // zu +12 dB können ein sowieso schon lautes Master mühelos über 0 dBFS
+  // treiben - das klingt nicht "lauter", sondern verzerrt. Ratio 12 mit
+  // hartem Knie direkt unter der Vollaussteuerung fängt genau diese
+  // Spitzen ab und lässt alles darunter unberührt. Bewusst ohne
+  // Bedienelement: das ist ein Schutz, keine Klangeinstellung.
+  eqLimiter = audioCtx.createDynamicsCompressor();
+  eqLimiter.threshold.value = -1;
+  eqLimiter.knee.value = 0;
+  eqLimiter.ratio.value = 12;
+  eqLimiter.attack.value = 0.003;
+  eqLimiter.release.value = 0.1;
 
   // Audio-Normalisierung: downloads from all over YouTube swing wildly in
   // loudness (a quiet acoustic rip next to a hot-mastered pop track). A
@@ -3778,44 +3882,143 @@ function initAudioGraph() {
   visualizerAnalyser.fftSize = 128;
   visualizerAnalyser.smoothingTimeConstant = 0.8;
 
-  sourceA.connect(rgA).connect(gainA).connect(eqBass);
-  sourceB.connect(rgB).connect(gainB).connect(eqBass);
-  eqBass.connect(eqMid).connect(eqTreble).connect(normalizerCompressor).connect(masterGain);
+  sourceA.connect(rgA).connect(gainA).connect(eqInput);
+  sourceB.connect(rgB).connect(gainB).connect(eqInput);
+  eqOutput.connect(normalizerCompressor).connect(eqLimiter).connect(masterGain);
   masterGain.connect(visualizerAnalyser).connect(audioCtx.destination);
+  rebuildEqChain();
   audioGraphReady = true;
 }
 
-/* ===== Equalizer =====
-   Die Werte sind auf die drei tatsächlich vorhandenen Filter abgestimmt
-   (Bass = Kuhschwanz bei 200 Hz, Mitten = Glocke bei 1 kHz mit Q 0.9,
-   Höhen = Kuhschwanz ab 3 kHz - siehe initAudioGraph). Wer hier Modi
-   ergänzt, muss also im Kopf haben, dass "Mitten" ein recht breiter
-   Bereich um 1 kHz ist und nicht ein schmaler Präsenz-Peak.
+/* Hängt die Filterkette zwischen eqInput und eqOutput ein - oder, wenn der
+   Equalizer aus ist, verbindet beide direkt und gibt die Filter frei.
+   Wird bei jedem Ein-/Ausschalten aufgerufen. */
+function rebuildEqChain() {
+  if (!audioCtx || !eqInput || !eqOutput) return;
+  eqInput.disconnect();
+  eqFilters.forEach((f) => f.disconnect());
+  if (eqPreampNode) eqPreampNode.disconnect();
+  eqFilters = [];
+  eqPreampNode = null;
 
-   "Flach" ist bewusst als Modus in derselben Reihe und nicht nur als
+  if (!eqSettings.enabled) {
+    eqInput.connect(eqOutput); // echtes Überbrücken
+    return;
+  }
+
+  eqPreampNode = audioCtx.createGain();
+  eqPreampNode.gain.value = dbToGain(eqSettings.preamp);
+  eqFilters = EQ_BAND_DEFS.map((def, i) => {
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = def.type;
+    filter.frequency.value = def.hz;
+    // Kuhschwanz-Filter ignorieren Q (Web Audio rechnet dort fest mit
+    // Steilheit 1) - setzen schadet nicht, wirkt aber nur bei "peaking".
+    filter.Q.value = EQ_BAND_Q;
+    filter.gain.value = eqSettings.gains[i];
+    return filter;
+  });
+
+  let node = eqInput.connect(eqPreampNode);
+  eqFilters.forEach((f) => {
+    node = node.connect(f);
+  });
+  node.connect(eqOutput);
+}
+
+function dbToGain(db) {
+  return Math.pow(10, db / 20);
+}
+
+/* Alle Werte weich nachziehen statt hart setzen: ein Sprung im
+   Filter-Gain knackst hörbar, gerade wenn man einen Regler zieht oder
+   einen Modus wechselt. ~30ms Zeitkonstante ist schnell genug, um sich
+   unmittelbar anzufühlen, und langsam genug, um nicht zu klicken. */
+const EQ_RAMP_SECONDS = 0.03;
+function applyEqToGraph() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  if (eqPreampNode) eqPreampNode.gain.setTargetAtTime(dbToGain(eqSettings.preamp), now, EQ_RAMP_SECONDS);
+  eqFilters.forEach((filter, i) => {
+    filter.gain.setTargetAtTime(eqSettings.gains[i], now, EQ_RAMP_SECONDS);
+  });
+}
+
+/* ===== Equalizer =====
+   Zehn Bänder auf der ISO-Oktavreihe (siehe EQ_BAND_DEFS weiter oben),
+   ±12 dB in 0,5-dB-Schritten, dazu eine Vorverstärkung und ein
+   Ein/Aus-Schalter, der die Filter wirklich aus dem Signalweg nimmt.
+
+   "Flach" steht bewusst als Modus in derselben Reihe und nicht nur als
    Zurücksetzen-Knopf: es ist die Neutralstellung, die man genauso
-   auswählt wie jede andere. */
+   auswählt wie jede andere.
+
+   Bewusst NICHT eingebaut: eine Automatik, die selbst am Klang dreht. Ein
+   Equalizer, der sich hinter dem Rücken des Nutzers ändert, macht jede
+   eigene Einstellung unerklärlich. */
 const EQ_PRESETS = [
-  { id: "flat", label: "Flach", bass: 0, mid: 0, treble: 0 },
-  { id: "bass", label: "Bass-Boost", bass: 8, mid: -1, treble: 1 },
-  { id: "brilliance", label: "Brillanz", bass: 0, mid: -1, treble: 7 },
-  { id: "vocal", label: "Stimme", bass: -3, mid: 5, treble: 2 },
-  { id: "rock", label: "Rock", bass: 4, mid: -2, treble: 4 },
-  { id: "electro", label: "Elektro", bass: 7, mid: -3, treble: 5 },
-  { id: "classic", label: "Klassik", bass: 2, mid: 0, treble: 3 },
+  { id: "flat", label: "Flach", gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { id: "acoustic", label: "Akustik", gains: [4, 4, 3, 1, 1.5, 1.5, 3, 3.5, 3, 2] },
+  { id: "bassboost", label: "Bass-Boost", gains: [7, 6, 5, 3, 1, 0, 0, 0, 0, 0] },
+  { id: "basscut", label: "Bass-Absenkung", gains: [-7, -6, -5, -3, -1, 0, 0, 0, 0, 0] },
+  { id: "classic", label: "Klassik", gains: [4, 3.5, 3, 2.5, -1.5, -1.5, 0, 2, 3, 3.5] },
+  { id: "dance", label: "Dance", gains: [6, 5, 3, 0, 2, 3, 4, 3.5, 2, 0] },
+  { id: "electro", label: "Elektro", gains: [5, 4, 1, 0, -2, 2, 1, 1, 4, 5] },
+  { id: "hiphop", label: "Hip-Hop", gains: [6, 5.5, 3, 1.5, -1, -1, 1.5, 2, 3, 3.5] },
+  { id: "jazz", label: "Jazz", gains: [4, 3, 1.5, 2, -1.5, -1.5, 0, 1.5, 3, 4] },
+  { id: "latin", label: "Latin", gains: [5, 4, 0, 0, -1.5, -1.5, -1.5, 0, 3.5, 5] },
+  { id: "metal", label: "Metal", gains: [5, 4, 1.5, 3, -1, -1.5, 0, 2.5, 4, 3] },
+  { id: "pop", label: "Pop", gains: [-1.5, -1, 0, 2, 4, 4, 2, 0, -1, -1.5] },
+  { id: "rock", label: "Rock", gains: [5, 4, 3, 1.5, -0.5, -1, 0.5, 3, 4, 4.5] },
+  { id: "vocal", label: "Stimme", gains: [-3, -3, -1.5, 1.5, 4, 5, 4.5, 3, 1, 0] },
   // Leise hören: Bass runter (dröhnt nachts durch die Wand), Mitten hoch,
   // damit Stimmen trotz geringer Lautstärke verständlich bleiben.
-  { id: "night", label: "Nachtmodus", bass: -4, mid: 4, treble: 0 },
+  { id: "night", label: "Nachtmodus", gains: [-6, -5, -3, 0, 2, 3, 3, 1.5, 0, -1] },
 ];
 
-const EQ_BANDS = [
-  { key: "bass", slider: "eqBassSlider", value: "eqBassValue", filter: () => eqBass },
-  { key: "mid", slider: "eqMidSlider", value: "eqMidValue", filter: () => eqMid },
-  { key: "treble", slider: "eqTrebleSlider", value: "eqTrebleValue", filter: () => eqTreble },
-];
+/* Eigene Modi des Nutzers. Gleiche Form wie oben, plus `custom: true` als
+   Unterscheidungsmerkmal - nur die dürfen umbenannt und gelöscht werden. */
+const EQ_USER_PRESETS_KEY = "eqUserPresets";
+function loadEqUserPresets() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(EQ_USER_PRESETS_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((p) => p && typeof p.id === "string" && typeof p.name === "string" && Array.isArray(p.gains))
+      .map((p) => ({
+        id: p.id,
+        label: p.name,
+        custom: true,
+        preamp: Number.isFinite(p.preamp) ? Math.max(EQ_PREAMP_MIN, Math.min(EQ_PREAMP_MAX, p.preamp)) : 0,
+        gains: EQ_BAND_DEFS.map((_, i) => clampEqGain(p.gains[i])),
+      }));
+  } catch (_) {
+    return [];
+  }
+}
+let eqUserPresets = loadEqUserPresets();
+function saveEqUserPresets() {
+  localStorage.setItem(
+    EQ_USER_PRESETS_KEY,
+    JSON.stringify(eqUserPresets.map((p) => ({ id: p.id, name: p.label, gains: p.gains, preamp: p.preamp })))
+  );
+}
 
-const eqPresetRow = document.getElementById("eqPresetRow");
 const eqModal = document.getElementById("eqModal");
+const eqPresetRow = document.getElementById("eqPresetRow");
+const eqSlidersRow = document.getElementById("eqSliders");
+const eqCurveCanvas = document.getElementById("eqCurve");
+const eqCurveCtx = eqCurveCanvas.getContext("2d");
+const eqPowerBtn = document.getElementById("eqPowerBtn");
+const eqPowerLabel = document.getElementById("eqPowerLabel");
+const eqPreampWrap = document.getElementById("eqPreampWrap");
+const eqPreampTrack = eqPreampWrap.querySelector(".eq-preamp-track");
+const eqPreampFill = document.getElementById("eqPreampFill");
+const eqPreampHandle = document.getElementById("eqPreampHandle");
+const eqPreampValue = document.getElementById("eqPreampValue");
+const eqPresetActions = document.getElementById("eqPresetActions");
+const eqSaveRow = document.getElementById("eqSaveRow");
+const eqPresetNameInput = document.getElementById("eqPresetNameInput");
 const eqToggleBtn = document.getElementById("eqToggleBtn");
 const eqDockBtn = document.getElementById("eqDockBtn");
 
@@ -3823,90 +4026,505 @@ function saveEqSettings() {
   localStorage.setItem(EQ_STORAGE_KEY, JSON.stringify(eqSettings));
 }
 
-/* Der Graph existiert erst nach der ersten Wiedergabe (AudioContext darf
-   nicht ohne Nutzergeste starten) - vorher gibt es schlicht nichts zu
-   setzen, initAudioGraph holt die Werte dann selbst ab. */
-function applyEqToGraph() {
-  EQ_BANDS.forEach((band) => {
-    const filter = band.filter();
-    if (filter) filter.gain.value = eqSettings[band.key];
-  });
+/* ===== Frequenzgang =====
+   Die Kurve wird gerechnet, nicht am Graphen gemessen: getFrequencyResponse()
+   gibt es nur an echten Filterknoten, und die existieren weder vor der
+   ersten Wiedergabe (der AudioContext darf ohne Nutzergeste nicht starten)
+   noch im überbrückten Zustand. Die Formeln sind dieselben, aus denen Web
+   Audio seine Biquads baut (Audio-EQ-Cookbook), das Bild stimmt also mit
+   dem überein, was man hört. Kuhschwanz-Filter rechnet Web Audio fest mit
+   Steilheit S = 1, deshalb taucht Q dort nicht auf. */
+function biquadMagnitudeDb(type, f0, q, gainDb, f, fs) {
+  if (gainDb === 0) return 0; // neutrales Band: exakt 0 dB, spart die Rechnerei
+  const A = Math.pow(10, gainDb / 40);
+  const w0 = (2 * Math.PI * f0) / fs;
+  const cosW0 = Math.cos(w0);
+  const sinW0 = Math.sin(w0);
+  let b0, b1, b2, a0, a1, a2;
+  if (type === "peaking") {
+    const alpha = sinW0 / (2 * q);
+    b0 = 1 + alpha * A;
+    b1 = -2 * cosW0;
+    b2 = 1 - alpha * A;
+    a0 = 1 + alpha / A;
+    a1 = -2 * cosW0;
+    a2 = 1 - alpha / A;
+  } else {
+    // S = 1  =>  2*sqrt(A)*alpha vereinfacht sich zu sin(w0)*sqrt(2A)
+    const twoSqrtAAlpha = sinW0 * Math.sqrt(2 * A);
+    if (type === "lowshelf") {
+      b0 = A * (A + 1 - (A - 1) * cosW0 + twoSqrtAAlpha);
+      b1 = 2 * A * (A - 1 - (A + 1) * cosW0);
+      b2 = A * (A + 1 - (A - 1) * cosW0 - twoSqrtAAlpha);
+      a0 = A + 1 + (A - 1) * cosW0 + twoSqrtAAlpha;
+      a1 = -2 * (A - 1 + (A + 1) * cosW0);
+      a2 = A + 1 + (A - 1) * cosW0 - twoSqrtAAlpha;
+    } else {
+      b0 = A * (A + 1 + (A - 1) * cosW0 + twoSqrtAAlpha);
+      b1 = -2 * A * (A - 1 + (A + 1) * cosW0);
+      b2 = A * (A + 1 + (A - 1) * cosW0 - twoSqrtAAlpha);
+      a0 = A + 1 - (A - 1) * cosW0 + twoSqrtAAlpha;
+      a1 = 2 * (A - 1 - (A + 1) * cosW0);
+      a2 = A + 1 - (A - 1) * cosW0 - twoSqrtAAlpha;
+    }
+  }
+  // |H(e^jw)| an der Stelle f
+  const w = (2 * Math.PI * f) / fs;
+  const numRe = b0 + b1 * Math.cos(w) + b2 * Math.cos(2 * w);
+  const numIm = -(b1 * Math.sin(w) + b2 * Math.sin(2 * w));
+  const denRe = a0 + a1 * Math.cos(w) + a2 * Math.cos(2 * w);
+  const denIm = -(a1 * Math.sin(w) + a2 * Math.sin(2 * w));
+  const den = Math.hypot(denRe, denIm);
+  if (den === 0) return 0;
+  return 20 * Math.log10(Math.hypot(numRe, numIm) / den);
 }
 
-/* Welcher Modus entspricht der aktuellen Einstellung? Leer, sobald von
-   Hand nachgeregelt wurde - dann ist keine Schaltfläche markiert. */
+/* Gesamter Frequenzgang in dB: hintereinandergeschaltete Filter
+   multiplizieren ihre Beträge, in dB heisst das schlicht addieren. */
+function eqMagnitudeDbAt(f) {
+  const fs = audioCtx ? audioCtx.sampleRate : 48000;
+  let db = eqSettings.preamp;
+  for (let i = 0; i < EQ_BAND_DEFS.length; i++) {
+    db += biquadMagnitudeDb(EQ_BAND_DEFS[i].type, EQ_BAND_DEFS[i].hz, EQ_BAND_Q, eqSettings.gains[i], f, fs);
+  }
+  return db;
+}
+
+const EQ_CURVE_MIN_HZ = 20;
+const EQ_CURVE_MAX_HZ = 20000;
+const EQ_CURVE_RANGE_DB = 15; // etwas mehr als ±12, damit Spitzen nicht anstossen
+
+function drawEqCurve() {
+  const rect = eqCurveCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return; // Modal noch zu
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(rect.width * dpr);
+  const h = Math.round(rect.height * dpr);
+  if (eqCurveCanvas.width !== w || eqCurveCanvas.height !== h) {
+    eqCurveCanvas.width = w;
+    eqCurveCanvas.height = h;
+  }
+  const ctx = eqCurveCtx;
+  ctx.clearRect(0, 0, w, h);
+
+  const style = getComputedStyle(document.documentElement);
+  const gridColor = style.getPropertyValue("--sp-border").trim() || "rgba(255,255,255,0.2)";
+  const accent = style.getPropertyValue("--sp-green").trim() || "#1db954";
+  const muted = style.getPropertyValue("--sp-muted").trim() || "#a0a0a0";
+
+  const logMin = Math.log10(EQ_CURVE_MIN_HZ);
+  const logMax = Math.log10(EQ_CURVE_MAX_HZ);
+  const xOf = (f) => ((Math.log10(f) - logMin) / (logMax - logMin)) * w;
+  const yOf = (db) => h / 2 - (db / EQ_CURVE_RANGE_DB) * (h / 2);
+
+  ctx.lineWidth = dpr;
+  ctx.strokeStyle = gridColor;
+  [-12, -6, 6, 12].forEach((db) => {
+    ctx.beginPath();
+    ctx.moveTo(0, yOf(db));
+    ctx.lineTo(w, yOf(db));
+    ctx.stroke();
+  });
+  EQ_BAND_DEFS.forEach((def) => {
+    ctx.beginPath();
+    ctx.moveTo(xOf(def.hz), 0);
+    ctx.lineTo(xOf(def.hz), h);
+    ctx.stroke();
+  });
+  ctx.strokeStyle = muted;
+  ctx.beginPath();
+  ctx.moveTo(0, yOf(0));
+  ctx.lineTo(w, yOf(0));
+  ctx.stroke();
+
+  // Im überbrückten Zustand die tatsächliche Wirkung zeigen: eine gerade
+  // Linie auf 0 dB. Sonst behauptete das Bild eine Klangformung, die
+  // gerade gar nicht im Signalweg hängt.
+  ctx.lineWidth = 2 * dpr;
+  ctx.strokeStyle = eqSettings.enabled ? accent : muted;
+  ctx.beginPath();
+  const steps = 160;
+  for (let i = 0; i <= steps; i++) {
+    const f = Math.pow(10, logMin + ((logMax - logMin) * i) / steps);
+    const db = eqSettings.enabled ? eqMagnitudeDbAt(f) : 0;
+    const y = Math.max(0, Math.min(h, yOf(db)));
+    if (i === 0) ctx.moveTo(0, y);
+    else ctx.lineTo(xOf(f), y);
+  }
+  ctx.stroke();
+}
+
+/* Welcher Modus entspricht der aktuellen Einstellung? Leerer Name, sobald
+   von Hand nachgeregelt wurde - dann ist "Benutzerdefiniert" markiert. */
 function activeEqPresetId() {
-  const hit = EQ_PRESETS.find(
-    (p) => p.bass === eqSettings.bass && p.mid === eqSettings.mid && p.treble === eqSettings.treble
+  const hit = EQ_PRESETS.concat(eqUserPresets).find(
+    (p) =>
+      (p.preamp || 0) === eqSettings.preamp &&
+      p.gains.every((g, i) => Math.abs(g - eqSettings.gains[i]) < 0.001)
   );
   return hit ? hit.id : "";
 }
 
-function renderEqUi() {
+/* ===== Regler-Reihe =====
+   Bahnmasse gemessen halten statt bei jeder Bewegung neu abzufragen -
+   gleiche Begründung wie bei den Reglern in der Player-Leiste. */
+const eqFaderEls = []; // pro Band { fader, fill, knob, value }
+let eqFaderHeight = 0;
+let eqPreampTrackWidth = 0;
+function measureEqTracks() {
+  eqFaderHeight = eqFaderEls.length ? eqFaderEls[0].fader.clientHeight : 0;
+  eqPreampTrackWidth = eqPreampTrack.clientWidth;
+}
+
+function renderEqBand(i) {
+  const el = eqFaderEls[i];
+  if (!el) return;
+  const val = eqSettings.gains[i];
+  const pct = (val + EQ_GAIN_LIMIT) / (2 * EQ_GAIN_LIMIT); // 0 = ganz unten, 1 = ganz oben
+  el.knob.style.transform = `translate(-50%, 50%) translateY(${-pct * eqFaderHeight}px)`;
+  // Füllung wächst aus der Mitte (0 dB) nach oben oder unten. Zwei halbe
+  // Bahnen statt einer ganzen, weil scaleY um die Mitte sonst in BEIDE
+  // Richtungen wachsen würde.
+  const frac = Math.abs(val) / EQ_GAIN_LIMIT;
+  if (val >= 0) {
+    el.fill.style.top = "0";
+    el.fill.style.bottom = "50%";
+    el.fill.style.transformOrigin = "center bottom";
+  } else {
+    el.fill.style.top = "50%";
+    el.fill.style.bottom = "0";
+    el.fill.style.transformOrigin = "center top";
+  }
+  el.fill.style.transform = `scaleY(${frac})`;
+  el.value.textContent = `${val > 0 ? "+" : ""}${val.toFixed(1)}`;
+  el.fader.setAttribute("aria-valuenow", String(val));
+  el.fader.setAttribute("aria-valuetext", `${val > 0 ? "+" : ""}${val.toFixed(1)} dB`);
+}
+
+function setEqBandGain(i, val, opts) {
+  const clamped = clampEqGain(val);
+  if (clamped === eqSettings.gains[i]) {
+    if (opts && opts.force) renderEqBand(i);
+    return;
+  }
+  eqSettings.gains[i] = clamped;
+  if (eqFilters[i] && audioCtx) {
+    eqFilters[i].gain.setTargetAtTime(clamped, audioCtx.currentTime, EQ_RAMP_SECONDS);
+  }
+  saveEqSettings();
+  renderEqBand(i);
+  drawEqCurve();
+  renderEqPresetRow();
+  updateEqTriggerState();
+}
+
+const pctToDb = (pct) => pct * 2 * EQ_GAIN_LIMIT - EQ_GAIN_LIMIT;
+
+function buildEqSliders() {
+  EQ_BAND_DEFS.forEach((def, i) => {
+    const band = document.createElement("div");
+    band.className = "eq-band";
+
+    const fader = document.createElement("div");
+    fader.className = "eq-fader";
+    fader.tabIndex = 0;
+    fader.setAttribute("role", "slider");
+    fader.setAttribute("aria-valuemin", String(-EQ_GAIN_LIMIT));
+    fader.setAttribute("aria-valuemax", String(EQ_GAIN_LIMIT));
+    fader.setAttribute("aria-label", `${def.hz} Hz`);
+
+    const track = document.createElement("div");
+    track.className = "eq-fader-track";
+    const fill = document.createElement("div");
+    fill.className = "eq-fader-fill";
+    const knob = document.createElement("div");
+    knob.className = "eq-fader-knob";
+    track.append(fill, knob);
+    fader.appendChild(track);
+
+    const value = document.createElement("span");
+    value.className = "eq-band-value";
+    const label = document.createElement("span");
+    label.className = "eq-band-label";
+    label.textContent = def.label;
+
+    band.append(fader, value, label);
+    eqSlidersRow.appendChild(band);
+    eqFaderEls[i] = { fader, fill, knob, value };
+
+    let gainBeforeDrag = 0;
+    attachDragSlider({
+      wrap: fader,
+      track: fader,
+      axis: "y",
+      onStart: () => {
+        measureEqTracks();
+        gainBeforeDrag = eqSettings.gains[i];
+      },
+      onPreview: (pct) => setEqBandGain(i, pctToDb(pct)),
+      onCommit: (pct) => {
+        // pct === null heisst abgebrochen. Der häufigste Fall dafür ist auf
+        // dem Handy KEIN Systemereignis, sondern ein waagerechtes Wischen
+        // zum Scrollen der Bandreihe, das auf einem Regler beginnt: der
+        // Browser übernimmt die Geste und schickt pointercancel. Ohne das
+        // Zurücksetzen bliebe das Band auf dem Wert stehen, den der Finger
+        // beim Aufsetzen zufällig getroffen hat.
+        if (pct !== null) setEqBandGain(i, pctToDb(pct));
+        else setEqBandGain(i, gainBeforeDrag, { force: true });
+      },
+      // Doppeltipp stellt genau dieses Band wieder auf neutral - exakt
+      // 0,0 dB per Hand zu treffen ist auf einem Handy praktisch unmöglich.
+      onDoubleTap: () => setEqBandGain(i, 0, { force: true }),
+    });
+
+    fader.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 1 : EQ_GAIN_STEP;
+      if (e.key === "ArrowUp" || e.key === "ArrowRight") setEqBandGain(i, eqSettings.gains[i] + step);
+      else if (e.key === "ArrowDown" || e.key === "ArrowLeft") setEqBandGain(i, eqSettings.gains[i] - step);
+      else if (e.key === "Home") setEqBandGain(i, 0, { force: true });
+      else return;
+      e.preventDefault();
+    });
+  });
+}
+
+/* ===== Vorverstärkung =====
+   Wer mehrere Bänder anhebt, macht damit alles lauter und riskiert, dass
+   der Begrenzer dauernd arbeitet. Mit der Vorverstärkung nimmt man das
+   pauschal wieder zurück, ohne die Form der Kurve zu verändern. */
+function renderEqPreamp() {
+  const pct = (eqSettings.preamp - EQ_PREAMP_MIN) / (EQ_PREAMP_MAX - EQ_PREAMP_MIN);
+  eqPreampFill.style.transform = `scaleX(${pct})`;
+  eqPreampHandle.style.transform = `translate(-50%, -50%) translateX(${pct * eqPreampTrackWidth}px)`;
+  eqPreampValue.textContent = `${eqSettings.preamp > 0 ? "+" : ""}${eqSettings.preamp.toFixed(1)} dB`;
+}
+
+function setEqPreamp(db) {
+  const clamped = Math.max(
+    EQ_PREAMP_MIN,
+    Math.min(EQ_PREAMP_MAX, Math.round(db / EQ_GAIN_STEP) * EQ_GAIN_STEP)
+  );
+  if (clamped === eqSettings.preamp) return;
+  eqSettings.preamp = clamped;
+  if (eqPreampNode && audioCtx) {
+    eqPreampNode.gain.setTargetAtTime(dbToGain(clamped), audioCtx.currentTime, EQ_RAMP_SECONDS);
+  }
+  saveEqSettings();
+  renderEqPreamp();
+  drawEqCurve();
+  renderEqPresetRow();
+  updateEqTriggerState();
+}
+
+const pctToPreampDb = (pct) => EQ_PREAMP_MIN + pct * (EQ_PREAMP_MAX - EQ_PREAMP_MIN);
+
+let preampBeforeDrag = 0;
+attachDragSlider({
+  wrap: eqPreampWrap,
+  track: eqPreampTrack,
+  onStart: () => {
+    measureEqTracks();
+    preampBeforeDrag = eqSettings.preamp;
+  },
+  onPreview: (pct) => setEqPreamp(pctToPreampDb(pct)),
+  onCommit: (pct) => {
+    if (pct !== null) setEqPreamp(pctToPreampDb(pct));
+    else setEqPreamp(preampBeforeDrag); // abgebrochene Geste ändert nichts
+  },
+  onDoubleTap: () => setEqPreamp(0),
+});
+
+/* ===== Modus-Reihe ===== */
+/* Beim Moduswechsel bewusst langsamer als beim Ziehen an einem Regler:
+   zehn Bänder springen sonst gleichzeitig, was als harter Klangbruch
+   auffällt. Eine Zeitkonstante von 0,08s ist nach rund 250ms am Ziel -
+   dieselbe Dauer, in der auch die Regler sichtbar hinüberfahren. */
+const EQ_PRESET_RAMP_SECONDS = 0.08;
+const EQ_PRESET_ANIM_MS = 260;
+let eqPresetAnimTimer = null;
+
+function applyEqPreset(preset) {
+  eqSettings.gains = preset.gains.slice();
+  eqSettings.preamp = preset.preamp || 0;
+  saveEqSettings();
+  if (audioCtx) {
+    const now = audioCtx.currentTime;
+    if (eqPreampNode) eqPreampNode.gain.setTargetAtTime(dbToGain(eqSettings.preamp), now, EQ_PRESET_RAMP_SECONDS);
+    eqFilters.forEach((filter, i) => {
+      filter.gain.setTargetAtTime(eqSettings.gains[i], now, EQ_PRESET_RAMP_SECONDS);
+    });
+  }
+  eqSlidersRow.classList.add("eq-animating");
+  eqPreampWrap.classList.add("eq-animating");
+  clearTimeout(eqPresetAnimTimer);
+  eqPresetAnimTimer = setTimeout(() => {
+    eqSlidersRow.classList.remove("eq-animating");
+    eqPreampWrap.classList.remove("eq-animating");
+  }, EQ_PRESET_ANIM_MS);
+  renderEqAll();
+}
+
+function renderEqPresetRow() {
   const activeId = activeEqPresetId();
-  EQ_BANDS.forEach((band) => {
-    const val = eqSettings[band.key];
-    document.getElementById(band.slider).value = String(val);
-    // Vorzeichen mitschreiben: "+4 dB" liest sich eindeutig als Anhebung,
-    // "4 dB" könnte auch die Filterbreite o.ä. sein.
-    document.getElementById(band.value).textContent = `${val > 0 ? "+" : ""}${val} dB`;
-  });
   eqPresetRow.querySelectorAll(".eq-preset-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.preset === activeId);
-    btn.setAttribute("aria-pressed", String(btn.dataset.preset === activeId));
+    const on = btn.dataset.preset === activeId;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", String(on));
   });
-  // Auslöser leuchten, solange der Klang nicht neutral ist - sonst merkt
-  // man einen vergessenen Bass-Boost nie.
-  const shaped = activeId !== "flat";
+  // Umbenennen/Löschen nur bei einem selbst gespeicherten Modus anbieten.
+  eqPresetActions.classList.toggle("hidden", !eqUserPresets.some((p) => p.id === activeId));
+}
+
+function buildEqPresetRow() {
+  eqPresetRow.textContent = "";
+
+  // "Benutzerdefiniert" ist kein anwählbarer Modus, sondern die Anzeige
+  // dafür, dass die aktuelle Einstellung zu keinem gespeicherten passt -
+  // deshalb ohne Klickwirkung, aber in derselben Reihe, damit sichtbar
+  // ist, WO man gerade steht.
+  const customChip = document.createElement("span");
+  customChip.className = "eq-preset-btn eq-preset-custom";
+  customChip.dataset.preset = "";
+  customChip.dataset.i18n = "Benutzerdefiniert";
+  customChip.textContent = t("Benutzerdefiniert");
+  eqPresetRow.appendChild(customChip);
+
+  EQ_PRESETS.concat(eqUserPresets).forEach((preset) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "eq-preset-btn";
+    if (preset.custom) btn.classList.add("eq-preset-own");
+    btn.dataset.preset = preset.id;
+    if (!preset.custom) {
+      // data-i18n zusätzlich zum sofortigen t(): die Knöpfe entstehen erst
+      // nach dem ersten applyStaticI18n(), ohne das Attribut bliebe ihre
+      // Beschriftung beim späteren Sprachwechsel stehen. Eigene Modi
+      // tragen einen selbst gewählten Namen und werden nie übersetzt.
+      btn.dataset.i18n = preset.label;
+    }
+    btn.textContent = preset.custom ? preset.label : t(preset.label);
+    btn.addEventListener("click", () => applyEqPreset(preset));
+    eqPresetRow.appendChild(btn);
+  });
+}
+
+/* ===== Ein/Aus ===== */
+function setEqEnabled(enabled) {
+  if (eqSettings.enabled === enabled) return;
+  eqSettings.enabled = enabled;
+  saveEqSettings();
+  if (audioCtx && eqOutput) {
+    // Kurz absenken, umstecken, wieder aufblenden: das Umhängen der Kette
+    // ist ein Sprung im Signal und würde sonst knacksen.
+    eqOutput.gain.setTargetAtTime(0, audioCtx.currentTime, 0.008);
+    setTimeout(() => {
+      rebuildEqChain();
+      if (audioCtx && eqOutput) eqOutput.gain.setTargetAtTime(1, audioCtx.currentTime, 0.008);
+    }, 40);
+  }
+  renderEqAll();
+}
+
+function renderEqPower() {
+  eqPowerBtn.classList.toggle("on", eqSettings.enabled);
+  eqPowerBtn.setAttribute("aria-pressed", String(eqSettings.enabled));
+  const key = eqSettings.enabled ? "Equalizer an" : "Equalizer aus";
+  eqPowerLabel.dataset.i18n = key;
+  eqPowerLabel.textContent = t(key);
+  // Regler UND Vorverstärkung stillegen, solange überbrückt wird: ein
+  // Regler, der sich bewegen lässt, ohne dass sich etwas ändert, ist
+  // schlimmer als einer, der sichtbar gesperrt ist.
+  eqSlidersRow.classList.toggle("eq-bypassed", !eqSettings.enabled);
+  eqPreampWrap.classList.toggle("eq-bypassed", !eqSettings.enabled);
+}
+
+/* Auslöser leuchten, solange der Klang nicht neutral ist - sonst merkt man
+   einen vergessenen Bass-Boost nie. Im überbrückten Zustand nie. */
+function updateEqTriggerState() {
+  const shaped =
+    eqSettings.enabled && (eqSettings.preamp !== 0 || eqSettings.gains.some((g) => g !== 0));
   eqToggleBtn.classList.toggle("active", shaped);
   eqDockBtn.classList.toggle("active", shaped);
 }
 
-function applyEqPreset(preset) {
-  eqSettings.bass = preset.bass;
-  eqSettings.mid = preset.mid;
-  eqSettings.treble = preset.treble;
-  applyEqToGraph();
-  saveEqSettings();
-  renderEqUi();
+function renderEqAll() {
+  measureEqTracks();
+  EQ_BAND_DEFS.forEach((_, i) => renderEqBand(i));
+  renderEqPreamp();
+  renderEqPresetRow();
+  renderEqPower();
+  updateEqTriggerState();
+  drawEqCurve();
 }
 
-EQ_PRESETS.forEach((preset) => {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "eq-preset-btn";
-  btn.dataset.preset = preset.id;
-  // data-i18n zusätzlich zum sofortigen t(): die Knöpfe entstehen erst
-  // nach dem ersten applyStaticI18n(), ohne das Attribut bliebe ihre
-  // Beschriftung beim späteren Sprachwechsel stehen.
-  btn.dataset.i18n = preset.label;
-  btn.textContent = t(preset.label);
-  btn.addEventListener("click", () => applyEqPreset(preset));
-  eqPresetRow.appendChild(btn);
-});
+/* ===== Eigene Modi speichern / umbenennen / löschen ===== */
+let eqSaveMode = null; // "new" | "rename"
 
-EQ_BANDS.forEach((band) => {
-  document.getElementById(band.slider).addEventListener("input", (e) => {
-    const val = Number(e.target.value);
-    if (!Number.isFinite(val)) return;
-    eqSettings[band.key] = val;
-    const filter = band.filter();
-    if (filter) filter.gain.value = val;
-    saveEqSettings();
-    renderEqUi();
-  });
-});
+function openEqSaveRow(mode) {
+  eqSaveMode = mode;
+  eqSaveRow.classList.remove("hidden");
+  const current = eqUserPresets.find((p) => p.id === activeEqPresetId());
+  eqPresetNameInput.value = mode === "rename" && current ? current.label : "";
+  eqPresetNameInput.focus();
+}
+function closeEqSaveRow() {
+  eqSaveMode = null;
+  eqSaveRow.classList.add("hidden");
+}
+function confirmEqSave() {
+  const name = eqPresetNameInput.value.trim().slice(0, 24);
+  if (!name) {
+    showToast(t("Bitte einen Namen eingeben."));
+    return;
+  }
+  if (eqSaveMode === "rename") {
+    const current = eqUserPresets.find((p) => p.id === activeEqPresetId());
+    if (current) current.label = name;
+  } else {
+    eqUserPresets.push({
+      id: `own-${Date.now()}`,
+      label: name,
+      custom: true,
+      preamp: eqSettings.preamp,
+      gains: eqSettings.gains.slice(),
+    });
+  }
+  saveEqUserPresets();
+  buildEqPresetRow();
+  renderEqPresetRow();
+  closeEqSaveRow();
+  showToast(t("Modus gespeichert."));
+}
+function deleteActiveEqPreset() {
+  const idx = eqUserPresets.findIndex((p) => p.id === activeEqPresetId());
+  if (idx < 0) return;
+  const removed = eqUserPresets.splice(idx, 1)[0];
+  saveEqUserPresets();
+  buildEqPresetRow();
+  renderEqPresetRow();
+  showToast(t("„{name}“ gelöscht.", { name: removed.label }));
+}
 
+/* ===== Modal ===== */
 function openEqModal() {
-  renderEqUi();
   eqModal.classList.remove("hidden");
+  // Hintergrund festhalten: ohne das scrollt auf dem Handy beim Ziehen an
+  // einem Regler die Seite DAHINTER weiter und der Overlay federt beim
+  // Loslassen zurück.
+  document.body.classList.add("modal-scroll-lock");
+  // Erst jetzt haben Regler und Kurve überhaupt eine Grösse (vorher stand
+  // das ganze Modal auf display:none, alle Masse waren 0).
+  renderEqAll();
 }
 function closeEqModal() {
   eqModal.classList.add("hidden");
+  document.body.classList.remove("modal-scroll-lock");
+  closeEqSaveRow();
   // Nicht die Markierung mit zurücksetzen: die zeigt weiterhin an, ob der
-  // Klang gerade verbogen ist (siehe renderEqUi).
-  renderEqUi();
+  // Klang gerade verbogen ist (siehe updateEqTriggerState).
+  updateEqTriggerState();
 }
+
 eqToggleBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   openEqModal();
@@ -3915,18 +4533,33 @@ eqDockBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   openEqModal();
 });
+eqPowerBtn.addEventListener("click", () => setEqEnabled(!eqSettings.enabled));
 document.getElementById("eqModalClose").addEventListener("click", closeEqModal);
 document.getElementById("eqDoneBtn").addEventListener("click", closeEqModal);
 document.getElementById("eqResetBtn").addEventListener("click", () => {
   applyEqPreset(EQ_PRESETS[0]); // "Flach"
 });
+document.getElementById("eqSavePresetBtn").addEventListener("click", () => openEqSaveRow("new"));
+document.getElementById("eqRenamePresetBtn").addEventListener("click", () => openEqSaveRow("rename"));
+document.getElementById("eqDeletePresetBtn").addEventListener("click", deleteActiveEqPreset);
+document.getElementById("eqSaveConfirmBtn").addEventListener("click", confirmEqSave);
+document.getElementById("eqSaveCancelBtn").addEventListener("click", closeEqSaveRow);
+eqPresetNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") confirmEqSave();
+  else if (e.key === "Escape") closeEqSaveRow();
+});
 eqModal.addEventListener("click", (e) => {
   if (e.target === eqModal) closeEqModal();
 });
+window.addEventListener("resize", () => {
+  if (!eqModal.classList.contains("hidden")) renderEqAll();
+});
 
-// Gespeicherte Einstellung sofort sichtbar machen (der Graph zieht sie
-// sich beim ersten Abspielen selbst aus eqSettings).
-renderEqUi();
+buildEqPresetRow();
+buildEqSliders();
+// Gespeicherte Einstellung sofort auf die Auslöser durchschlagen lassen
+// (der Graph zieht sie sich beim ersten Abspielen selbst aus eqSettings).
+updateEqTriggerState();
 
 /* ===== Wiedergabegeschwindigkeit + A-B-Loop ===== */
 const pbToolsToggleBtn = document.getElementById("pbToolsToggleBtn");

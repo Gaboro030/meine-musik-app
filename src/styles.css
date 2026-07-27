@@ -1581,8 +1581,16 @@ body.has-dynamic-colors .playlist-hero {
      .modal macht den Overlay selbst scrollbar, margin:auto zentriert nur,
      solange alles reinpasst. */
   overflow-y: auto;
+  /* Wischen im Overlay darf nie an die Seite dahinter durchgereicht werden
+     (sonst scrollt beim Ziehen an einem Equalizer-Regler die Bibliothek
+     mit, und am Rand federt die ganze Seite). */
+  overscroll-behavior: contain;
   padding: 40px 20px;
 }
+/* Zusaetzlich der Riegel am <body>: overscroll-behavior greift nur, wenn
+   die Geste IM Overlay beginnt - ein Wisch, der am Bildschirmrand oder auf
+   der Player-Leiste startet, wuerde die Seite sonst trotzdem bewegen. */
+body.modal-scroll-lock { overflow: hidden; }
 .modal {
   background: var(--sp-elevated);
   border: 1px solid var(--sp-border);
@@ -2592,33 +2600,83 @@ body.has-dynamic-colors .playlist-hero {
   margin-bottom: 12px;
 }
 /* ===== Equalizer-Modal =====
-   Warum der Slider in einem eigenen Kasten steckt und nicht einfach
-   rotiert im Fluss liegt: `transform: rotate()` dreht nur die DARSTELLUNG,
-   das Layout-Kästchen bleibt liegend (90px breit, ~20px hoch). Die Spalte
-   reservierte dadurch nur diese ~20px, waehrend der gedrehte Regler
-   sichtbar 45px nach oben UND unten darueber hinausragte - genau deshalb
-   sass die Beschriftung vorher HINTER dem Regler. Jetzt gibt ein Wrapper
-   die tatsaechlich sichtbare Groesse vor und der Regler wird darin
-   absolut zentriert; Beschriftung und dB-Wert liegen sauber darunter.
-
-   Bewusst weiter `rotate` statt des moderneren `writing-mode: vertical-lr`
-   auf dem Range-Input: das kann erst neueres Chromium, und die
-   Android-WebView ist auf aelteren Geraeten genau das nicht. Rotation
-   funktioniert ueberall gleich. */
-.eq-modal { max-width: 420px; }
+   Die zehn Bandregler sind selbst gebaute <div>s, kein <input type="range">.
+   Grund: ein liegender Regler, der per `transform: rotate(-90deg)` senkrecht
+   gestellt wird, reagiert je nach WebView weiterhin auf WAAGERECHTES Wischen
+   - die Drehung ist nur Darstellung. Und `writing-mode: vertical-lr`, der
+   moderne Weg zu einem echten senkrechten Regler, kann erst neueres
+   Chromium; die Android-WebView auf aelteren Geraeten genau nicht. Ein
+   eigener Regler mit Zeiger-Events (attachDragSlider in player.js, axis:"y")
+   verhaelt sich dagegen ueberall gleich und laesst sich zusaetzlich per
+   Doppeltipp auf 0 dB zuruecksetzen. */
+.eq-modal { max-width: 560px; }
 .eq-section-title {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--sp-muted);
-  margin: 4px 0 10px;
+  margin: 18px 0 10px;
 }
+.eq-hint {
+  font-size: 0.72rem;
+  color: var(--sp-muted);
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* --- Ein/Aus --- */
+.eq-power-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: 100px;
+  border: 1px solid var(--sp-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sp-muted);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.eq-power-btn.on {
+  border-color: var(--sp-green);
+  color: var(--sp-text);
+  background: color-mix(in srgb, var(--sp-green) 14%, transparent);
+}
+.eq-power-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--sp-muted);
+  flex-shrink: 0;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.eq-power-btn.on .eq-power-dot {
+  background: var(--sp-green);
+  box-shadow: 0 0 8px var(--sp-green);
+}
+
+/* --- Frequenzgang --- */
+.eq-curve {
+  display: block;
+  width: 100%;
+  height: 130px;
+  margin-top: 16px;
+  border: 1px solid var(--sp-border);
+  border-radius: var(--radius-sm);
+  background: var(--sp-bg);
+}
+
+/* --- Modus-Reihe --- */
 .eq-preset-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 20px;
 }
 .eq-preset-btn {
   display: inline-flex;
@@ -2641,54 +2699,163 @@ body.has-dynamic-colors .playlist-hero {
   color: #000;
   font-weight: 600;
 }
+/* "Benutzerdefiniert" ist eine Anzeige, kein Knopf - deshalb kein Zeiger
+   und kein Hover-Effekt. */
+.eq-preset-custom { cursor: default; font-style: italic; }
+.eq-preset-custom:hover { background: rgba(255, 255, 255, 0.07); color: var(--sp-muted); }
+.eq-preset-custom.active:hover { background: var(--sp-green); color: #000; }
+/* Eigene Modi vom Grundbestand abheben, damit klar ist, was man loeschen
+   kann und was fest eingebaut ist. */
+.eq-preset-own { border: 1px dashed var(--sp-border); }
+.eq-preset-own.active { border-color: var(--sp-green); }
 
+.eq-preset-actions, .eq-save-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.eq-save-row .modal-input { flex: 1; min-width: 0; }
+.eq-preset-actions .btn-secondary, .eq-save-row .btn-secondary { padding: 8px 14px; font-size: 0.8rem; }
+
+/* --- Bandregler ---
+   Waagerecht scrollbar: zehn Regler passen auf keinem Handy nebeneinander.
+   touch-action: pan-x auf der Reihe erlaubt genau das Wischen zur Seite;
+   die Regler selbst setzen pan-x ebenfalls, damit ein waagerechtes Wischen
+   AUF einem Regler noch scrollt, ein senkrechtes aber den Wert zieht.
+   overscroll-behavior verhindert, dass das Weiterwischen am Ende der Reihe
+   den Hintergrund mitnimmt. */
 .eq-sliders {
   display: flex;
-  justify-content: center;
-  gap: 26px;
-  padding: 4px 0 8px;
+  gap: 10px;
+  padding: 6px 2px 2px;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
 }
-.eq-slider-col {
+.eq-sliders.eq-bypassed { opacity: 0.4; pointer-events: none; }
+.eq-band {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex: 0 0 auto;
 }
-/* Legt die sichtbare Groesse des gedrehten Reglers als echtes Layout-Mass
-   fest - Hoehe muss der `width` des Reglers unten entsprechen. */
-.eq-slider-box {
+.eq-fader {
   position: relative;
-  width: 34px;
-  height: 130px;
-}
-.eq-slider {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 130px; /* = Hoehe von .eq-slider-box */
-  /* Nach der Drehung ist DAS die sichtbare Breite und damit die Flaeche,
-     die ein Finger treffen muss - ein Regler in Standardhoehe (~16px)
-     waere auf dem Handy kaum zu bedienen. */
-  height: 30px;
-  margin: 0;
-  transform: translate(-50%, -50%) rotate(-90deg);
-  accent-color: var(--sp-green);
+  /* 40px breit als Trefferflaeche, sichtbar ist nur die schmale Bahn in
+     der Mitte. */
+  width: 40px;
+  height: 150px;
   cursor: pointer;
+  touch-action: pan-x;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
 }
-.eq-slider-value {
-  font-size: 0.75rem;
+.eq-fader:focus-visible .eq-fader-track { box-shadow: 0 0 0 2px var(--sp-green); }
+.eq-fader-track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 6px;
+  transform: translateX(-50%);
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.eq-fader-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: var(--sp-green);
+  border-radius: 100px;
+  /* top/bottom/transform-origin setzt player.js: die Fuellung waechst aus
+     der Mitte (0 dB) nach oben oder unten. */
+}
+.eq-fader-knob {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--sp-text);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, 50%);
+}
+.eq-fader.dragging .eq-fader-knob { width: 24px; height: 24px; }
+/* Nur beim Moduswechsel animieren (Klasse setzt player.js fuer ~260ms):
+   waehrend des Ziehens wuerde eine Uebergangszeit den Griff hinter dem
+   Finger herhinken lassen. */
+.eq-sliders.eq-animating .eq-fader-knob,
+.eq-sliders.eq-animating .eq-fader-fill { transition: transform 0.25s ease; }
+.eq-preamp-wrap.eq-animating .eq-preamp-fill,
+.eq-preamp-wrap.eq-animating .eq-preamp-handle { transition: transform 0.25s ease; }
+.eq-band-value {
+  font-size: 0.7rem;
   color: var(--sp-text);
   font-variant-numeric: tabular-nums;
 }
-.eq-slider-label { font-size: 0.72rem; color: var(--sp-muted); }
+.eq-band-label { font-size: 0.68rem; color: var(--sp-muted); }
+
+/* --- Vorverstaerkung --- */
+.eq-preamp-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+.eq-preamp-title { font-size: 0.78rem; color: var(--sp-muted); flex-shrink: 0; }
+.eq-preamp-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 14px 0;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.eq-preamp-wrap.eq-bypassed { opacity: 0.4; pointer-events: none; }
+.eq-preamp-track {
+  position: relative;
+  height: 6px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.eq-preamp-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  transform-origin: left center;
+  background: var(--sp-green);
+  border-radius: 100px;
+}
+.eq-preamp-handle {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--sp-text);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+}
+.eq-preamp-wrap.dragging .eq-preamp-handle { width: 22px; height: 22px; }
+.eq-preamp-value {
+  font-size: 0.75rem;
+  color: var(--sp-text);
+  font-variant-numeric: tabular-nums;
+  min-width: 56px;
+  text-align: right;
+  flex-shrink: 0;
+}
 
 @media (max-width: 640px) {
-  /* Auf schmalen Handys sonst zu breit fuer eine Reihe; die Regler duerfen
-     dafuer laenger werden, das macht das Treffen eines dB-Werts leichter. */
-  .eq-sliders { gap: 12px; }
-  .eq-slider-box { width: 38px; height: 160px; }
-  .eq-slider { width: 160px; height: 38px; }
+  .eq-fader { height: 130px; }
+  .eq-curve { height: 100px; }
   .eq-preset-btn { padding: 8px 14px; }
+  .eq-preamp-row { flex-wrap: wrap; }
 }
 
 .pbtools-popover { width: 220px; }

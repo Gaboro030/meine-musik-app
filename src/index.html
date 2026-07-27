@@ -723,40 +723,53 @@
         <button type="button" id="eqModalClose" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
-        <div class="eq-section-title" data-i18n="Modus">Modus</div>
-        <!-- Die Modus-Schaltflächen erzeugt player.js aus EQ_PRESETS, damit
-             Werte und Beschriftung nur an einer Stelle stehen. -->
-        <div id="eqPresetRow" class="eq-preset-row"></div>
+        <!-- Ein/Aus ganz oben und gross: das ist die Frage, die man beim
+             Öffnen zuerst beantwortet ("wirkt das Ding gerade überhaupt?").
+             Aus heisst echtes Überbrücken, siehe rebuildEqChain in player.js. -->
+        <button type="button" id="eqPowerBtn" class="eq-power-btn on" aria-pressed="true">
+          <span class="eq-power-dot"></span>
+          <span id="eqPowerLabel" class="eq-power-label" data-i18n="Equalizer an">Equalizer an</span>
+        </button>
 
-        <div class="eq-section-title" data-i18n="Feineinstellung">Feineinstellung</div>
-        <div class="eq-sliders">
-          <div class="eq-slider-col">
-            <div class="eq-slider-box">
-              <input type="range" id="eqBassSlider" class="eq-slider" min="-12" max="12" step="1" value="0"
-                     data-i18n-title="Bass" title="Bass" />
+        <!-- Frequenzgang: gerechnet, nicht gemessen - siehe drawEqCurve. -->
+        <canvas id="eqCurve" class="eq-curve"></canvas>
+
+        <div class="eq-section-title" data-i18n="Modus">Modus</div>
+        <!-- Die Modus-Schaltflächen erzeugt player.js aus EQ_PRESETS und den
+             eigenen Modi, damit Werte und Beschriftung nur an einer Stelle
+             stehen. -->
+        <div id="eqPresetRow" class="eq-preset-row"></div>
+        <div id="eqPresetActions" class="eq-preset-actions hidden">
+          <button type="button" id="eqRenamePresetBtn" class="btn-secondary" data-i18n="Umbenennen">Umbenennen</button>
+          <button type="button" id="eqDeletePresetBtn" class="btn-secondary" data-i18n="Löschen">Löschen</button>
+        </div>
+        <div id="eqSaveRow" class="eq-save-row hidden">
+          <input type="text" id="eqPresetNameInput" class="modal-input" maxlength="24"
+                 data-i18n-placeholder="Name des Modus" placeholder="Name des Modus" />
+          <button type="button" id="eqSaveConfirmBtn" class="btn-primary-sm" data-i18n="Sichern">Sichern</button>
+          <button type="button" id="eqSaveCancelBtn" class="btn-secondary" data-i18n="Abbrechen">Abbrechen</button>
+        </div>
+
+        <div class="eq-section-title" data-i18n="Bänder (Hz)">Bänder (Hz)</div>
+        <!-- Die zehn Regler erzeugt player.js aus EQ_BAND_DEFS. Selbst
+             gebaut statt <input type="range">: ein gedrehter Standardregler
+             reagiert je nach WebView auf die falsche Wischrichtung. -->
+        <div id="eqSliders" class="eq-sliders"></div>
+        <div class="eq-hint" data-i18n="Doppelt tippen setzt ein Band auf 0 dB zurück.">Doppelt tippen setzt ein Band auf 0 dB zurück.</div>
+
+        <div class="eq-preamp-row">
+          <span class="eq-preamp-title" data-i18n="Vorverstärkung">Vorverstärkung</span>
+          <div id="eqPreampWrap" class="eq-preamp-wrap">
+            <div class="eq-preamp-track">
+              <div id="eqPreampFill" class="eq-preamp-fill"></div>
+              <div id="eqPreampHandle" class="eq-preamp-handle"></div>
             </div>
-            <span id="eqBassValue" class="eq-slider-value">0 dB</span>
-            <span class="eq-slider-label" data-i18n="Bass">Bass</span>
           </div>
-          <div class="eq-slider-col">
-            <div class="eq-slider-box">
-              <input type="range" id="eqMidSlider" class="eq-slider" min="-12" max="12" step="1" value="0"
-                     data-i18n-title="Mitten" title="Mitten" />
-            </div>
-            <span id="eqMidValue" class="eq-slider-value">0 dB</span>
-            <span class="eq-slider-label" data-i18n="Mitten">Mitten</span>
-          </div>
-          <div class="eq-slider-col">
-            <div class="eq-slider-box">
-              <input type="range" id="eqTrebleSlider" class="eq-slider" min="-12" max="12" step="1" value="0"
-                     data-i18n-title="Höhen" title="Höhen" />
-            </div>
-            <span id="eqTrebleValue" class="eq-slider-value">0 dB</span>
-            <span class="eq-slider-label" data-i18n="Höhen">Höhen</span>
-          </div>
+          <span id="eqPreampValue" class="eq-preamp-value">0.0 dB</span>
         </div>
 
         <div class="modal-actions">
+          <button type="button" id="eqSavePresetBtn" class="btn-secondary" data-i18n="Als Modus speichern">Als Modus speichern</button>
           <button type="button" id="eqResetBtn" class="btn-secondary" data-i18n="Zurücksetzen">Zurücksetzen</button>
           <button type="button" id="eqDoneBtn" class="btn-primary-sm" data-i18n="Fertig">Fertig</button>
         </div>
