@@ -90,6 +90,17 @@
     "Suche Geräte …": "Looking for devices …",
     "Modus": "Mode",
     "Fertig": "Done",
+    // ----- Zaehler (standen frueher als Template-Literale im Code und
+    //       blieben deshalb IMMER deutsch, auch auf Englisch) -----
+    "{count} Titel": "{count} tracks",
+    "{count} Songs": "{count} songs",
+    "{count}× gehört": "played {count}×",
+    "⏳ Lade {count} Titel hoch …": "⏳ Uploading {count} tracks …",
+    ", {count} übersprungen": ", {count} skipped",
+    "✅ {count} Titel zu „{name}\" hinzugefügt{skipped}": "✅ Added {count} tracks to “{name}”{skipped}",
+    "Neues Album für die ausgewählten Titel": "New album for the selected tracks",
+    "Auswählen": "Select",
+    "Playlist": "Playlist",
     // ----- Equalizer -----
     "Equalizer an": "Equalizer on",
     "Equalizer aus": "Equalizer off",

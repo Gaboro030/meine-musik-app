@@ -800,7 +800,7 @@ function renderDailyMix() {
     title.textContent = track.title;
     const sub = document.createElement("div");
     sub.className = "card-sub";
-    sub.textContent = `${count}× gehört`;
+    sub.textContent = t("{count}× gehört", { count });
 
     card.append(coverWrap, title, sub);
     card.addEventListener("click", () => playTrackIn(plIdx, trackIdx));
@@ -1063,7 +1063,7 @@ function renderMoodSection() {
     title.textContent = m.label;
     const count = document.createElement("div");
     count.className = "mood-card-count";
-    count.textContent = `${entries.length} Songs`;
+    count.textContent = t("{count} Songs", { count: entries.length });
     card.append(title, count);
     card.addEventListener("click", () => playMoodPlaylist(entries));
     grid.appendChild(card);
@@ -1278,7 +1278,7 @@ function renderLibraryGrid() {
     title.textContent = pl.name;
     const sub = document.createElement("div");
     sub.className = "card-sub";
-    sub.textContent = `${pl.tracks.length} Titel`;
+    sub.textContent = t("{count} Titel", { count: pl.tracks.length });
 
     card.append(coverWrap, title, sub);
     card.addEventListener("click", () => selectPlaylist(idx));
@@ -1334,7 +1334,7 @@ function renderSidebar() {
     name.textContent = pl.name;
     const count = document.createElement("div");
     count.className = "playlist-item-count";
-    count.textContent = `${pl.tracks.length} Titel`;
+    count.textContent = t("{count} Titel", { count: pl.tracks.length });
     info.append(name, count);
 
     btn.append(img, info);
@@ -1358,7 +1358,7 @@ function selectPlaylist(idx) {
 
   applyPlaylistCover(playlistCover, currentPlaylist);
   playlistTitle.textContent = currentPlaylist.name;
-  playlistTrackCount.textContent = `${currentPlaylist.tracks.length} Titel`;
+  playlistTrackCount.textContent = t("{count} Titel", { count: currentPlaylist.tracks.length });
   // Eine Suche in der vorherigen Playlist soll nicht unsichtbar in die neue
   // durchschlagen - die Sortierung dagegen ist eine allgemeine Vorliebe
   // ("ich will Playlists immer nach Titel sehen") und bleibt bewusst erhalten.
@@ -1402,8 +1402,18 @@ confirmModal.addEventListener("click", (e) => {
   if (e.target === confirmModal) hideConfirmModal();
 });
 
+/* Ein Eingabefeld im eigenen Fenster - bewusst KEIN window.prompt():
+   die Android-WebView zeigt Prompts standardmäßig gar nicht an und gibt
+   sofort null zurück. Was auf dem Rechner noch funktioniert, wäre auf dem
+   Handy also eine tote Schaltfläche. Deshalb läuft jede Texteingabe über
+   dieses Fenster; die Überschrift ist austauschbar. */
 let renameCallback = null;
-function showRenameModal(currentName, onSave) {
+const renameModalTitle = renameModal.querySelector(".modal-header h3");
+const RENAME_DEFAULT_TITLE = "Playlist umbenennen";
+function showRenameModal(currentName, onSave, title) {
+  const key = title || RENAME_DEFAULT_TITLE;
+  renameModalTitle.dataset.i18n = key;
+  renameModalTitle.textContent = t(key);
   renameInput.value = currentName;
   renameCallback = onSave;
   renameModal.classList.remove("hidden");
@@ -1701,9 +1711,7 @@ async function submitBulkUpdate(payload) {
 bulkSelectBtn.addEventListener("click", () => setBulkSelectMode(!bulkSelectMode));
 bulkEditCancelBtn.addEventListener("click", () => setBulkSelectMode(false));
 bulkEditAlbumBtn.addEventListener("click", () => {
-  const value = window.prompt(`Neues Album für ${bulkSelectedFiles.size} Titel:`, "");
-  if (value === null) return;
-  submitBulkUpdate({ album: value });
+  showRenameModal("", (value) => submitBulkUpdate({ album: value }), "Neues Album für die ausgewählten Titel");
 });
 bulkEditCoverBtn.addEventListener("click", () => bulkEditCoverInput.click());
 bulkEditCoverInput.addEventListener("change", async () => {
@@ -2055,19 +2063,23 @@ playlistSortDirBtn.addEventListener("click", () => {
   renderTrackTable();
 });
 
-/* Nur die beiden betroffenen Zeilen anfassen statt bei jedem Titelwechsel
-   ueber alle zu laufen. */
-let highlightedTrackRow = null;
+/* Nur die betroffenen Zeilen anfassen statt bei jedem Titelwechsel ueber
+   alle zu laufen.
+   Bewusst ueber eine Abfrage nach der Klasse statt ueber ein gemerktes
+   Element: die virtualisierte Liste wirft Zeilen beim Scrollen aus dem
+   Dokument. Ein gemerktes Element koennte also laengst abgehaengt sein -
+   die Klasse davon zu entfernen brachte dann nichts, und eine inzwischen
+   neu gebaute Zeile waere fuer immer als "spielt gerade" markiert
+   geblieben. Im Dokument stehen ohnehin nur rund 50 Zeilen. */
 function highlightPlayingRow() {
-  if (highlightedTrackRow && Number(highlightedTrackRow.dataset.index) !== currentTrackIndex) {
-    highlightedTrackRow.classList.remove("playing");
-    highlightedTrackRow = null;
-  }
+  trackTableBody.querySelectorAll(".track-row.playing").forEach((row) => {
+    if (Number(row.dataset.index) !== currentTrackIndex) row.classList.remove("playing");
+  });
   if (currentTrackIndex < 0) return;
   const row = trackTableBody.querySelector(`.track-row[data-index="${currentTrackIndex}"]`);
-  if (!row) return; // Zeile gerade ausserhalb des Sichtfensters - buildTrackRow setzt die Klasse selbst
-  row.classList.add("playing");
-  highlightedTrackRow = row;
+  // Fehlt die Zeile, ist sie gerade ausserhalb des Sichtfensters -
+  // buildTrackRow setzt die Klasse dann selbst, sobald sie entsteht.
+  if (row) row.classList.add("playing");
 }
 
 /* ===== Playback ===== */
@@ -3141,7 +3153,9 @@ function waveformPalette() {
 if (window.MutationObserver) {
   new MutationObserver(() => {
     waveformColors = null;
+    eqCurveColors = null;
     drawWaveform(true);
+    if (typeof drawEqCurve === "function") drawEqCurve();
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
 }
 
@@ -3484,16 +3498,6 @@ function attachDragSlider({ wrap, track, axis, onStart, onPreview, onCommit, onD
     if (activePointerId !== null) return; // zweiter Finger wird ignoriert
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
-    if (onDoubleTap) {
-      const near = Math.abs(e.clientX - lastTapX) < 24 && Math.abs(e.clientY - lastTapY) < 24;
-      if (performance.now() - lastTapAt < 320 && near) {
-        lastTapAt = 0;
-        onDoubleTap();
-        e.preventDefault();
-        return; // kein Ziehen starten - der Doppeltipp war die ganze Geste
-      }
-    }
-
     activePointerId = e.pointerId;
     downX = e.clientX;
     downY = e.clientY;
@@ -3527,19 +3531,34 @@ function attachDragSlider({ wrap, track, axis, onStart, onPreview, onCommit, onD
     // auf sein Bild wartender Zwischenwert ist damit veraltet. (Gilt auch
     // fürs reine Tippen - da gab es nie ein pointermove.)
     pendingPct = null;
-    // Nur ein echtes Tippen zählt als erste Hälfte eines Doppeltipps. Ein
-    // Ziehen darf nicht mitzählen, sonst setzt ein Tipp kurz nach dem
-    // Loslassen das Band ungewollt auf 0 zurück.
-    if (onDoubleTap && keep && Math.abs(e.clientX - downX) < 10 && Math.abs(e.clientY - downY) < 10) {
-      lastTapAt = performance.now();
-      lastTapX = e.clientX;
-      lastTapY = e.clientY;
-    } else {
-      lastTapAt = 0;
-    }
     wrap.classList.remove("dragging");
     if (wrap.hasPointerCapture(e.pointerId)) wrap.releasePointerCapture(e.pointerId);
     onCommit(keep ? pctFromPointer(track, e, axis) : null);
+
+    /* Doppeltipp wird erst BEIM LOSLASSEN entschieden, nie beim Aufsetzen.
+       Vorher wurde ein zweites Aufsetzen in der Nähe sofort als Doppeltipp
+       gewertet und das Ziehen gar nicht erst gestartet - wer einen Regler
+       antippte und dann sofort ziehen wollte (also praktisch jeder), setzte
+       damit nur das Band auf 0 zurück und konnte anschliessend nichts
+       bewegen. Jetzt startet jeder Druck ganz normal ein Ziehen; ob es ein
+       Doppeltipp war, stellt sich am Ende heraus.
+
+       Als Tippen zählt nur eine Geste fast ohne Bewegung - ein Ziehen darf
+       nie die Hälfte eines Doppeltipps sein. */
+    const wasTap = keep && Math.abs(e.clientX - downX) < 10 && Math.abs(e.clientY - downY) < 10;
+    if (!onDoubleTap || !wasTap) {
+      lastTapAt = 0;
+      return;
+    }
+    const near = Math.abs(e.clientX - lastTapX) < 24 && Math.abs(e.clientY - lastTapY) < 24;
+    if (performance.now() - lastTapAt < 320 && near) {
+      lastTapAt = 0;
+      onDoubleTap();
+      return;
+    }
+    lastTapAt = performance.now();
+    lastTapX = e.clientX;
+    lastTapY = e.clientY;
   };
 
   wrap.addEventListener("pointerup", (e) => finish(e, true));
@@ -3682,7 +3701,7 @@ async function uploadFiles(playlistName, files, onDone) {
     showToast(t("Keine MP3-Dateien gefunden."));
     return;
   }
-  showUploadToast(`⏳ Lade ${files.length} Titel hoch …`);
+  showUploadToast(t("⏳ Lade {count} Titel hoch …", { count: files.length }));
   const formData = new FormData();
   formData.set("playlist", playlistName);
   files.forEach((f) => formData.append("files", f, f.name));
@@ -3690,8 +3709,14 @@ async function uploadFiles(playlistName, files, onDone) {
     const res = await fetch("/api/library/upload", { method: "POST", body: formData });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Hochladen fehlgeschlagen.");
-    const skippedNote = data.skipped ? `, ${data.skipped} übersprungen` : "";
-    showUploadToast(`✅ ${data.saved} Titel zu „${data.playlist}" hinzugefügt${skippedNote}`);
+    const skippedNote = data.skipped ? t(", {count} übersprungen", { count: data.skipped }) : "";
+    showUploadToast(
+      t('✅ {count} Titel zu „{name}" hinzugefügt{skipped}', {
+        count: data.saved,
+        name: data.playlist,
+        skipped: skippedNote,
+      })
+    );
     await refreshLibrary();
     if (onDone) onDone(data.playlist);
   } catch (err) {
@@ -4278,8 +4303,13 @@ function saveEqSettings() {
    Audio seine Biquads baut (Audio-EQ-Cookbook), das Bild stimmt also mit
    dem überein, was man hört. Kuhschwanz-Filter rechnet Web Audio fest mit
    Steilheit S = 1, deshalb taucht Q dort nicht auf. */
-function biquadMagnitudeDb(type, f0, q, gainDb, f, fs) {
-  if (gainDb === 0) return 0; // neutrales Band: exakt 0 dB, spart die Rechnerei
+/* Die Koeffizienten haengen NUR vom Band ab (Typ, Frequenz, Q, Verstaerkung),
+   nicht von der Stelle, an der man den Frequenzgang abliest. Frueher wurden
+   sie fuer jeden der 160 Kurvenpunkte neu gerechnet - also 160-mal dieselbe
+   Wurzel- und Winkelrechnerei pro Band, 1600-mal pro Bild waehrend man an
+   einem Regler zieht. Jetzt einmal pro Band, dann nur noch auswerten. */
+function biquadCoefficients(type, f0, q, gainDb, fs) {
+  if (gainDb === 0) return null; // neutrales Band: exakt 0 dB, nichts zu rechnen
   const A = Math.pow(10, gainDb / 40);
   const w0 = (2 * Math.PI * f0) / fs;
   const cosW0 = Math.cos(w0);
@@ -4312,31 +4342,67 @@ function biquadMagnitudeDb(type, f0, q, gainDb, f, fs) {
       a2 = A + 1 - (A - 1) * cosW0 - twoSqrtAAlpha;
     }
   }
-  // |H(e^jw)| an der Stelle f
+  return { b0, b1, b2, a0, a1, a2 };
+}
+
+/* |H(e^jw)| eines Biquads an der Stelle f, in dB. */
+function biquadMagnitudeDbAt(c, f, fs) {
   const w = (2 * Math.PI * f) / fs;
-  const numRe = b0 + b1 * Math.cos(w) + b2 * Math.cos(2 * w);
-  const numIm = -(b1 * Math.sin(w) + b2 * Math.sin(2 * w));
-  const denRe = a0 + a1 * Math.cos(w) + a2 * Math.cos(2 * w);
-  const denIm = -(a1 * Math.sin(w) + a2 * Math.sin(2 * w));
+  const cosW = Math.cos(w);
+  const sinW = Math.sin(w);
+  // cos(2w)/sin(2w) aus cos(w)/sin(w) statt zwei weiterer Winkelfunktionen
+  const cos2W = 2 * cosW * cosW - 1;
+  const sin2W = 2 * sinW * cosW;
+  const numRe = c.b0 + c.b1 * cosW + c.b2 * cos2W;
+  const numIm = -(c.b1 * sinW + c.b2 * sin2W);
+  const denRe = c.a0 + c.a1 * cosW + c.a2 * cos2W;
+  const denIm = -(c.a1 * sinW + c.a2 * sin2W);
   const den = Math.hypot(denRe, denIm);
   if (den === 0) return 0;
   return 20 * Math.log10(Math.hypot(numRe, numIm) / den);
 }
 
-/* Gesamter Frequenzgang in dB: hintereinandergeschaltete Filter
-   multiplizieren ihre Beträge, in dB heisst das schlicht addieren. */
-function eqMagnitudeDbAt(f) {
-  const fs = audioCtx ? audioCtx.sampleRate : 48000;
+/* Beträge in dB an einer Stelle, gegeben die schon berechneten
+   Koeffizienten aller Bänder. Hintereinandergeschaltete Filter
+   multiplizieren ihre Beträge - in dB heisst das schlicht addieren. */
+function eqMagnitudeDbFrom(coeffs, f, fs) {
   let db = eqSettings.preamp;
-  for (let i = 0; i < EQ_BAND_DEFS.length; i++) {
-    db += biquadMagnitudeDb(EQ_BAND_DEFS[i].type, EQ_BAND_DEFS[i].hz, EQ_BAND_Q, eqSettings.gains[i], f, fs);
+  for (let i = 0; i < coeffs.length; i++) {
+    if (coeffs[i]) db += biquadMagnitudeDbAt(coeffs[i], f, fs);
   }
   return db;
+}
+
+/* Bequemer Einzelaufruf (Tests, Einzelabfragen) - die Kurve selbst nutzt
+   den Weg oben und rechnet die Koeffizienten nur einmal pro Band. */
+function eqMagnitudeDbAt(f) {
+  const fs = audioCtx ? audioCtx.sampleRate : 48000;
+  return eqMagnitudeDbFrom(currentEqCoefficients(fs), f, fs);
+}
+
+function currentEqCoefficients(fs) {
+  return EQ_BAND_DEFS.map((def, i) => biquadCoefficients(def.type, def.hz, EQ_BAND_Q, eqSettings.gains[i], fs));
 }
 
 const EQ_CURVE_MIN_HZ = 20;
 const EQ_CURVE_MAX_HZ = 20000;
 const EQ_CURVE_RANGE_DB = 15; // etwas mehr als ±12, damit Spitzen nicht anstossen
+
+/* Farben einmal lesen und merken - beim Ziehen an einem Regler wird die
+   Kurve pro Bild neu gezeichnet, getComputedStyle erzwingt aber jedes Mal
+   eine Stilberechnung. Der Beobachter weiter oben (Wellenform) verwirft
+   auch diesen Speicher beim Themenwechsel. */
+let eqCurveColors = null;
+function eqCurvePalette() {
+  if (eqCurveColors) return eqCurveColors;
+  const style = getComputedStyle(document.documentElement);
+  eqCurveColors = {
+    grid: style.getPropertyValue("--sp-border").trim() || "rgba(255,255,255,0.2)",
+    accent: style.getPropertyValue("--sp-green").trim() || "#1db954",
+    muted: style.getPropertyValue("--sp-muted").trim() || "#a0a0a0",
+  };
+  return eqCurveColors;
+}
 
 function drawEqCurve() {
   const rect = eqCurveCanvas.getBoundingClientRect();
@@ -4351,10 +4417,7 @@ function drawEqCurve() {
   const ctx = eqCurveCtx;
   ctx.clearRect(0, 0, w, h);
 
-  const style = getComputedStyle(document.documentElement);
-  const gridColor = style.getPropertyValue("--sp-border").trim() || "rgba(255,255,255,0.2)";
-  const accent = style.getPropertyValue("--sp-green").trim() || "#1db954";
-  const muted = style.getPropertyValue("--sp-muted").trim() || "#a0a0a0";
+  const { grid: gridColor, accent, muted } = eqCurvePalette();
 
   const logMin = Math.log10(EQ_CURVE_MIN_HZ);
   const logMax = Math.log10(EQ_CURVE_MAX_HZ);
@@ -4388,9 +4451,12 @@ function drawEqCurve() {
   ctx.strokeStyle = eqSettings.enabled ? accent : muted;
   ctx.beginPath();
   const steps = 160;
+  // Koeffizienten EINMAL pro Band, nicht pro Kurvenpunkt.
+  const fs = audioCtx ? audioCtx.sampleRate : 48000;
+  const coeffs = eqSettings.enabled ? currentEqCoefficients(fs) : null;
   for (let i = 0; i <= steps; i++) {
     const f = Math.pow(10, logMin + ((logMax - logMin) * i) / steps);
-    const db = eqSettings.enabled ? eqMagnitudeDbAt(f) : 0;
+    const db = coeffs ? eqMagnitudeDbFrom(coeffs, f, fs) : 0;
     const y = Math.max(0, Math.min(h, yOf(db)));
     if (i === 0) ctx.moveTo(0, y);
     else ctx.lineTo(xOf(f), y);
@@ -6098,7 +6164,7 @@ function renderSearchPlaylists(matches) {
     title.textContent = pl.name;
     const sub = document.createElement("div");
     sub.className = "card-sub";
-    sub.textContent = `${pl.tracks.length} Titel`;
+    sub.textContent = t("{count} Titel", { count: pl.tracks.length });
 
     card.append(coverWrap, title, sub);
     card.addEventListener("click", () => exitSearchAndOpenPlaylist(plIdx));
@@ -7096,15 +7162,18 @@ partyChatInput.addEventListener("keydown", (e) => {
    Kopiert jeden in dieser Session gespielten Track (add_track_to_playlist,
    dieselbe Kopier-Logik wie beim manuellen "Zu Playlist hinzufügen") in
    eine neue Playlist - die Originaldateien bleiben unangetastet. */
-async function savePartyHistoryAsPlaylist() {
+function savePartyHistoryAsPlaylist() {
   if (!partyHistory.length) {
     showToast(t("In dieser Party wurde noch nichts gespielt."));
     return;
   }
   const defaultName = t("Party vom {date}", { date: new Date().toLocaleDateString(getLanguage() === "en" ? "en-US" : "de-DE") });
-  const name = window.prompt(t("Name der neuen Playlist:"), defaultName);
-  if (!name || !name.trim()) return;
-  const cleanName = name.trim();
+  showRenameModal(defaultName, (name) => writePartyHistoryPlaylist(name), "Name der neuen Playlist:");
+}
+
+async function writePartyHistoryPlaylist(name) {
+  const cleanName = (name || "").trim();
+  if (!cleanName) return;
 
   const seen = new Set();
   const unique = partyHistory.filter((e) => {
