@@ -1649,14 +1649,31 @@ function selectTrackRange(fromIndex, toIndex) {
   updateBulkEditBar();
 }
 
+/* Die gerade ANGEZEIGTEN Titel (Suche + Sortierung), nicht die ganze
+   Playlist. "Alle auswählen" muss sich auf das beziehen, was der Nutzer vor
+   sich sieht: bei aktiver Suche markierte es vorher trotzdem die komplette
+   Playlist - ein anschliessendes Album-/Cover-Bulk-Update hat dann Titel
+   ueberschrieben, die gar nicht in der Liste standen. */
+function displayedTrackFiles() {
+  if (!currentPlaylist) return [];
+  return playbackOrderIndices()
+    .map((i) => currentPlaylist.tracks[i])
+    .filter(Boolean)
+    .map((tr) => tr.file);
+}
+
+function allDisplayedSelected() {
+  const files = displayedTrackFiles();
+  return files.length > 0 && files.every((f) => bulkSelectedFiles.has(f));
+}
+
 function updateBulkEditBar() {
   const count = bulkSelectedFiles.size;
   bulkEditCount.textContent = t("{count} ausgewählt", { count });
   bulkEditAlbumBtn.disabled = count === 0;
   bulkEditCoverBtn.disabled = count === 0;
-  const total = currentPlaylist ? currentPlaylist.tracks.length : 0;
   bulkEditSelectAllBtn.textContent = t(
-    total > 0 && count >= total ? "Auswahl aufheben" : "Alle auswählen"
+    allDisplayedSelected() ? "Auswahl aufheben" : "Alle auswählen"
   );
 }
 
@@ -1673,14 +1690,17 @@ function setBulkSelectMode(enabled) {
 
 bulkEditSelectAllBtn.addEventListener("click", () => {
   if (!currentPlaylist) return;
-  const allSelected = bulkSelectedFiles.size >= currentPlaylist.tracks.length;
-  if (allSelected) {
-    bulkSelectedFiles.clear();
-    trackTable.querySelectorAll(".track-select-checkbox").forEach((cb) => { cb.checked = false; });
-  } else {
-    currentPlaylist.tracks.forEach((t) => bulkSelectedFiles.add(t.file));
-    trackTable.querySelectorAll(".track-select-checkbox").forEach((cb) => { cb.checked = true; });
-  }
+  const files = displayedTrackFiles();
+  if (!files.length) return;
+  // Nur die angezeigten ab-/anwaehlen. Eine Auswahl, die vor dem Tippen in
+  // der Suche entstanden ist, bleibt dabei bestehen - sie war ja gewollt.
+  if (allDisplayedSelected()) files.forEach((f) => bulkSelectedFiles.delete(f));
+  else files.forEach((f) => bulkSelectedFiles.add(f));
+  trackTableBody.querySelectorAll(".track-row").forEach((row) => {
+    const track = currentPlaylist.tracks[Number(row.dataset.index)];
+    const cb = row.querySelector(".track-select-checkbox");
+    if (track && cb) cb.checked = bulkSelectedFiles.has(track.file);
+  });
   updateBulkEditBar();
 });
 
@@ -1770,6 +1790,11 @@ const trackSpacerBottom = makeTrackSpacer();
 
 let trackRowHeight = 0; // 0 = noch nicht gemessen
 let trackDisplayIndices = []; // Original-Indices in der GERADE angezeigten Reihenfolge
+// Zu WELCHER Playlist trackDisplayIndices gehört. Wird ein Titel von der
+// Startseite oder aus der Suche gestartet (playTrackIn), wechselt die
+// laufende Playlist, ohne dass die Tabelle neu gebaut wird - die Indices
+// gehörten dann noch zur vorher angesehenen Playlist.
+let trackDisplayForPlaylist = null;
 let trackWindowStart = -1;
 let trackWindowEnd = -1;
 
@@ -1943,12 +1968,16 @@ function getSortedFilteredIndices() {
 
 function renderTrackTable() {
   trackDisplayIndices = getSortedFilteredIndices();
+  trackDisplayForPlaylist = currentPlaylist;
   playlistSearchEmpty.classList.toggle("hidden", !(playlistSearchQuery.trim() && !trackDisplayIndices.length));
   trackTableBody.textContent = "";
   trackTableBody.append(trackSpacerTop, trackSpacerBottom);
   trackWindowStart = -1;
   trackWindowEnd = -1;
   updateTrackWindow();
+  // Die Beschriftung haengt an den ANGEZEIGTEN Titeln - nach jedem Filtern
+  // oder Sortieren kann aus "Alle auswählen" ein "Auswahl aufheben" werden.
+  if (bulkSelectMode) updateBulkEditBar();
 }
 
 /* Zeilenhoehe am echten Element messen. Solange die Playlist-Ansicht
@@ -2357,6 +2386,44 @@ function togglePlayPause() {
   }
 }
 
+/* Die Reihenfolge, in der die Playlist wirklich abgespielt wird: das ist
+   die ANGEZEIGTE (sortierte/gefilterte), nicht die rohe Array-Reihenfolge.
+   Vorher lief "weiter" immer über `index + 1` im Original-Array - hat man
+   die Playlist nach Titel oder Dauer sortiert, war das sichtbar der falsche
+   Song: die Sortierung wirkte nur optisch. */
+function playbackOrderIndices() {
+  const total = currentPlaylist ? currentPlaylist.tracks.length : 0;
+  if (!total) return [];
+  // Nur verwenden, wenn die angezeigte Reihenfolge auch WIRKLICH zu dieser
+  // Playlist gehört - sonst die rohe Reihenfolge wie bisher.
+  if (trackDisplayForPlaylist === currentPlaylist && trackDisplayIndices.length) {
+    return trackDisplayIndices;
+  }
+  return Array.from({ length: total }, (_, i) => i);
+}
+
+/* Nachbar in dieser Reihenfolge. step +1 = nächster, -1 = vorheriger.
+   Ergibt -1, wenn die Liste vorwärts zu Ende ist und "alles wiederholen"
+   aus ist; rückwärts wird wie bisher immer umgebrochen. */
+function neighbourTrackIndex(fromIndex, step) {
+  const order = playbackOrderIndices();
+  if (!order.length) return -1;
+  const total = currentPlaylist.tracks.length;
+  const pos = order.indexOf(fromIndex);
+  if (pos === -1) {
+    // Der laufende Titel ist gerade weggefiltert (Suchfeld) - dann zählt
+    // wieder die rohe Reihenfolge, sonst würde "weiter" mitten in der
+    // gefilterten Liste neu anfangen.
+    const raw = fromIndex + step;
+    if (raw >= 0 && raw < total) return raw;
+    if (step > 0 && repeatMode !== "all") return -1;
+    return ((raw % total) + total) % total;
+  }
+  const nextPos = pos + step;
+  if (nextPos >= order.length && repeatMode !== "all") return -1;
+  return order[((nextPos % order.length) + order.length) % order.length];
+}
+
 function nextTrack() {
   // Eigene "Als nächstes"-Warteschlange hat höchste Priorität, danach die
   // Gast-Queue der Party - wie das "Up next" jeder Musik-App.
@@ -2387,13 +2454,10 @@ function nextTrack() {
     playTrack(shuffleOrder[nextPos]);
     return;
   }
-  let next = fromIndex + 1;
-  if (next >= currentPlaylist.tracks.length) {
-    if (repeatMode !== "all") {
-      updatePlayButton(false);
-      return;
-    }
-    next = 0;
+  const next = neighbourTrackIndex(fromIndex, 1);
+  if (next === -1) {
+    updatePlayButton(false);
+    return;
   }
   playTrack(next);
 }
@@ -2411,14 +2475,17 @@ function prevTrack() {
     playTrack(shuffleOrder[prevPos]);
     return;
   }
-  let prev = currentTrackIndex - 1;
-  if (prev < 0) prev = currentPlaylist.tracks.length - 1;
-  playTrack(prev);
+  const prev = neighbourTrackIndex(currentTrackIndex, -1);
+  if (prev !== -1) playTrack(prev);
 }
 
 /* ===== Controls Wiring ===== */
 playAllBtn.addEventListener("click", () => {
-  if (currentPlaylist && currentPlaylist.tracks.length) playTrack(0);
+  if (!currentPlaylist || !currentPlaylist.tracks.length) return;
+  // Der ERSTE ANGEZEIGTE Titel, nicht stur Index 0: bei sortierter oder
+  // gefilterter Liste ist das sonst ein Song, der gar nicht oben steht.
+  const order = playbackOrderIndices();
+  if (order.length) playTrack(order[0]);
 });
 
 /* The big shuffle button in the playlist view is a "Zufallswiedergabe
@@ -2863,12 +2930,10 @@ function upcomingPlaylistTracks(maxCount) {
     }
     return out;
   }
+  let idx = fromIndex;
   for (let step = 1; step <= currentPlaylist.tracks.length - 1 && out.length < maxCount; step++) {
-    let idx = fromIndex + step;
-    if (idx >= currentPlaylist.tracks.length) {
-      if (repeatMode !== "all") break;
-      idx %= currentPlaylist.tracks.length;
-    }
+    idx = neighbourTrackIndex(idx, 1);
+    if (idx === -1) break;
     const t = currentPlaylist.tracks[idx];
     if (t) out.push(t);
   }
@@ -5033,11 +5098,8 @@ function peekNextEntry() {
     if (nextPos === 0 && repeatMode !== "all" && pos !== -1) return null;
     idx = shuffleOrder[nextPos];
   } else {
-    idx = fromIndex + 1;
-    if (idx >= currentPlaylist.tracks.length) {
-      if (repeatMode !== "all") return null;
-      idx = 0;
-    }
+    idx = neighbourTrackIndex(fromIndex, 1);
+    if (idx === -1) return null;
   }
   const t = currentPlaylist.tracks[idx];
   return t ? { kind: "playlist", index: idx, streamUrl: t.stream_url } : null;
@@ -6541,11 +6603,8 @@ function peekNextTrack() {
     if (nextPos === 0 && repeatMode !== "all") return null;
     return currentPlaylist.tracks[shuffleOrder[nextPos]] || null;
   }
-  let next = currentTrackIndex + 1;
-  if (next >= currentPlaylist.tracks.length) {
-    if (repeatMode !== "all") return null;
-    next = 0;
-  }
+  const next = neighbourTrackIndex(currentTrackIndex, 1);
+  if (next === -1) return null;
   return currentPlaylist.tracks[next] || null;
 }
 
@@ -6672,6 +6731,10 @@ function textWeight(text) {
    oder (der alte Bug) komplett draufzuschlagen. */
 const SECONDS_PER_SYLLABLE_WEIGHT = 0.32;
 const HELD_WORD_MAX_BONUS_SECONDS = 2.5;
+/* Mindestfenster für eine Ad-Lib-Zeile (siehe renderSyncedLyrics). Ein
+   einsilbiges "(yeah)" käme rechnerisch auf 0,45s - so kurz ganz am Ende
+   der Zeile sieht man das Aufleuchten kaum. */
+const MIN_ADLIB_SECONDS = 0.7;
 
 function wordTimeWindows(text, lineStart, lineEnd) {
   const words = text.split(/(\s+)/).filter((w) => w !== "");
@@ -6808,7 +6871,20 @@ function renderSyncedLyrics(lines) {
       // erst danach - obwohl es in Wahrheit mitten hinein gerufen wird.
       words = appendWordsToContainer(div, wordTimeWindows(main, t, lineEnd));
 
-      const adlibStart = t + (lineEnd - t) * startFraction;
+      // Das Ad-Lib braucht ein Zeitfenster, das WIRKLICH noch in die Zeile
+      // passt. Stand die Klammer am Zeilenende ("Hold me down (down)") - und
+      // das ist der mit Abstand häufigste Fall -, ist startFraction 1, der
+      // Einsatz läge also exakt auf dem Zeilenende: das Fenster liegt dann
+      // komplett hinter der aktiven Zeile und das Ad-Lib leuchtete nie auf.
+      // Deshalb wird eine eigene Sprechdauer geschätzt (wie bei den Wörtern
+      // aus der Silbenzahl) und der Einsatz so weit nach vorn gezogen, dass
+      // diese Dauer vor dem Zeilenende noch Platz hat.
+      const lineSpan = Math.max(lineEnd - t, 0.3);
+      const adlibSpan = Math.min(
+        lineSpan,
+        Math.max(textWeight(adlib) * SECONDS_PER_SYLLABLE_WEIGHT, MIN_ADLIB_SECONDS)
+      );
+      const adlibStart = Math.max(t, Math.min(t + lineSpan * startFraction, lineEnd - adlibSpan));
       const adlibDiv = document.createElement("div");
       adlibDiv.className = "lyrics-line-adlib";
       const adlibWords = appendWordsToContainer(adlibDiv, wordTimeWindows(adlib, adlibStart, lineEnd));
@@ -7392,8 +7468,13 @@ if ("EventSource" in window) {
 document.addEventListener("keydown", (e) => {
   if (recordingActionId) return; // settings modal is capturing this keystroke instead
   // Don't hijack any combo while the user is typing in a text field.
+  // `select` gehört mit dazu: ein aufgeklapptes Auswahlfeld (Sortierung,
+  // Qualität, Design) wird mit den Pfeiltasten bedient - die landeten
+  // vorher als Wiedergabe-Hotkey samt preventDefault, das Feld ließ sich
+  // per Tastatur also gar nicht bedienen.
   const tag = (e.target.tagName || "").toLowerCase();
-  if (tag === "input" || tag === "textarea") return;
+  if (tag === "input" || tag === "textarea" || tag === "select") return;
+  if (e.target.isContentEditable) return;
 
   const action = HOTKEY_ACTIONS.find((a) => matchesHotkey(e, hotkeyBindings[a.id]));
   if (!action) return;
