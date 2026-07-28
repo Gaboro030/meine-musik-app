@@ -2414,6 +2414,15 @@ body.modal-scroll-lock { overflow: hidden; }
   justify-content: center;
   padding: 40px 24px;
 }
+/* Eigene Grafikebene für den Textbereich.
+   Der Overlay darüber hat einen bildschirmfüllenden Weichzeichner
+   (backdrop-filter). Ohne diese Trennung liegt der laufende Karaoke-Text
+   IN derselben Ebene: jedes neu gezeichnete Wort erklärt damit auch den
+   verwaschenen Hintergrund für ungültig, und die Grafikkarte verwischt
+   den halben Bildschirm 60-mal pro Sekunde neu. Auf einem zweiten
+   Monitor neben einem laufenden Spiel bekommt sie dafür keine Zeit mehr -
+   genau dann ruckelte die App. Mit eigener Ebene wird der Hintergrund
+   einmal berechnet und danach nur noch wiederverwendet. */
 .lyrics-panel {
   max-width: 720px;
   width: 100%;
@@ -2421,6 +2430,7 @@ body.modal-scroll-lock { overflow: hidden; }
   display: flex;
   flex-direction: column;
   gap: 20px;
+  transform: translateZ(0);
 }
 .lyrics-panel-header {
   display: flex;
@@ -2511,14 +2521,18 @@ body.modal-scroll-lock { overflow: hidden; }
      exact same edges. */
   margin: 10px 0;
   transform-origin: left center;
-  transition: transform 0.4s ease, opacity 0.4s ease, filter 0.4s ease;
+  /* Kein filter: blur(0.4px) mehr auf den nicht aktiven Zeilen (und keine
+     filter-Animation beim Zeilenwechsel). Ein Weichzeichner ist pro
+     Element ein eigener Grafik-Durchgang - bei 40 Songtextzeilen also 40
+     davon, dauerhaft, plus 40 animierte beim Wechsel. Sichtbar waren die
+     0,4 Pixel praktisch nicht; das Abdunkeln (opacity) macht den
+     Unterschied zwischen aktiver und ruhender Zeile ohnehin allein. */
+  transition: transform 0.4s ease, opacity 0.4s ease;
   opacity: 0.55;
-  filter: blur(0.4px);
   cursor: default;
 }
 .lyrics-line.active {
   opacity: 1;
-  filter: none;
   transform: scale(1.06);
 }
 

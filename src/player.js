@@ -6878,7 +6878,13 @@ function updateLyricsHighlight() {
       const inGroup = i >= groupStart && i <= idx;
       el.classList.toggle("active", inGroup);
       el.classList.toggle("sung", i < groupStart); // seek-safe: recomputed every change
-      if (!inGroup) words.forEach(({ el: wEl }) => wEl.style.removeProperty("--wipe"));
+      if (!inGroup) {
+        words.forEach((w) => {
+          if (w.lastWipe === undefined) return;
+          w.lastWipe = undefined;
+          w.el.style.removeProperty("--wipe");
+        });
+      }
     });
     lyricsActiveIdx = idx;
     if (idx >= 0) {
@@ -6892,21 +6898,50 @@ function updateLyricsHighlight() {
   // 0 davor, dazwischen ein weicher Übergang - so leuchtet immer nur das
   // gerade gesungene Wort auf statt der ganzen Zeile auf einmal.
   for (let i = groupStart; i <= idx && idx >= 0; i++) {
-    lyricsSyncLines[i].words.forEach(({ start, end, el: wEl }) => {
-      const pct = Math.min(Math.max((t - start) / Math.max(end - start, 0.05), 0), 1) * 100;
-      wEl.style.setProperty("--wipe", `${pct.toFixed(1)}%`);
+    lyricsSyncLines[i].words.forEach((w) => {
+      const pct = Math.min(Math.max((t - w.start) / Math.max(w.end - w.start, 0.05), 0), 1) * 100;
+      const value = `${pct.toFixed(1)}%`;
+      // NUR schreiben, wenn sich wirklich etwas ändert. --wipe steuert ein
+      // clip-path; jede Zuweisung zeichnet das Wort samt Leuchten neu, und
+      // weil das Ganze hinter einem bildschirmfüllenden Weichzeichner
+      // liegt (.lyrics-overlay), muss die Grafikkarte danach auch den
+      // Hintergrund neu verwaschen. Zu jedem Zeitpunkt ist aber höchstens
+      // EIN Wort mitten im Wischen - alle anderen stehen längst auf 0%
+      // oder 100% und wurden bisher trotzdem 60-mal pro Sekunde neu
+      // beschrieben. Genau das hat die App ausgebremst, wenn sich die
+      // Grafikkarte nebenher noch um ein Spiel kümmern musste.
+      if (w.lastWipe === value) return;
+      w.lastWipe = value;
+      w.el.style.setProperty("--wipe", value);
     });
   }
 }
 
+/* Die Schleife läuft NUR, solange auch wirklich etwas läuft. Vorher lief
+   sie mit voller Bildrate weiter, während der Titel pausiert war - da
+   ändert sich nichts, es wurde also 60-mal pro Sekunde für nichts
+   gerechnet und gezeichnet. Wieder angeworfen wird sie unten bei play,
+   nach einem Sprung und bei Tempowechsel. */
 function lyricsFrameLoop() {
   updateLyricsHighlight();
-  lyricsRafId = lyricsOverlay.classList.contains("hidden") ? null : requestAnimationFrame(lyricsFrameLoop);
+  if (lyricsOverlay.classList.contains("hidden") || audioEl.paused) {
+    lyricsRafId = null;
+    return;
+  }
+  lyricsRafId = requestAnimationFrame(lyricsFrameLoop);
 }
 
 function startLyricsLoop() {
   if (lyricsRafId === null) lyricsRafId = requestAnimationFrame(lyricsFrameLoop);
 }
+
+// Nach dem Pausieren steht die Anzeige still; sobald wieder etwas
+// passiert, muss sie weiterlaufen bzw. einmal nachziehen.
+["play", "seeked", "ratechange"].forEach((ev) => {
+  audioEl.addEventListener(ev, () => {
+    if (!lyricsOverlay.classList.contains("hidden")) startLyricsLoop();
+  });
+});
 
 function stopLyricsLoop() {
   if (lyricsRafId !== null) {
