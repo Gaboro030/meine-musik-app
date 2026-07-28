@@ -663,6 +663,13 @@ function showView(view) {
   if (view === "stats") renderStats();
   if (view === "health") loadHealthCheck();
   if (view === "history") renderHistory();
+  // Die virtualisierte Titelliste rechnet mit echten Massen. Solange die
+  // Ansicht ausgeblendet war, ist alles 0 gewesen - jetzt, wo sie steht,
+  // Zeilenhoehe nachmessen und das sichtbare Fenster neu bestimmen.
+  if (view === "playlist") {
+    measureTrackRowHeight();
+    updateTrackWindow();
+  }
 
   currentView = view;
 }
@@ -703,6 +710,10 @@ function renderHome() {
     coverWrap.className = "card-cover-wrap";
     const img = document.createElement("img");
     img.className = "card-cover";
+    // Bilder ausserhalb des Sichtfensters erst laden, wenn man dorthin
+    // scrollt, und das Dekodieren neben dem Hauptthread laufen lassen.
+    img.loading = "lazy";
+    img.decoding = "async";
     img.src = coverFor(track);
     img.alt = "";
     const playBtn = document.createElement("button");
@@ -768,6 +779,10 @@ function renderDailyMix() {
     coverWrap.className = "card-cover-wrap";
     const img = document.createElement("img");
     img.className = "card-cover";
+    // Bilder ausserhalb des Sichtfensters erst laden, wenn man dorthin
+    // scrollt, und das Dekodieren neben dem Hauptthread laufen lassen.
+    img.loading = "lazy";
+    img.decoding = "async";
     img.src = coverFor(track);
     img.alt = "";
     const playBtn = document.createElement("button");
@@ -909,6 +924,8 @@ function renderHistory() {
     row.className = "history-row";
     const thumb = document.createElement("img");
     thumb.className = "history-row-thumb";
+    thumb.loading = "lazy";
+    thumb.decoding = "async";
     thumb.src = coverFor(entry);
     thumb.alt = "";
     const text = document.createElement("div");
@@ -1084,6 +1101,8 @@ function buildDiscoverCard(rec) {
   coverWrap.className = "card-cover-wrap";
   const img = document.createElement("img");
   img.className = "card-cover";
+  img.loading = "lazy";
+  img.decoding = "async";
   img.src = rec.cover || PLACEHOLDER_COVER;
   img.alt = "";
   const dlBtn = document.createElement("button");
@@ -1237,6 +1256,10 @@ function renderLibraryGrid() {
     coverWrap.className = "card-cover-wrap";
     const img = document.createElement("img");
     img.className = "card-cover";
+    // Bilder ausserhalb des Sichtfensters erst laden, wenn man dorthin
+    // scrollt, und das Dekodieren neben dem Hauptthread laufen lassen.
+    img.loading = "lazy";
+    img.decoding = "async";
     applyPlaylistCover(img, pl);
     img.alt = "";
     const playBtn = document.createElement("button");
@@ -1299,6 +1322,8 @@ function renderSidebar() {
 
     const img = document.createElement("img");
     img.className = "playlist-item-cover";
+    img.loading = "lazy";
+    img.decoding = "async";
     applyPlaylistCover(img, pl);
     img.alt = "";
 
@@ -1537,6 +1562,10 @@ function renderRecommendations(recs) {
     coverWrap.className = "card-cover-wrap";
     const img = document.createElement("img");
     img.className = "card-cover";
+    // Bilder ausserhalb des Sichtfensters erst laden, wenn man dorthin
+    // scrollt, und das Dekodieren neben dem Hauptthread laufen lassen.
+    img.loading = "lazy";
+    img.decoding = "async";
     img.src = rec.cover || PLACEHOLDER_COVER;
     img.alt = "";
     coverWrap.appendChild(img);
@@ -1582,24 +1611,31 @@ function toggleTrackSelection(file, selected) {
 // mehrere aus", ohne jede Zeile einzeln anklicken zu müssen.
 function selectTrackRange(fromIndex, toIndex) {
   if (!currentPlaylist) return;
-  // Bewusst ueber die ANGEZEIGTE (DOM-)Reihenfolge, nicht ueber die rohen
+  // Bewusst ueber die ANGEZEIGTE Reihenfolge, nicht ueber die rohen
   // Array-Indices: bei aktiver Sortierung/Suche liegen zwei benachbarte
   // sichtbare Zeilen nicht mehr zwingend bei benachbarten currentPlaylist.
   // tracks-Indices - ein Bereich "von Index X bis Y" waere dann eine ganz
   // andere (und falsche) Auswahl als das, was der Nutzer optisch shift-
   // geklickt hat.
-  const rows = [...trackTable.querySelectorAll(".track-row")];
-  const fromPos = rows.findIndex((r) => Number(r.dataset.index) === fromIndex);
-  const toPos = rows.findIndex((r) => Number(r.dataset.index) === toIndex);
+  //
+  // Quelle dafuer ist trackDisplayIndices und NICHT mehr das DOM: seit der
+  // Virtualisierung stehen nur die sichtbaren Zeilen im Baum, ein Bereich
+  // ueber mehrere Bildschirmhoehen waere darueber gar nicht auffindbar.
+  const fromPos = trackDisplayIndices.indexOf(fromIndex);
+  const toPos = trackDisplayIndices.indexOf(toIndex);
   if (fromPos === -1 || toPos === -1) return;
   const [lo, hi] = fromPos < toPos ? [fromPos, toPos] : [toPos, fromPos];
   for (let pos = lo; pos <= hi; pos++) {
-    const row = rows[pos];
-    const track = currentPlaylist.tracks[Number(row.dataset.index)];
+    const track = currentPlaylist.tracks[trackDisplayIndices[pos]];
     if (track) bulkSelectedFiles.add(track.file);
-    const cb = row.querySelector(".track-select-checkbox");
-    if (cb) cb.checked = true;
   }
+  // Sichtbare Haekchen nachziehen; alle anderen entstehen beim Bauen der
+  // Zeile ohnehin schon angehakt (buildTrackRow liest bulkSelectedFiles).
+  trackTableBody.querySelectorAll(".track-row").forEach((row) => {
+    const track = currentPlaylist.tracks[Number(row.dataset.index)];
+    const cb = row.querySelector(".track-select-checkbox");
+    if (track && cb) cb.checked = bulkSelectedFiles.has(track.file);
+  });
   updateBulkEditBar();
 }
 
@@ -1682,17 +1718,58 @@ bulkEditCoverInput.addEventListener("change", async () => {
 });
 
 /* ===== Track Table =====
-   Lazy-Loading fuer grosse Playlists: der erste Batch rendert synchron
-   (Ansicht steht sofort da), der Rest folgt haeppchenweise ueber
-   requestAnimationFrame statt den Main-Thread mit tausenden DOM-Knoten +
-   Event-Listenern am Stueck zu blockieren. Fuer normal grosse Playlists
-   (< CHUNK_SIZE Titel) unveraendertes Verhalten - ein einziger Batch. */
-const TRACK_TABLE_CHUNK_SIZE = 150;
+   Nur der sichtbare Ausschnitt steht wirklich im DOM ("Virtualisierung").
+   Vorher wurde JEDE Zeile gebaut - haeppchenweise zwar, aber am Ende lagen
+   bei 115 Titeln rund 1700 Elemente mit ihren Ereignisbehandlungen im
+   Baum, und jedes Suchzeichen baute alles neu auf. Jetzt haengen nur die
+   Zeilen im Dokument, die man auch sehen kann; darueber und darunter haelt
+   je eine leere Platzhalterzeile die richtige Gesamthoehe, damit der
+   Rollbalken stimmt und das Scrollen sich normal anfuehlt.
+
+   Voraussetzung dafuer ist eine EINHEITLICHE Zeilenhoehe. Die ist hier
+   gegeben (40px Bild + 2x10px Innenabstand, Titel und Interpret sind
+   einzeilig mit Auslassungspunkten, siehe .track-title im CSS) - sie wird
+   trotzdem einmal am echten Element gemessen statt fest verdrahtet, damit
+   eine spaetere CSS-Aenderung nicht stillschweigend zu falschen Abstaenden
+   fuehrt.
+
+   Das Fenster rastet in Bloecken ein: waehrend des Scrollens wird also
+   nicht bei jeder Zeile neu gebaut, sondern erst, wenn der sichtbare
+   Bereich einen Block weiterwandert. */
+const TRACK_VIRTUAL_BLOCK = 25; // Zeilen pro Raststufe
+// Puffer ober- und unterhalb des Sichtfensters. Ein Block reicht: das sind
+// rund 1500px Vorrat in jede Richtung, und weil das Fenster in Bloecken
+// einrastet, wird ohnehin erst nach 25 gescrollten Zeilen neu gebaut.
+const TRACK_VIRTUAL_OVERSCAN = TRACK_VIRTUAL_BLOCK;
+const TRACK_ROW_HEIGHT_FALLBACK = 61;
+const TRACK_COLUMN_COUNT = 7;
+
+const trackScrollContainer = document.querySelector(".content-scroll");
+
+function makeTrackSpacer() {
+  const tr = document.createElement("tr");
+  tr.className = "track-spacer";
+  tr.setAttribute("aria-hidden", "true");
+  const td = document.createElement("td");
+  td.colSpan = TRACK_COLUMN_COUNT;
+  tr.appendChild(td);
+  return tr;
+}
+const trackSpacerTop = makeTrackSpacer();
+const trackSpacerBottom = makeTrackSpacer();
+
+let trackRowHeight = 0; // 0 = noch nicht gemessen
+let trackDisplayIndices = []; // Original-Indices in der GERADE angezeigten Reihenfolge
+let trackWindowStart = -1;
+let trackWindowEnd = -1;
 
 function buildTrackRow(track, i, displayNum) {
     const tr = document.createElement("tr");
     tr.className = "track-row";
     tr.dataset.index = i;
+    // Beim Bauen gleich richtig markieren: die Zeile des laufenden Titels
+    // kann beim Scrollen jederzeit neu entstehen.
+    if (i === currentTrackIndex) tr.classList.add("playing");
 
     const tdIndex = document.createElement("td");
     tdIndex.className = "col-index";
@@ -1723,6 +1800,14 @@ function buildTrackRow(track, i, displayNum) {
     cell.className = "track-title-cell";
     const img = document.createElement("img");
     img.className = "track-thumb";
+    // Feste Masse als Attribut (nicht nur im CSS): der Platz steht damit
+    // schon fest, bevor das Bild da ist - kein Nachrutschen der Zeile.
+    // loading="lazy" haelt Bilder ausserhalb des Sichtfensters zurueck,
+    // decoding="async" laesst das Dekodieren neben dem Hauptthread laufen.
+    img.width = 40;
+    img.height = 40;
+    img.loading = "lazy";
+    img.decoding = "async";
     img.src = coverFor(track);
     img.alt = "";
     const text = document.createElement("div");
@@ -1846,31 +1931,112 @@ function getSortedFilteredIndices() {
   return indices;
 }
 
-let trackTableRenderToken = 0;
 function renderTrackTable() {
-  trackTableBody.innerHTML = "";
-  const indices = getSortedFilteredIndices();
-  playlistSearchEmpty.classList.toggle("hidden", !(playlistSearchQuery.trim() && !indices.length));
-  const token = ++trackTableRenderToken; // Playlist-Wechsel mitten im Chunking bricht den alten Lauf sauber ab
-  let pos = 0;
-  function renderChunk() {
-    if (token !== trackTableRenderToken) return;
-    const end = Math.min(pos + TRACK_TABLE_CHUNK_SIZE, indices.length);
-    const fragment = document.createDocumentFragment();
-    for (; pos < end; pos++) {
-      const origIdx = indices[pos];
-      fragment.appendChild(buildTrackRow(currentPlaylist.tracks[origIdx], origIdx, pos + 1));
-    }
-    trackTableBody.appendChild(fragment);
-    highlightPlayingRow();
-    if (pos < indices.length) requestAnimationFrame(renderChunk);
-  }
-  renderChunk();
+  trackDisplayIndices = getSortedFilteredIndices();
+  playlistSearchEmpty.classList.toggle("hidden", !(playlistSearchQuery.trim() && !trackDisplayIndices.length));
+  trackTableBody.textContent = "";
+  trackTableBody.append(trackSpacerTop, trackSpacerBottom);
+  trackWindowStart = -1;
+  trackWindowEnd = -1;
+  updateTrackWindow();
 }
 
+/* Zeilenhoehe am echten Element messen. Solange die Playlist-Ansicht
+   ausgeblendet ist, hat nichts eine Hoehe - dann bleibt der Naeherungswert
+   stehen und beim naechsten sichtbaren Durchlauf wird nachgemessen. */
+function measureTrackRowHeight() {
+  const row = trackTableBody.querySelector(".track-row");
+  if (!row) return;
+  const h = row.getBoundingClientRect().height;
+  if (h > 1 && Math.abs(h - trackRowHeight) > 0.5) {
+    trackRowHeight = h;
+    trackWindowStart = -1; // erzwingt einen Neuaufbau mit der richtigen Hoehe
+    updateTrackWindow();
+  }
+}
+
+function updateTrackWindow() {
+  const total = trackDisplayIndices.length;
+  if (!total) {
+    trackSpacerTop.firstChild.style.height = "0px";
+    trackSpacerBottom.firstChild.style.height = "0px";
+    return;
+  }
+  const rowH = trackRowHeight || TRACK_ROW_HEIGHT_FALLBACK;
+
+  // Wo faengt der Tabellenkoerper innerhalb des Rollbereichs an? Der obere
+  // Platzhalter ist sein erstes Kind, dessen Oberkante verschiebt sich also
+  // NICHT mit der Fenstergroesse - der Wert bleibt beim Scrollen gueltig.
+  let bodyTop = 0;
+  if (trackScrollContainer) {
+    bodyTop =
+      trackTableBody.getBoundingClientRect().top -
+      trackScrollContainer.getBoundingClientRect().top +
+      trackScrollContainer.scrollTop;
+  }
+  const viewTop = (trackScrollContainer ? trackScrollContainer.scrollTop : 0) - bodyTop;
+  const viewHeight = trackScrollContainer ? trackScrollContainer.clientHeight : 800;
+
+  const firstVisible = Math.max(0, Math.floor(viewTop / rowH));
+  const lastVisible = Math.min(total, Math.ceil((viewTop + viewHeight) / rowH));
+  // Auf Bloecke einrasten: so wird nicht bei jeder gescrollten Zeile neu
+  // gebaut, sondern nur alle TRACK_VIRTUAL_BLOCK Zeilen.
+  const start = Math.max(0, Math.floor((firstVisible - TRACK_VIRTUAL_OVERSCAN) / TRACK_VIRTUAL_BLOCK) * TRACK_VIRTUAL_BLOCK);
+  const end = Math.min(total, Math.ceil((lastVisible + TRACK_VIRTUAL_OVERSCAN) / TRACK_VIRTUAL_BLOCK) * TRACK_VIRTUAL_BLOCK);
+  if (start === trackWindowStart && end === trackWindowEnd) return;
+
+  trackWindowStart = start;
+  trackWindowEnd = end;
+
+  const fragment = document.createDocumentFragment();
+  for (let pos = start; pos < end; pos++) {
+    const origIdx = trackDisplayIndices[pos];
+    fragment.appendChild(buildTrackRow(currentPlaylist.tracks[origIdx], origIdx, pos + 1));
+  }
+  // Alte Zeilen zwischen den Platzhaltern raus, neue rein - in einem Zug,
+  // damit dazwischen kein halb gefuellter Zustand gezeichnet wird.
+  let node = trackSpacerTop.nextSibling;
+  while (node && node !== trackSpacerBottom) {
+    const next = node.nextSibling;
+    node.remove();
+    node = next;
+  }
+  trackSpacerTop.firstChild.style.height = `${start * rowH}px`;
+  trackSpacerBottom.firstChild.style.height = `${(total - end) * rowH}px`;
+  trackTableBody.insertBefore(fragment, trackSpacerBottom);
+
+  if (!trackRowHeight) measureTrackRowHeight();
+}
+
+/* Scrollen und Groessenaenderungen nachziehen - beides gebuendelt ueber
+   requestAnimationFrame, damit ein Schwall Scroll-Ereignisse hoechstens
+   einen Neuaufbau pro Bild ausloest. */
+let trackWindowRaf = 0;
+function scheduleTrackWindowUpdate() {
+  if (trackWindowRaf) return;
+  trackWindowRaf = requestAnimationFrame(() => {
+    trackWindowRaf = 0;
+    updateTrackWindow();
+  });
+}
+if (trackScrollContainer) {
+  trackScrollContainer.addEventListener("scroll", scheduleTrackWindowUpdate, { passive: true });
+}
+window.addEventListener("resize", () => {
+  // Die Zeilenhoehe kann sich mit der Fensterbreite aendern (mobile
+  // Medienabfragen), deshalb hier neu messen statt nur neu zu fenstern.
+  measureTrackRowHeight();
+  scheduleTrackWindowUpdate();
+});
+
+let playlistSearchDebounce = null;
 playlistSearchInput.addEventListener("input", () => {
   playlistSearchQuery = playlistSearchInput.value;
-  renderTrackTable();
+  // Beim Tippen nicht bei jedem Zeichen die ganze Liste neu bestimmen -
+  // Sortieren und Filtern laufen ueber alle Titel, das lohnt erst, wenn
+  // der Nutzer kurz innehaelt.
+  clearTimeout(playlistSearchDebounce);
+  playlistSearchDebounce = setTimeout(renderTrackTable, 120);
 });
 
 function updateSortDirBtn() {
@@ -1889,10 +2055,19 @@ playlistSortDirBtn.addEventListener("click", () => {
   renderTrackTable();
 });
 
+/* Nur die beiden betroffenen Zeilen anfassen statt bei jedem Titelwechsel
+   ueber alle zu laufen. */
+let highlightedTrackRow = null;
 function highlightPlayingRow() {
-  trackTableBody.querySelectorAll(".track-row").forEach((row) => {
-    row.classList.toggle("playing", Number(row.dataset.index) === currentTrackIndex);
-  });
+  if (highlightedTrackRow && Number(highlightedTrackRow.dataset.index) !== currentTrackIndex) {
+    highlightedTrackRow.classList.remove("playing");
+    highlightedTrackRow = null;
+  }
+  if (currentTrackIndex < 0) return;
+  const row = trackTableBody.querySelector(`.track-row[data-index="${currentTrackIndex}"]`);
+  if (!row) return; // Zeile gerade ausserhalb des Sichtfensters - buildTrackRow setzt die Klasse selbst
+  row.classList.add("playing");
+  highlightedTrackRow = row;
 }
 
 /* ===== Playback ===== */
@@ -2755,6 +2930,8 @@ function queueRowBase(entry) {
   row.className = "queue-row";
   const img = document.createElement("img");
   img.className = "queue-row-cover";
+  img.loading = "lazy";
+  img.decoding = "async";
   img.src = entry.cover || PLACEHOLDER_COVER;
   img.alt = "";
   const text = document.createElement("div");
@@ -2918,6 +3095,7 @@ function renderQueuePanel() {
    Netzwerk, nur Disk-IO). Peak-Werte pro Bucket statt RMS, damit auch
    kurze, laute Schlaege sichtbar bleiben statt im Mittelwert unterzugehen. */
 const WAVEFORM_BUCKETS = 100;
+const WAVEFORM_PLACEHOLDER_PEAKS = new Float32Array(WAVEFORM_BUCKETS).fill(0.14);
 let waveformPeaks = null; // Float32Array[0..1] pro Bucket, oder null solange nicht geladen/fehlgeschlagen
 let waveformToken = 0;
 const waveformCtx = pbWaveformCanvas.getContext("2d");
@@ -2934,26 +3112,60 @@ function resizeWaveformCanvas() {
   const rect = pbWaveformCanvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
   const dpr = window.devicePixelRatio || 1;
-  pbWaveformCanvas.width = Math.max(1, Math.round(rect.width * dpr));
-  pbWaveformCanvas.height = Math.max(1, Math.round(rect.height * dpr));
+  const w = Math.max(1, Math.round(rect.width * dpr));
+  const h = Math.max(1, Math.round(rect.height * dpr));
+  if (pbWaveformCanvas.width === w && pbWaveformCanvas.height === h) return;
+  pbWaveformCanvas.width = w;
+  pbWaveformCanvas.height = h;
+  // Ein Groessenwechsel leert das Canvas - der naechste Zeichenvorgang darf
+  // also nicht wegen "gleicher Stand wie zuletzt" uebersprungen werden.
+  waveformLastPlayedBars = -1;
 }
 
-function drawWaveform() {
+/* Farben einmal auslesen und merken. getComputedStyle() erzwingt eine
+   Stilberechnung; das viermal pro Sekunde (timeupdate) und zusaetzlich bei
+   jedem Bild waehrend des Ziehens zu tun, ist reine Verschwendung - die
+   Werte aendern sich nur beim Themenwechsel. */
+let waveformColors = null;
+function waveformPalette() {
+  if (waveformColors) return waveformColors;
+  const style = getComputedStyle(document.documentElement);
+  const bright = style.getPropertyValue("--sp-text").trim() || "#fff";
+  waveformColors = {
+    dim: style.getPropertyValue("--sp-border").trim() || "rgba(255,255,255,0.3)",
+    played: style.getPropertyValue("--sp-green").trim() || bright,
+  };
+  return waveformColors;
+}
+// Das Thema setzt data-theme am <html>; danach sind die Farben hinfaellig.
+if (window.MutationObserver) {
+  new MutationObserver(() => {
+    waveformColors = null;
+    drawWaveform(true);
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+}
+
+/* Letzter gezeichneter Stand. Die Wellenform besteht aus 100 Balken - erst
+   wenn sich die Anzahl der "gespielten" Balken aendert, sieht man
+   ueberhaupt einen Unterschied. Bei einem vierminuetigen Titel ist das
+   etwa alle 2,4 Sekunden der Fall statt viermal pro Sekunde. */
+let waveformLastPlayedBars = -1;
+let waveformLastPeaks = null;
+
+function drawWaveform(force) {
   if (!pbWaveformCanvas.width || !pbWaveformCanvas.height) resizeWaveformCanvas();
   const w = pbWaveformCanvas.width;
   const h = pbWaveformCanvas.height;
   if (!w || !h) return;
-  waveformCtx.clearRect(0, 0, w, h);
 
-  const style = getComputedStyle(document.documentElement);
-  const dimColor = style.getPropertyValue("--sp-border").trim() || "rgba(255,255,255,0.3)";
-  const brightColor = style.getPropertyValue("--sp-text").trim() || "#fff";
-  const playedColor = style.getPropertyValue("--sp-green").trim() || brightColor;
+  const { dim: dimColor, played: playedColor } = waveformPalette();
 
   // Vor dem Laden (oder wenn Decodieren fehlschlaegt): flache Platzhalter-
   // Balken statt eines leeren Canvas - sieht wie ein "Lade..."-Zustand aus,
   // keine Schwarze/weisse Luecke.
-  const peaks = waveformPeaks || new Float32Array(WAVEFORM_BUCKETS).fill(0.14);
+  // Feste Instanz statt jedes Mal ein neues Array: der Vergleich unten
+  // laeuft ueber die Identitaet, ein frisches Array waere immer "anders".
+  const peaks = waveformPeaks || WAVEFORM_PLACEHOLDER_PEAKS;
   const barCount = peaks.length;
   const gap = Math.max(1, (w / barCount) * 0.3);
   const barWidth = Math.max(1, (w - gap * (barCount - 1)) / barCount);
@@ -2964,6 +3176,12 @@ function drawWaveform() {
     seekPreviewPct != null ? seekPreviewPct : audioEl.duration ? audioEl.currentTime / audioEl.duration : 0;
   const playedBars = Math.round(playedPct * barCount);
 
+  // Nichts zu tun, wenn dasselbe Bild herauskaeme.
+  if (!force && playedBars === waveformLastPlayedBars && peaks === waveformLastPeaks) return;
+  waveformLastPlayedBars = playedBars;
+  waveformLastPeaks = peaks;
+
+  waveformCtx.clearRect(0, 0, w, h);
   for (let i = 0; i < barCount; i++) {
     const amp = Math.max(peaks[i], 0.05);
     const barH = Math.max(2, amp * h);
@@ -3177,10 +3395,36 @@ function measureSliderTracks() {
   volumeTrackWidth = pbVolumeTrack.clientWidth;
 }
 
-function renderProgress(pct) {
-  lastProgressPct = pct;
+/* Anzeige des Fortschritts: die eigentliche Arbeit laeuft gebuendelt in
+   requestAnimationFrame. timeupdate, Zeigerbewegungen und ein Sprung nach
+   dem Loslassen koennen im selben Bild zusammenfallen - gezeichnet wird
+   trotzdem nur einmal, und nur die beiden betroffenen Elemente (Griff und
+   Wellenform-Canvas) werden angefasst. */
+let progressPendingPct = null;
+let progressRafId = 0;
+function paintProgress(pct) {
   placeHandle(pbProgressHandle, progressTrackWidth, pct);
   drawWaveform();
+}
+function flushProgress() {
+  progressRafId = 0;
+  if (progressPendingPct === null) return;
+  const pct = progressPendingPct;
+  progressPendingPct = null;
+  paintProgress(pct);
+}
+/* immediate: fuer das Ziehen am Regler. Das laeuft selbst schon gebuendelt
+   in einem requestAnimationFrame - noch ein Bild Verzoegerung obendrauf
+   wuerde den Griff sichtbar hinter dem Finger herhinken lassen. */
+function renderProgress(pct, immediate) {
+  lastProgressPct = pct;
+  if (immediate) {
+    progressPendingPct = null;
+    paintProgress(pct);
+    return;
+  }
+  progressPendingPct = pct;
+  if (!progressRafId) progressRafId = requestAnimationFrame(flushProgress);
 }
 
 function renderVolume(pct) {
@@ -3313,7 +3557,7 @@ attachDragSlider({
   },
   onPreview: (pct) => {
     seekPreviewPct = pct;
-    renderProgress(pct);
+    renderProgress(pct, true);
     if (audioEl.duration) pbTimeCurrent.textContent = fmtTime(pct * audioEl.duration);
   },
   onCommit: (pct) => {
@@ -3323,7 +3567,7 @@ attachDragSlider({
     // Anzeige sofort auf den echten Stand ziehen: das nächste timeupdate
     // kann bis zu 250ms auf sich warten lassen - im pausierten Zustand
     // sogar für immer.
-    renderProgress(audioEl.duration ? audioEl.currentTime / audioEl.duration : 0);
+    renderProgress(audioEl.duration ? audioEl.currentTime / audioEl.duration : 0, true);
     pbTimeCurrent.textContent = fmtTime(audioEl.currentTime || 0);
   },
 });
@@ -5799,6 +6043,10 @@ function renderSearchSongs(matches) {
     coverWrap.className = "card-cover-wrap";
     const img = document.createElement("img");
     img.className = "card-cover";
+    // Bilder ausserhalb des Sichtfensters erst laden, wenn man dorthin
+    // scrollt, und das Dekodieren neben dem Hauptthread laufen lassen.
+    img.loading = "lazy";
+    img.decoding = "async";
     img.src = coverFor(track);
     img.alt = "";
     const playBtn = document.createElement("button");
@@ -5837,6 +6085,10 @@ function renderSearchPlaylists(matches) {
     coverWrap.className = "card-cover-wrap";
     const img = document.createElement("img");
     img.className = "card-cover";
+    // Bilder ausserhalb des Sichtfensters erst laden, wenn man dorthin
+    // scrollt, und das Dekodieren neben dem Hauptthread laufen lassen.
+    img.loading = "lazy";
+    img.decoding = "async";
     applyPlaylistCover(img, pl);
     img.alt = "";
     coverWrap.appendChild(img);

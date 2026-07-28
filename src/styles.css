@@ -1850,6 +1850,15 @@ body.modal-scroll-lock { overflow: hidden; }
 .track-table .col-index { width: 40px; text-align: center; }
 .track-table .col-duration { width: 60px; text-align: right; padding-right: 20px; }
 
+/* Platzhalterzeilen der virtualisierten Liste: halten oben und unten den
+   Platz der gerade nicht gebauten Zeilen frei, damit Rollbalken und
+   Scrollweg stimmen. Rein strukturell - nichts sichtbar, nichts klickbar. */
+.track-spacer, .track-spacer td {
+  padding: 0;
+  border: none;
+  background: none;
+  pointer-events: none;
+}
 .track-row {
   cursor: pointer;
   transition: background 0.1s ease;
@@ -2164,25 +2173,36 @@ body.modal-scroll-lock { overflow: hidden; }
 /* Position kommt aus player.js als transform: translateX(...px) - nicht
    als left, weil eine Transformation ohne neues Layout auskommt und der
    Griff sich viermal pro Sekunde bewegt. */
+/* Der Griff ist IMMER 18px gross, sichtbar ist aber nur der innere Punkt.
+   Der wird per scale() vergroessert, wenn gezogen wird - so animiert nur
+   eine Transformation und keine Breite/Hoehe, die jedes Mal ein neues
+   Layout ausloesen wuerde. Die aeussere Groesse bleibt konstant, damit das
+   translate(-50%,-50%) den Griff zuverlaessig mittig ueber der Zielstelle
+   haelt (die Position selbst setzt player.js). */
 .pb-progress-handle {
   position: absolute;
   top: 50%;
   left: 0;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--sp-text);
+  width: 18px;
+  height: 18px;
   transform: translate(-50%, -50%);
   opacity: 0;
-  transition: opacity 0.1s ease, width 0.12s ease, height 0.12s ease;
+  transition: opacity 0.1s ease;
+}
+.pb-progress-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--sp-text);
+  transform: scale(0.667); /* = 12px sichtbar */
+  transition: transform 0.12s ease;
 }
 .pb-progress-wrap:hover .pb-progress-handle,
 .pb-progress-wrap.dragging .pb-progress-handle { opacity: 1; }
 /* Waehrend des Ziehens groesser: auf dem Handy liegt der Finger sonst
-   komplett auf dem Griff und man sieht nicht, wo man gerade steht.
-   Breite/Hoehe statt scale(), damit das translate(-50%,-50%) von selbst
-   mitwaechst und der Griff mittig ueber der Zielstelle bleibt. */
-.pb-progress-wrap.dragging .pb-progress-handle { width: 18px; height: 18px; }
+   komplett auf dem Griff und man sieht nicht, wo man gerade steht. */
+.pb-progress-wrap.dragging .pb-progress-handle::before { transform: scale(1); }
 
 .player-bar-right {
   display: flex;
@@ -2219,19 +2239,29 @@ body.modal-scroll-lock { overflow: hidden; }
 }
 .pb-volume-wrap:hover .pb-volume-bar,
 .pb-volume-wrap.dragging .pb-volume-bar { background: var(--sp-green); }
+/* Gleiche Bauart wie der Griff der Fortschrittsleiste: feste Aussengroesse,
+   nur der innere Punkt wird per transform skaliert. */
 .pb-volume-handle {
   position: absolute;
   top: 50%;
   left: 0;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--sp-text);
+  width: 18px;
+  height: 18px;
   transform: translate(-50%, -50%);
   opacity: 0;
-  transition: opacity 0.1s ease, width 0.12s ease, height 0.12s ease;
+  transition: opacity 0.1s ease;
 }
-.pb-volume-wrap.dragging .pb-volume-handle { opacity: 1; width: 18px; height: 18px; }
+.pb-volume-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--sp-text);
+  transform: scale(0.667); /* = 12px sichtbar */
+  transition: transform 0.12s ease;
+}
+.pb-volume-wrap.dragging .pb-volume-handle { opacity: 1; }
+.pb-volume-wrap.dragging .pb-volume-handle::before { transform: scale(1); }
 
 /* ========= SHUFFLE+ (right-click re-roll) ========= */
 @keyframes shufflePulse {
@@ -2772,18 +2802,28 @@ body.modal-scroll-lock { overflow: hidden; }
   /* top/bottom/transform-origin setzt player.js: die Fuellung waechst aus
      der Mitte (0 dB) nach oben oder unten. */
 }
+/* Feste Aussengroesse (24px), sichtbar ist der innere Punkt - der wird
+   beim Ziehen per transform vergroessert statt per Breite/Hoehe, damit
+   kein Layout dafuer anfaellt. */
 .eq-fader-knob {
   position: absolute;
   left: 50%;
   bottom: 0;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, 50%);
+}
+.eq-fader-knob::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
   background: var(--sp-text);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  transform: translate(-50%, 50%);
+  transform: scale(0.75); /* = 18px sichtbar */
+  transition: transform 0.12s ease;
 }
-.eq-fader.dragging .eq-fader-knob { width: 24px; height: 24px; }
+.eq-fader.dragging .eq-fader-knob::before { transform: scale(1); }
 /* Nur beim Moduswechsel animieren (Klasse setzt player.js fuer ~260ms):
    waehrend des Ziehens wuerde eine Uebergangszeit den Griff hinter dem
    Finger herhinken lassen. */
@@ -2834,14 +2874,21 @@ body.modal-scroll-lock { overflow: hidden; }
   position: absolute;
   top: 50%;
   left: 0;
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+}
+.eq-preamp-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
   background: var(--sp-text);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  transform: translate(-50%, -50%);
+  transform: scale(0.727); /* = 16px sichtbar */
+  transition: transform 0.12s ease;
 }
-.eq-preamp-wrap.dragging .eq-preamp-handle { width: 22px; height: 22px; }
+.eq-preamp-wrap.dragging .eq-preamp-handle::before { transform: scale(1); }
 .eq-preamp-value {
   font-size: 0.75rem;
   color: var(--sp-text);
@@ -3456,7 +3503,16 @@ body.fx-glowpulse .card-download-btn {
   backdrop-filter: blur(14px);
   animation: ctxIn 0.14s ease;
 }
-.player-bar { backdrop-filter: blur(10px); }
+/* Kein backdrop-filter auf der Player-Leiste (war blur(10px)): ihr
+   Hintergrund ist ein DECKENDER Verlauf (linear-gradient von --sp-elevated
+   nach --sp-black, in jedem Thema volldeckende Hex-Farben) - was
+   dahinterliegt, war also ohnehin nie zu sehen. Der Weichzeichner hat
+   trotzdem bei jedem Bild, in dem darunter Inhalt vorbeiscrollt, den
+   Bereich hinter der Leiste erneut abgegriffen und unscharf gerechnet.
+   Genau das kostet auf schwaecheren Handys beim Scrollen Bilder pro
+   Sekunde, ohne dass man einen Unterschied sieht. Wer die Leiste wirklich
+   durchscheinend machen will, muss zuerst den Hintergrund durchsichtig
+   machen - dann gehoert der Weichzeichner hierher zurueck. */
 button { transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease; }
 button:active { transform: scale(0.97); }
 .nav-item, .playlist-list-item { transition: background 0.15s ease, color 0.15s ease; }
