@@ -58,7 +58,6 @@
     "Alle aufwerten": "Improve all",
     "Bessere Quelle suchen": "Find better source",
     "✅ Keine Titel unter 192 kbps gefunden.": "✅ No tracks below 192 kbps found.",
-    "Suche …": "Searching …",
     "Aufwerten fehlgeschlagen.": "Improving failed.",
     "🎧 {title}: {old} → {new} kbps": "🎧 {title}: {old} → {new} kbps",
     "{ok} von {total} aufgewertet.": "{ok} of {total} improved.",
@@ -89,16 +88,23 @@
     "Verbindung trennen": "Disconnect",
     "Suche Geräte …": "Looking for devices …",
     "Modus": "Mode",
-    "Fertig": "Done",
     // ----- Zaehler (standen frueher als Template-Literale im Code und
     //       blieben deshalb IMMER deutsch, auch auf Englisch) -----
-    "{count} Titel": "{count} tracks",
+    // "{count} Titel" steht schon weiter unten - nicht doppelt eintragen.
     "{count} Songs": "{count} songs",
     "{count}× gehört": "played {count}×",
     "⏳ Lade {count} Titel hoch …": "⏳ Uploading {count} tracks …",
     ", {count} übersprungen": ", {count} skipped",
     "✅ {count} Titel zu „{name}\" hinzugefügt{skipped}": "✅ Added {count} tracks to “{name}”{skipped}",
     "Neues Album für die ausgewählten Titel": "New album for the selected tracks",
+    "{count} ausgewählt": "{count} selected",
+    // "Alle auswählen"/"Auswahl aufheben" stehen schon weiter unten -
+    // doppelte Schluessel gewinnt in JavaScript still der letzte, ein
+    // zweiter Eintrag hier waere also wirkungslos.
+    "Neue Playlist …": "New playlist …",
+    "Dieses Theme ändert:": "This theme changes:",
+    "Mit dem Handy scannen oder {url} öffnen – gleiches WLAN nötig.":
+      "Scan with your phone or open {url} – same Wi-Fi required.",
     "Auswählen": "Select",
     "Playlist": "Playlist",
     // ----- Equalizer -----
@@ -109,7 +115,6 @@
     "Benutzerdefiniert": "Custom",
     "Als Modus speichern": "Save as mode",
     "Name des Modus": "Mode name",
-    "Sichern": "Save",
     "Bitte einen Namen eingeben.": "Please enter a name.",
     "Modus gespeichert.": "Mode saved.",
     "„{name}“ gelöscht.": "“{name}” deleted.",
@@ -158,7 +163,6 @@
     "Party starten": "Start party",
     "Party beenden": "End party",
     "Nachricht an alle…": "Message everyone…",
-    "Senden": "Send",
     "Verlauf als Playlist speichern": "Save history as playlist",
     "Handy-Sync": "Phone sync",
     "Findet andere Geräte im selben WLAN, auf denen der Sync-Modus offen ist.": "Finds other devices on the same network with sync mode open.",
@@ -278,7 +282,6 @@
     "Sichern": "Back up",
     "Einstellungen wiederherstellen": "Restore settings",
     "Aus einer zuvor gesicherten Datei zurückspielen": "Restore from a previously saved file",
-    "Wiederherstellen": "Restore",
     "Komplette Bibliothek exportieren": "Export entire library",
     "Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern": "Back up all playlists incl. music files as a ZIP archive",
     "Als ZIP exportieren": "Export as ZIP",
@@ -317,7 +320,6 @@
     "Merken": "Save",
     "Songtext anzeigen": "Show lyrics",
     "Video ansehen": "Watch video",
-    "Warteschlange anzeigen": "Show queue",
     "Zurück": "Previous",
     "Abspielen": "Play",
     "Pause": "Pause",
@@ -329,7 +331,6 @@
     "A-B-Loop": "A-B loop",
     "A setzen": "Set A",
     "B setzen": "Set B",
-    "Kein Loop aktiv": "No loop active",
     "Equalizer": "Equalizer",
     "Umbenennen": "Rename",
 

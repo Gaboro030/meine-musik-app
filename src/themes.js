@@ -299,7 +299,7 @@
     ctxMenu.className = "theme-ctx-menu";
     const title = document.createElement("div");
     title.className = "theme-ctx-title";
-    title.textContent = "Dieses Theme ändert:";
+    title.textContent = window.t ? window.t("Dieses Theme ändert:") : "Dieses Theme ändert:";
     ctxMenu.appendChild(title);
 
     ASPECTS.forEach(([key, label]) => {

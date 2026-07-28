@@ -368,7 +368,9 @@
             qrDataUri = info.qr;
             qrImage.src = info.qr;
             if (qrHint) {
-              qrHint.textContent = `Mit dem Handy scannen oder ${info.url} öffnen – gleiches WLAN nötig.`;
+              qrHint.textContent = window.t
+                ? window.t("Mit dem Handy scannen oder {url} öffnen – gleiches WLAN nötig.", { url: info.url })
+                : `Mit dem Handy scannen oder ${info.url} öffnen – gleiches WLAN nötig.`;
             }
           })
           .catch(() => {});

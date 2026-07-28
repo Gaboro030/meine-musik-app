@@ -1651,11 +1651,13 @@ function selectTrackRange(fromIndex, toIndex) {
 
 function updateBulkEditBar() {
   const count = bulkSelectedFiles.size;
-  bulkEditCount.textContent = `${count} ausgewählt`;
+  bulkEditCount.textContent = t("{count} ausgewählt", { count });
   bulkEditAlbumBtn.disabled = count === 0;
   bulkEditCoverBtn.disabled = count === 0;
   const total = currentPlaylist ? currentPlaylist.tracks.length : 0;
-  bulkEditSelectAllBtn.textContent = total > 0 && count >= total ? "Auswahl aufheben" : "Alle auswählen";
+  bulkEditSelectAllBtn.textContent = t(
+    total > 0 && count >= total ? "Auswahl aufheben" : "Alle auswählen"
+  );
 }
 
 function setBulkSelectMode(enabled) {
@@ -6032,7 +6034,7 @@ function openAddMenu(anchorBtn, trackData) {
   newRow.className = "add-to-playlist-new";
   const newInput = document.createElement("input");
   newInput.type = "text";
-  newInput.placeholder = "Neue Playlist …";
+  newInput.placeholder = t("Neue Playlist …");
   newInput.maxLength = 180;
   newInput.addEventListener("click", (e) => e.stopPropagation());
   newInput.addEventListener("keydown", (e) => {
@@ -7832,6 +7834,43 @@ async function deleteTrashEntryForever(id) {
     }
   );
 }
+
+/* ===== Sprachwechsel =====
+   applyStaticI18n() in i18n.js kann nur Elemente umschreiben, die ein
+   data-i18n-Attribut tragen - also alles, was fest im HTML steht. Jede
+   Liste, die player.js selbst zusammenbaut, hat ihre Texte dagegen beim
+   Bauen ueber t() eingesetzt: Titelzeilen ("Unbekannter Interpret", die
+   Kurzinfos der Knoepfe), Karten, die Seitenleiste, Verlauf, Stimmungen,
+   Warteschlange. Die blieben nach einem Sprachwechsel in der alten
+   Sprache stehen, bis sie zufaellig aus einem anderen Grund neu gebaut
+   wurden - seit der virtualisierten Liste sogar mitten im Scrollen
+   gemischt, weil neu entstehende Zeilen schon die neue Sprache trugen.
+
+   i18n.js meldet den Wechsel bereits per Ereignis; bisher hoerte nur die
+   Sprachumschaltung selbst darauf. Hier wird alles Dynamische neu
+   aufgebaut - der Nutzer wechselt die Sprache hoechstens ein paar Mal,
+   der Preis dafuer ist also egal. */
+document.addEventListener("i18n-changed", () => {
+  renderSidebar();
+  if (library.length) {
+    renderHome();
+    renderLibraryGrid();
+  }
+  if (currentPlaylist) renderTrackTable();
+  if (currentView === "history") renderHistory();
+  if (currentView === "stats") renderStats();
+  // Player-Leiste: der Interpret kann "Unbekannter Interpret" sein.
+  if (nowPlayingMeta) {
+    pbArtist.textContent = nowPlayingMeta.artist || t("Unbekannter Interpret");
+  }
+  renderQueuePanel();
+  renderEqAll();
+  // Die Mehrfachauswahl-Leiste haengt an einer Zaehlung und wechselt ihre
+  // Beschriftung je nach Zustand ("Alle auswählen" / "Auswahl aufheben") -
+  // applyStaticI18n() setzt dort stur den Ausgangstext ein und wuesste vom
+  // Zustand nichts. Läuft nach jenem, gewinnt also.
+  updateBulkEditBar();
+});
 
 /* ===== Init ===== */
 audioEl.volume = 0.8;
