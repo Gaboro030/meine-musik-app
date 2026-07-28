@@ -314,6 +314,10 @@
     "Songtext-Sync feinjustieren, falls er vor- oder nacheilt": "Fine-tune lyrics sync if it's ahead or behind",
     "Zum Zurücksetzen klicken": "Click to reset",
     "Lade Songtext …": "Loading lyrics …",
+    "Suche erneut …": "Searching again …",
+    "Songtext konnte nicht geladen werden.": "Could not load the lyrics.",
+    "Kein Songtext gefunden.": "No lyrics found.",
+    "🔄 Erneut versuchen": "🔄 Try again",
 
     // ----- Player-Bar -----
     "Kein Titel ausgewählt": "No track selected",

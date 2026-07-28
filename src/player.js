@@ -2251,6 +2251,10 @@ function playTrack(index, opts = {}) {
     artist: track.artist,
     cover: track.cover,
     stream_url: track.stream_url,
+    // Laufzeit aus der Bibliothek mitnehmen: audioEl.duration ist direkt
+    // nach dem Wechsel noch NaN, und genau diese Zahl entscheidet bei der
+    // Songtextsuche, WELCHE Fassung eines Songs genommen wird.
+    duration: track.duration,
   };
 
   prefetchLyrics(track);
@@ -2310,6 +2314,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
     artist: entry.artist,
     cover: entry.cover,
     stream_url: entry.stream_url,
+    duration: entry.duration,
   };
 
   if (source === "guest") {
@@ -6444,7 +6449,14 @@ async function fetchLyricsData(playlist, file, title, artist, duration, force = 
   })();
   lyricsMemCache.set(key, promise);
   try {
-    return await promise;
+    const data = await promise;
+    // Ein "nicht gefunden" NICHT behalten. Die Rust-Seite schreibt so ein
+    // Ergebnis bewusst nicht auf die Platte, damit ein späterer Versuch
+    // klappen darf (lrclib kurz nicht erreichbar, Titel noch ohne saubere
+    // Schreibweise) - dieser Speicher hier hat genau das ausgehebelt und
+    // den Song für die ganze Sitzung auf "kein Songtext" festgenagelt.
+    if (!data || !data.found) lyricsMemCache.delete(key);
+    return data;
   } catch (err) {
     lyricsMemCache.delete(key); // Fehlschläge nicht einfrieren - nächster Versuch darf neu laden
     throw err;
@@ -6691,14 +6703,36 @@ function wordTimeWindows(text, lineStart, lineEnd) {
    sondern als eigene kleinere Zeile darunter (siehe renderSyncedLyrics) -
    extrahiert den/die Klammerinhalt(e) und liefert den Rest als Haupttext.
    Ist die KOMPLETTE Zeile nur eine Klammer, bleibt sie unangetastet (sonst
-   verschwindet der einzige Text der Zeile aus der "Haupt"-Reihe). */
+   verschwindet der einzige Text der Zeile aus der "Haupt"-Reihe).
+
+   `startFraction` sagt, WO in der Zeile die erste Klammer stand - als
+   Anteil am geschätzten Sprechgewicht des Gesamttexts (0 = ganz am Anfang,
+   1 = ganz am Ende). Daraus leitet renderSyncedLyrics den Einsatzzeitpunkt
+   des Ad-Libs ab. */
 function splitAdlib(text) {
   const matches = [...text.matchAll(/\(([^()]+)\)/g)];
-  if (!matches.length) return { main: text, adlib: "" };
+  if (!matches.length) return { main: text, adlib: "", startFraction: 0 };
   const main = text.replace(/\s*\([^()]+\)\s*/g, " ").replace(/\s+/g, " ").trim();
-  if (!main) return { main: text, adlib: "" };
+  if (!main) return { main: text, adlib: "", startFraction: 0 };
   const adlib = matches.map((m) => m[1].trim()).filter(Boolean).join(" ");
-  return { main, adlib };
+
+  // Gewicht des Haupttexts VOR der ersten Klammer im Verhältnis zum
+  // Gewicht des gesamten Haupttexts. Bewusst nur der Haupttext: die Zeile
+  // wird zeitlich so verteilt, als gäbe es die Klammern nicht (der
+  // Hauptgesang macht ja keine Pause, während im Hintergrund jemand
+  // dazwischenruft).
+  const beforeFirst = text
+    .slice(0, matches[0].index)
+    .replace(/\s*\([^()]+\)\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // textWeight() gibt für leeren Text 1 zurück (Schutz gegen Division
+  // durch 0) - hier wäre das falsch: steht die Klammer ganz am Anfang,
+  // ist das Gewicht davor wirklich 0.
+  const totalWeight = textWeight(main);
+  const beforeWeight = beforeFirst ? textWeight(beforeFirst) : 0;
+  const startFraction = Math.max(0, Math.min(1, beforeWeight / totalWeight));
+  return { main, adlib, startFraction };
 }
 
 /* Baut die Wort-Spans (Klick-zum-Springen + Wisch-Glow) in `container` und
@@ -6751,22 +6785,33 @@ function renderSyncedLyrics(lines) {
   lines.forEach(({ t, text }, i) => {
     const div = document.createElement("div");
     div.className = "lyrics-line";
-    const lineEnd = i + 1 < lines.length ? lines[i + 1].t : t + 6;
-    const { main, adlib } = splitAdlib(text || "♪");
+    // Bis zur nächsten Zeile mit einem SPÄTEREN Zeitstempel, nicht einfach
+    // bis zur nächsten Zeile: viele LRC-Dateien geben zwei gleichzeitig
+    // gesungenen Stimmen denselben Zeitstempel. Die Differenz wäre dann 0
+    // und die Zeile hätte nur den Mindestwert von 0,3s zum Leuchten -
+    // sie blitzte kurz auf und war sofort wieder dunkel.
+    let next = i + 1;
+    while (next < lines.length && lines[next].t <= t) next++;
+    const lineEnd = next < lines.length ? lines[next].t : t + 6;
+    const { main, adlib, startFraction } = splitAdlib(text || "♪");
 
     let words = [];
     if (adlib) {
-      // Ad-Lib folgt zeitlich auf den Haupttext (typisches Call-and-
-      // Response-Muster) - Zeitbudget der Zeile proportional zum
-      // geschätzten Sprechgewicht beider Teile aufteilen.
-      const mainWeight = textWeight(main);
-      const adlibWeight = textWeight(adlib);
-      const splitPoint = t + (lineEnd - t) * (mainWeight / (mainWeight + adlibWeight));
-      words = appendWordsToContainer(div, wordTimeWindows(main, t, splitPoint));
+      // Der Haupttext bekommt die GANZE Zeile - so, als stünde die Klammer
+      // gar nicht da. Das Ad-Lib ist eine zweite Stimme im Hintergrund und
+      // setzt dort ein, wo die Klammer im Originaltext stand; beide dürfen
+      // sich dabei überlappen und gleichzeitig leuchten.
+      //
+      // Vorher wurde die Zeile zwischen Haupttext und Ad-Lib AUFGETEILT:
+      // der Haupttext war damit in einen Bruchteil seiner echten Zeit
+      // gequetscht und lief dem Gesang sichtbar davon, das Ad-Lib leuchtete
+      // erst danach - obwohl es in Wahrheit mitten hinein gerufen wird.
+      words = appendWordsToContainer(div, wordTimeWindows(main, t, lineEnd));
 
+      const adlibStart = t + (lineEnd - t) * startFraction;
       const adlibDiv = document.createElement("div");
       adlibDiv.className = "lyrics-line-adlib";
-      const adlibWords = appendWordsToContainer(adlibDiv, wordTimeWindows(adlib, splitPoint, lineEnd));
+      const adlibWords = appendWordsToContainer(adlibDiv, wordTimeWindows(adlib, adlibStart, lineEnd));
       div.appendChild(adlibDiv);
       words = words.concat(adlibWords);
     } else {
@@ -6791,7 +6836,7 @@ function renderStaticLyrics(text, onRetry) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "lyrics-retry-btn";
-    btn.textContent = "🔄 Erneut versuchen";
+    btn.textContent = t("🔄 Erneut versuchen");
     btn.addEventListener("click", onRetry);
     lyricsBody.appendChild(btn);
   }
@@ -6818,15 +6863,26 @@ function updateLyricsHighlight() {
     else break;
   }
 
+  /* Mehrere Zeilen mit demselben Zeitstempel gehören zusammen (zwei
+     gleichzeitig gesungene Stimmen) und sind ALLE gleichzeitig aktiv.
+     Vorher gewann davon nur die letzte, alle vorherigen galten sofort als
+     "schon gesungen" und blieben dunkel. */
+  let groupStart = idx;
+  if (idx >= 0) {
+    const ts = lyricsSyncLines[idx].t;
+    while (groupStart > 0 && lyricsSyncLines[groupStart - 1].t === ts) groupStart--;
+  }
+
   if (idx !== lyricsActiveIdx) {
     lyricsSyncLines.forEach(({ el, words }, i) => {
-      el.classList.toggle("active", i === idx);
-      el.classList.toggle("sung", i < idx); // seek-safe: recomputed every change
-      if (i !== idx) words.forEach(({ el: wEl }) => wEl.style.removeProperty("--wipe"));
+      const inGroup = i >= groupStart && i <= idx;
+      el.classList.toggle("active", inGroup);
+      el.classList.toggle("sung", i < groupStart); // seek-safe: recomputed every change
+      if (!inGroup) words.forEach(({ el: wEl }) => wEl.style.removeProperty("--wipe"));
     });
     lyricsActiveIdx = idx;
     if (idx >= 0) {
-      lyricsSyncLines[idx].el.scrollIntoView({ block: "center", behavior: "smooth" });
+      lyricsSyncLines[groupStart].el.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }
 
@@ -6835,8 +6891,8 @@ function updateLyricsHighlight() {
   // volle Helligkeit sobald die aktuelle Zeit sein Fenster passiert hat,
   // 0 davor, dazwischen ein weicher Übergang - so leuchtet immer nur das
   // gerade gesungene Wort auf statt der ganzen Zeile auf einmal.
-  if (idx >= 0) {
-    lyricsSyncLines[idx].words.forEach(({ start, end, el: wEl }) => {
+  for (let i = groupStart; i <= idx && idx >= 0; i++) {
+    lyricsSyncLines[i].words.forEach(({ start, end, el: wEl }) => {
       const pct = Math.min(Math.max((t - start) / Math.max(end - start, 0.05), 0), 1) * 100;
       wEl.style.setProperty("--wipe", `${pct.toFixed(1)}%`);
     });
@@ -6873,9 +6929,16 @@ async function openLyrics(force = false) {
   lyricsArtist.textContent = meta.artist || t("Unbekannter Interpret");
   lyricsSyncOffset = loadLyricsSyncOffsetFor(meta.title, meta.artist);
   updateLyricsSyncReadout();
-  renderStaticLyrics(force ? "Suche erneut …" : "Lade Songtext …");
+  renderStaticLyrics(t(force ? "Suche erneut …" : "Lade Songtext …"));
   try {
-    const data = await fetchLyricsData(meta.playlist, meta.file, meta.title, meta.artist, audioEl.duration, force);
+    // Laufzeit aus der Bibliothek bevorzugen: audioEl.duration ist direkt
+    // nach einem Trackwechsel noch NaN, und ohne Laufzeit kann die Suche
+    // nicht zwischen den Fassungen eines Songs unterscheiden - ein einmal
+    // so danebengegriffener Text landet dann als Datei neben dem Titel und
+    // bleibt für immer der falsche.
+    const trackDuration =
+      Number.isFinite(meta.duration) && meta.duration > 0 ? meta.duration : audioEl.duration;
+    const data = await fetchLyricsData(meta.playlist, meta.file, meta.title, meta.artist, trackDuration, force);
     if (token !== lyricsRequestToken) return; // a newer track's request superseded this one
     if (data.synced) {
       const lines = parseLrc(data.synced);
@@ -6887,10 +6950,10 @@ async function openLyrics(force = false) {
     if (data.found) {
       renderStaticLyrics(data.lyrics);
     } else {
-      renderStaticLyrics(`${meta.title}\n\nKeine Lyrics gefunden.`, () => openLyrics(true));
+      renderStaticLyrics(`${meta.title}\n\n${t("Kein Songtext gefunden.")}`, () => openLyrics(true));
     }
   } catch (err) {
-    if (token === lyricsRequestToken) renderStaticLyrics("Songtext konnte nicht geladen werden.", () => openLyrics(true));
+    if (token === lyricsRequestToken) renderStaticLyrics(t("Songtext konnte nicht geladen werden."), () => openLyrics(true));
   }
 }
 

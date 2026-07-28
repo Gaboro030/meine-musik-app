@@ -81,8 +81,64 @@ fn similarity_ok(requested: &str, candidate: &str) -> bool {
     union > 0 && (inter as f64 / union as f64) >= 0.5
 }
 
+/// Fassungs-Merkmale eines Titels ("Live", "Remix", "Sped Up", "Slowed",
+/// "Acoustic", "Instrumental", "Cover", "Karaoke").
+///
+/// Warum das noetig ist: clean_query_text wirft ALLE Klammern weg, damit die
+/// Suchanfrage nicht am YouTube-Rauschen scheitert - dadurch sah aber
+/// "Blinding Lights" und "Blinding Lights (Sped Up)" fuer similarity_ok
+/// identisch aus. Genau so landet auf einer beschleunigten oder Live-Fassung
+/// der Text der Studio-Fassung: gleicher Wortlaut, aber voellig andere
+/// Zeitstempel - der Text laeuft dann sichtbar aus dem Takt. Diese Merkmale
+/// werden deshalb VOR dem Wegwerfen der Klammern gelesen und muessen auf
+/// beiden Seiten uebereinstimmen.
+fn version_markers(text: &str) -> HashSet<&'static str> {
+    let lower = text.to_lowercase();
+    let mut out = HashSet::new();
+    // Reihenfolge egal, aber "sped up"/"speed up" vor "up" pruefen waere
+    // sinnlos - es wird auf ganze Begriffe geprueft, nicht auf Teilwoerter.
+    for (needle, marker) in [
+        ("sped up", "speed"),
+        ("speed up", "speed"),
+        ("spedup", "speed"),
+        ("nightcore", "speed"),
+        ("slowed", "slowed"),
+        ("reverb", "slowed"),
+        ("live", "live"),
+        ("remix", "remix"),
+        ("acoustic", "acoustic"),
+        ("akustik", "acoustic"),
+        ("unplugged", "acoustic"),
+        ("instrumental", "instrumental"),
+        ("karaoke", "instrumental"),
+        ("cover", "cover"),
+    ] {
+        if lower.contains(needle) {
+            out.insert(marker);
+        }
+    }
+    out
+}
+
 fn candidate_ok(requested_title: &str, requested_artist: &str, got_title: &str, got_artist: &str) -> bool {
+    if version_markers(requested_title) != version_markers(got_title) {
+        return false;
+    }
     similarity_ok(requested_title, got_title) && similarity_ok(requested_artist, got_artist)
+}
+
+/// Passt die Laufzeit? lrclib liefert zu jedem Treffer die Dauer der
+/// Aufnahme mit. Zwei Fassungen desselben Songs unterscheiden sich fast
+/// immer deutlich in der Laenge (beschleunigt, Live, Radio-Edit) - und
+/// genau bei denen sind die Zeitstempel der anderen Fassung unbrauchbar.
+/// Ohne bekannte Dauer (Gast-Warteschlange o.ae.) blockt das nichts.
+const DURATION_TOLERANCE_SECONDS: f64 = 4.0;
+
+fn duration_ok(requested: Option<f64>, candidate: Option<f64>) -> bool {
+    match (requested, candidate) {
+        (Some(a), Some(b)) if a > 0.0 && b > 0.0 => (a - b).abs() <= DURATION_TOLERANCE_SECONDS,
+        _ => true,
+    }
 }
 
 struct LrcHit {
@@ -136,16 +192,37 @@ async fn lrclib_get(
 /// "Interpret" ist da haeufig eher der Kanalname als der echte Kuenstler -
 /// eine reine Titel-Suche findet dann oft etwas, das die Interpret-Suche nie
 /// gefunden haette).
-async fn lrclib_search(client: &reqwest::Client, q: String, title: &str, artist: &str) -> Option<LrcHit> {
+/// `duration` (falls bekannt) entscheidet zusaetzlich mit: unter den
+/// passenden Kandidaten gewinnt der mit der aehnlichsten Laufzeit, und wer
+/// weiter als DURATION_TOLERANCE_SECONDS daneben liegt, faellt ganz raus.
+/// Vorher wurde einfach der erste akzeptable genommen - bei einem Song, den
+/// es in mehreren Fassungen gibt, war das oft die falsche.
+///
+/// Kandidaten MIT Zeitstempeln werden bevorzugt: ein unsynchronisierter
+/// Treffer waere zwar auch "richtig", nimmt aber dem Karaoke-Modus die
+/// Grundlage, obwohl ein paar Plaetze weiter unten vielleicht derselbe Song
+/// mit Zeitstempeln steht.
+async fn lrclib_search(
+    client: &reqwest::Client,
+    q: String,
+    title: &str,
+    artist: &str,
+    duration: Option<f64>,
+) -> Option<LrcHit> {
     let resp = client.get(LRCLIB_SEARCH).query(&[("q", q)]).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
     let items: Vec<serde_json::Value> = resp.json().await.ok()?;
-    for item in items.iter().take(10) {
+    let mut best: Option<(f64, bool, LrcHit)> = None;
+    for item in items.iter().take(20) {
         let track_name = str_field(item, "trackName").unwrap_or_default();
         let artist_name = str_field(item, "artistName").unwrap_or_default();
         if !candidate_ok(title, artist, &track_name, &artist_name) {
+            continue;
+        }
+        let cand_duration = item.get("duration").and_then(|d| d.as_f64());
+        if !duration_ok(duration, cand_duration) {
             continue;
         }
         let synced = str_field(item, "syncedLyrics");
@@ -153,9 +230,42 @@ async fn lrclib_search(client: &reqwest::Client, q: String, title: &str, artist:
         if synced.is_none() && plain.is_none() {
             continue;
         }
-        return Some(LrcHit { synced, plain, track_name, artist_name });
+        let has_synced = synced.is_some();
+        let delta = match (duration, cand_duration) {
+            (Some(a), Some(b)) => (a - b).abs(),
+            _ => f64::MAX,
+        };
+        let hit = LrcHit { synced, plain, track_name, artist_name };
+        let better = match &best {
+            None => true,
+            // Zeitstempel schlagen alles; erst danach entscheidet die Laufzeit.
+            Some((best_delta, best_synced, _)) => {
+                (has_synced && !*best_synced) || (has_synced == *best_synced && delta < *best_delta)
+            }
+        };
+        if better {
+            // Ein Treffer mit Zeitstempeln UND punktgenauer Laufzeit ist so
+            // gut wie es wird - dann muss der Rest nicht mehr angesehen werden.
+            let perfect = has_synced && delta <= 1.0;
+            best = Some((delta, has_synced, hit));
+            if perfect {
+                break;
+            }
+        }
     }
-    None
+    best.map(|(_, _, hit)| hit)
+}
+
+/// Macht aus einem LRC-Text ("[01:23.45] Zeile") einfachen Text. Gebraucht
+/// fuer den allerletzten Ausweg unten: die Zeitstempel einer ANDEREN Fassung
+/// waeren sichtbar falsch, der Wortlaut ist aber immer noch nuetzlich.
+fn strip_lrc_timestamps(lrc: &str) -> String {
+    static TS: OnceLock<Regex> = OnceLock::new();
+    let ts = TS.get_or_init(|| Regex::new(r"\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]").unwrap());
+    lrc.lines()
+        .map(|l| ts.replace_all(l, "").trim().to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 async fn lyrics_ovh(client: &reqwest::Client, title: &str, artist: &str) -> Option<String> {
@@ -203,12 +313,19 @@ pub async fn fetch_lyrics(
     let search_q = format!("{} {}", clean_query_text(&artist), clean_query_text(&title));
     let (get_hit, search_hit, ovh_hit) = tokio::join!(
         lrclib_get(&client, &title, &artist, duration),
-        lrclib_search(&client, search_q, &title, &artist),
+        lrclib_search(&client, search_q, &title, &artist, duration),
         lyrics_ovh(&client, &title, &artist),
     );
 
     let get_hit = get_hit.filter(|h| candidate_ok(&title, &artist, &h.track_name, &h.artist_name));
-    let hit = get_hit.or(search_hit);
+    // Ein Treffer OHNE Zeitstempel aus der Exakt-Abfrage soll einen Treffer
+    // MIT Zeitstempeln aus der Suche nicht verdraengen - sonst verliert der
+    // Karaoke-Modus seine Grundlage, obwohl die passenden Zeiten da waeren.
+    let hit = match (get_hit, search_hit) {
+        (Some(g), Some(s)) if g.synced.is_none() && s.synced.is_some() => Some(s),
+        (Some(g), _) => Some(g),
+        (None, s) => s,
+    };
 
     let (mut synced, mut plain) = match hit {
         Some(h) => (h.synced, h.plain),
@@ -231,9 +348,21 @@ pub async fn fetch_lyrics(
     // sie nur auf, wenn wir sonst "keine Lyrics gefunden" zeigen wuerden.
     if synced.is_none() && plain.is_none() {
         let title_only_q = clean_query_text(&title);
-        if let Some(h) = lrclib_search(&client, title_only_q, &title, "").await {
+        if let Some(h) = lrclib_search(&client, title_only_q, &title, "", duration).await {
             synced = h.synced;
             plain = h.plain;
+        }
+    }
+
+    // Allerletzter Ausweg, wenn selbst das nichts brachte UND eine Dauer
+    // bekannt war: dieselbe Titel-Suche ohne Laufzeit-Filter. Besser der
+    // Text einer anderen Fassung als gar keiner - aber nur der reine Text,
+    // die Zeitstempel der falschen Fassung wuerden sichtbar aus dem Takt
+    // laufen und sind schlimmer als gar keine.
+    if synced.is_none() && plain.is_none() && duration.is_some() {
+        let title_only_q = clean_query_text(&title);
+        if let Some(h) = lrclib_search(&client, title_only_q, &title, "", None).await {
+            plain = h.plain.or_else(|| h.synced.as_deref().map(strip_lrc_timestamps));
         }
     }
 
@@ -368,5 +497,46 @@ mod tests {
         assert!(candidate_ok("Blinding Lights", "The Weeknd", "Blinding Lights", "The Weeknd"));
         assert!(!candidate_ok("Blinding Lights", "The Weeknd", "Blinding Lights", "Dua Lipa"));
         assert!(!candidate_ok("Blinding Lights", "The Weeknd", "Shape of You", "The Weeknd"));
+    }
+
+    #[test]
+    fn version_markers_are_recognised() {
+        assert!(version_markers("Song (Sped Up)").contains("speed"));
+        assert!(version_markers("Song - Nightcore").contains("speed"));
+        assert!(version_markers("Song (slowed + reverb)").contains("slowed"));
+        assert!(version_markers("Song (Live at Wembley)").contains("live"));
+        assert!(version_markers("Song (Tiësto Remix)").contains("remix"));
+        assert!(version_markers("Song (Acoustic)").contains("acoustic"));
+        assert!(version_markers("Song").is_empty());
+    }
+
+    #[test]
+    fn candidate_ok_rejects_a_different_version_of_the_same_song() {
+        // Der eigentliche Fehler: clean_query_text wirft die Klammer weg,
+        // danach sahen beide Titel identisch aus - die Studio-Zeitstempel
+        // landeten auf der beschleunigten Fassung und liefen aus dem Takt.
+        assert!(!candidate_ok("Blinding Lights (Sped Up)", "The Weeknd", "Blinding Lights", "The Weeknd"));
+        assert!(!candidate_ok("Blinding Lights", "The Weeknd", "Blinding Lights (Live)", "The Weeknd"));
+        assert!(!candidate_ok("Song", "A", "Song (Remix)", "A"));
+        // Gleiche Fassung auf beiden Seiten bleibt erlaubt.
+        assert!(candidate_ok("Song (Live)", "A", "Song - Live", "A"));
+        // Reines Rauschen ist KEIN Fassungsmerkmal und darf weiter durch.
+        assert!(candidate_ok("Song (Official Video)", "A", "Song", "A"));
+        assert!(candidate_ok("Song", "A", "Song (Remastered)", "A"));
+    }
+
+    #[test]
+    fn duration_ok_filters_only_when_both_sides_are_known() {
+        assert!(duration_ok(Some(200.0), Some(202.0)));
+        assert!(!duration_ok(Some(200.0), Some(160.0))); // beschleunigte Fassung
+        assert!(duration_ok(None, Some(160.0)));
+        assert!(duration_ok(Some(200.0), None));
+        assert!(duration_ok(Some(0.0), Some(160.0))); // 0 = unbekannt
+    }
+
+    #[test]
+    fn strip_lrc_timestamps_keeps_only_the_words() {
+        let lrc = "[00:12.34] Erste Zeile\n[01:02.5]Zweite Zeile";
+        assert_eq!(strip_lrc_timestamps(lrc), "Erste Zeile\nZweite Zeile");
     }
 }
