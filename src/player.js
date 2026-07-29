@@ -108,6 +108,7 @@ const lyricsOverlay = document.getElementById("lyricsOverlay");
 const lyricsTitle = document.getElementById("lyricsTitle");
 const lyricsArtist = document.getElementById("lyricsArtist");
 const lyricsBody = document.getElementById("lyricsBody");
+const lyricsBodyWrap = document.getElementById("lyricsBodyWrap");
 const lyricsCloseBtn = document.getElementById("lyricsCloseBtn");
 const lyricsSyncMinus = document.getElementById("lyricsSyncMinus");
 const lyricsSyncPlus = document.getElementById("lyricsSyncPlus");
@@ -6736,13 +6737,37 @@ const HELD_WORD_MAX_BONUS_SECONDS = 2.5;
    der Zeile sieht man das Aufleuchten kaum. */
 const MIN_ADLIB_SECONDS = 0.7;
 
+/* Gesungen wird langsamer als gesprochen. Bisher lief eine Zeile immer mit
+   reiner Sprechgeschwindigkeit los: bei einer 4s-Zeile war die
+   Hervorhebung nach ~2s schon durch und stand still, während noch gesungen
+   wurde - der Text lief also sichtbar voraus. Ist bis zur nächsten Zeile
+   mehr Platz, wird die geschätzte Sprechdauer jetzt bis zu diesem Faktor
+   gedehnt (und nur was DANN noch übrig ist, gilt als echte Instrumental-
+   Lücke und geht als Bonus auf das letzte, gehaltene Wort). */
+const SLOW_SING_STRETCH = 1.6;
+
+/* Der Wisch eines Wortes ist schon vor dem Ende seines Fensters fertig.
+   Der Blick soll auf dem Wort liegen, WÄHREND es gesungen wird, und nicht
+   erst fertig leuchten, wenn der Sänger längst weiter ist. */
+const WORD_WIPE_LEAD = 0.8;
+
+/* Satzzeichen sind Pausen - danach geht es nicht sofort weiter. Ohne das
+   fingen alle folgenden Wörter zu früh an, weil die Pause als Sprechzeit
+   auf sie verteilt wurde. Der Wert zählt als Extra-Gewicht des Wortes VOR
+   der Pause, sein Fenster wird also entsprechend länger. */
+function pauseWeight(word) {
+  if (/[.!?…]["'')\]]*$/.test(word)) return 1.1;
+  if (/[,;:—–]["'')\]]*$/.test(word)) return 0.6;
+  return 0;
+}
+
 function wordTimeWindows(text, lineStart, lineEnd) {
   const words = text.split(/(\s+)/).filter((w) => w !== "");
-  const weights = words.map((w) => (/\s/.test(w) ? 0 : estimateSyllables(w) + 0.4));
+  const weights = words.map((w) => (/\s/.test(w) ? 0 : estimateSyllables(w) + 0.4 + pauseWeight(w)));
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const rawSpan = Math.max(lineEnd - lineStart, 0.3);
   const naturalSpan = totalWeight * SECONDS_PER_SYLLABLE_WEIGHT;
-  const duration = Math.min(rawSpan, Math.max(naturalSpan, 0.3));
+  const duration = Math.min(rawSpan, Math.max(naturalSpan * SLOW_SING_STRETCH, 0.3));
   const slack = rawSpan - duration;
   const heldWordBonus = Math.max(0, Math.min(slack, duration * 0.6, HELD_WORD_MAX_BONUS_SECONDS));
 
@@ -6843,6 +6868,7 @@ function appendWordsToContainer(container, words) {
 function renderSyncedLyrics(lines) {
   lyricsBody.textContent = "";
   lyricsBody.classList.remove("static");
+  lyricsBodyWrap.classList.remove("static"); // Kantenblende sitzt am Wrapper
   lyricsSyncLines = [];
   lyricsActiveIdx = -1;
   lines.forEach(({ t, text }, i) => {
@@ -6904,6 +6930,7 @@ function renderStaticLyrics(text, onRetry) {
   lyricsSyncLines = null;
   lyricsActiveIdx = -1;
   lyricsBody.classList.add("static");
+  lyricsBodyWrap.classList.add("static");
   lyricsBody.textContent = "";
   const textEl = document.createElement("div");
   textEl.textContent = text;
@@ -6975,7 +7002,8 @@ function updateLyricsHighlight() {
   // gerade gesungene Wort auf statt der ganzen Zeile auf einmal.
   for (let i = groupStart; i <= idx && idx >= 0; i++) {
     lyricsSyncLines[i].words.forEach((w) => {
-      const pct = Math.min(Math.max((t - w.start) / Math.max(w.end - w.start, 0.05), 0), 1) * 100;
+      const span = Math.max((w.end - w.start) * WORD_WIPE_LEAD, 0.05);
+      const pct = Math.min(Math.max((t - w.start) / span, 0), 1) * 100;
       const value = `${pct.toFixed(1)}%`;
       // NUR schreiben, wenn sich wirklich etwas ändert. --wipe steuert ein
       // clip-path; jede Zuweisung zeichnet das Wort samt Leuchten neu, und

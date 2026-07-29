@@ -2458,7 +2458,38 @@ body.modal-scroll-lock { overflow: hidden; }
   flex-shrink: 0;
 }
 .lyrics-close:hover { background: rgba(255,255,255,0.16); }
+/* Die weiche Ober-/Unterkante (Zeilen treiben ein und aus statt hart
+   abgeschnitten zu werden) lag vorher als mask-image DIREKT auf dem
+   rollenden Element. Eine Maske auf einem Rollbereich nimmt dem Browser
+   die Moeglichkeit, ihn als fertige Grafikebene einfach zu verschieben:
+   stattdessen wird bei JEDEM Rollbild der komplette Textblock neu
+   gezeichnet und neu maskiert - und das direkt ueber einem
+   bildschirmfuellenden Weichzeichner. Gerollt wird bei jedem
+   Zeilenwechsel (weich, also ~30 Bilder lang), und genau dann blieb der
+   Rest-Ruckler uebrig, wenn sich die Grafikkarte nebenher um ein Spiel
+   kuemmern muss.
+   Die Maske sitzt jetzt auf diesem NICHT rollenden Kasten drumherum:
+   optisch identisch (die Maske gilt in beiden Faellen fuer den sichtbaren
+   Kasten, nicht fuer den mitrollenden Inhalt), aber der Rollbereich
+   selbst ist frei davon und kann wieder verschoben statt neu gezeichnet
+   werden. */
+.lyrics-body-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 80%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 80%, transparent 100%);
+}
+/* Ohne synchronen Text (statischer Fallback) gibt es keine Karaoke-
+   Zeilen - dann auch keine Kantenblende, sonst ist der Anfang des
+   Textes ausgeblendet. */
+.lyrics-body-wrap.static {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
 .lyrics-body {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-y: auto;
   /* Ohne das "leckt" ein Scroll-Gesture, das am oberen/unteren Rand DIESES
      Containers ankommt, weiter zur Seite dahinter durch (Scroll-Chaining) -
@@ -2476,18 +2507,13 @@ body.modal-scroll-lock { overflow: hidden; }
   padding-top: 26vh;
   padding-bottom: 34vh;
   scroll-behavior: smooth;
-  /* soft fade at the top/bottom edges - lines drift in and out of view
-     instead of being hard-cut at the scroll boundary */
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 80%, transparent 100%);
-  mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 80%, transparent 100%);
 }
 /* Static fallback (no synced lyrics available) has no line divs - normal
-   reading layout, no karaoke padding, no edge fade. */
+   reading layout, no karaoke padding. Die Kantenblende sitzt am Wrapper
+   (.lyrics-body-wrap.static) und wird dort abgeschaltet. */
 .lyrics-body.static {
   padding-top: 0;
   padding-bottom: 40px;
-  -webkit-mask-image: none;
-  mask-image: none;
 }
 
 .lyrics-retry-btn {

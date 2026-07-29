@@ -837,7 +837,11 @@
         </div>
         <button type="button" id="lyricsCloseBtn" class="modal-close lyrics-close">✕</button>
       </div>
-      <div id="lyricsBody" class="lyrics-body">Lade Songtext …</div>
+      <!-- Träger der weichen Ober-/Unterkante. Muss ein eigener, NICHT
+           rollender Kasten sein - siehe .lyrics-body-wrap in styles.css. -->
+      <div id="lyricsBodyWrap" class="lyrics-body-wrap">
+        <div id="lyricsBody" class="lyrics-body">Lade Songtext …</div>
+      </div>
     </div>
   </div>
 
