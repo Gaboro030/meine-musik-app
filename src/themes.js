@@ -299,6 +299,7 @@
     ctxMenu.className = "theme-ctx-menu";
     const title = document.createElement("div");
     title.className = "theme-ctx-title";
+    title.dataset.i18n = "Dieses Theme ändert:";
     title.textContent = window.t ? window.t("Dieses Theme ändert:") : "Dieses Theme ändert:";
     ctxMenu.appendChild(title);
 
@@ -314,7 +315,10 @@
         if (currentTheme() === theme) applyFullTheme(theme);
       });
       const span = document.createElement("span");
-      span.textContent = label;
+      // data-i18n statt nur textContent: so uebersetzt applyStaticI18n()
+      // beim Sprachwechsel auch dieses erst zur Laufzeit gebaute Menue mit.
+      span.dataset.i18n = label;
+      span.textContent = window.t ? window.t(label) : label;
       row.append(cb, span);
       ctxMenu.appendChild(row);
     });
@@ -323,7 +327,8 @@
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "theme-ctx-edit";
-      edit.textContent = "✎ Theme bearbeiten …";
+      edit.dataset.i18n = "✎ Theme bearbeiten …";
+      edit.textContent = window.t ? window.t("✎ Theme bearbeiten …") : "✎ Theme bearbeiten …";
       edit.addEventListener("click", () => { closeContextMenu(); openCustomEditor(); });
       ctxMenu.appendChild(edit);
     }
@@ -366,37 +371,42 @@
 
     const modal = document.createElement("div");
     modal.className = "custom-theme-modal";
+    // Jede sichtbare Beschriftung traegt data-i18n - der Editor war sonst
+    // als einziger Teil der App auch bei englischer Oberflaeche komplett
+    // deutsch (er entsteht erst beim Oeffnen, der Durchlauf beim Start
+    // konnte ihn also nie erwischt haben).
     modal.innerHTML = `
       <div class="custom-theme-header">
-        <h3>✎ Eigenes Theme</h3>
+        <h3 data-i18n="✎ Eigenes Theme">✎ Eigenes Theme</h3>
         <button type="button" class="custom-theme-close">✕</button>
       </div>
       <div class="custom-theme-body">
-        <label class="ct-row"><span>Akzentfarbe</span><input type="color" data-k="accent"></label>
-        <label class="ct-row"><span>Hintergrund</span><input type="color" data-k="bg"></label>
-        <label class="ct-row"><span>Flächen / Karten</span><input type="color" data-k="elevated"></label>
-        <label class="ct-row"><span>Textfarbe</span><input type="color" data-k="text"></label>
-        <label class="ct-row"><span>Nebentext</span><input type="color" data-k="muted"></label>
-        <label class="ct-row"><span>Schriftart</span>
+        <label class="ct-row"><span data-i18n="Akzentfarbe">Akzentfarbe</span><input type="color" data-k="accent"></label>
+        <label class="ct-row"><span data-i18n="Hintergrund">Hintergrund</span><input type="color" data-k="bg"></label>
+        <label class="ct-row"><span data-i18n="Flächen / Karten">Flächen / Karten</span><input type="color" data-k="elevated"></label>
+        <label class="ct-row"><span data-i18n="Textfarbe">Textfarbe</span><input type="color" data-k="text"></label>
+        <label class="ct-row"><span data-i18n="Nebentext">Nebentext</span><input type="color" data-k="muted"></label>
+        <label class="ct-row"><span data-i18n="Schriftart">Schriftart</span>
           <select data-k="font">
-            <option value="inter">Standard (Inter)</option>
-            <option value="system">System</option>
-            <option value="serif">Serifen (elegant)</option>
-            <option value="mono">Monospace (Terminal)</option>
-            <option value="rounded">Weich / Rund</option>
+            <option value="inter" data-i18n="Standard (Inter)">Standard (Inter)</option>
+            <option value="system" data-i18n="System">System</option>
+            <option value="serif" data-i18n="Serifen (elegant)">Serifen (elegant)</option>
+            <option value="mono" data-i18n="Monospace (Terminal)">Monospace (Terminal)</option>
+            <option value="rounded" data-i18n="Weich / Rund">Weich / Rund</option>
           </select>
         </label>
-        <label class="ct-row"><span>Ecken-Radius <b class="ct-radius-val"></b></span>
+        <label class="ct-row"><span><span data-i18n="Ecken-Radius">Ecken-Radius</span> <b class="ct-radius-val"></b></span>
           <input type="range" min="0" max="24" step="1" data-k="radius">
         </label>
-        <label class="ct-row ct-check"><input type="checkbox" data-k="animBg"><span>Animierter Farbverlauf im Hintergrund</span></label>
+        <label class="ct-row ct-check"><input type="checkbox" data-k="animBg"><span data-i18n="Animierter Farbverlauf im Hintergrund">Animierter Farbverlauf im Hintergrund</span></label>
       </div>
       <div class="custom-theme-footer">
-        <button type="button" class="ct-reset">Zurücksetzen</button>
-        <button type="button" class="ct-save">Speichern</button>
+        <button type="button" class="ct-reset" data-i18n="Zurücksetzen">Zurücksetzen</button>
+        <button type="button" class="ct-save" data-i18n="Speichern">Speichern</button>
       </div>`;
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+    if (window.applyStaticI18n) window.applyStaticI18n();
 
     const inputs = modal.querySelectorAll("[data-k]");
     const radiusVal = modal.querySelector(".ct-radius-val");
