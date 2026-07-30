@@ -259,6 +259,14 @@ fn queue_add_inner(hub: &Hub, playlist: &str, file: &str) -> Result<serde_json::
     });
     let snapshot = {
         let mut q = hub.0.queue.lock().unwrap();
+        // Die Warteschlange war nach oben offen. Jeder im selben Netz kann
+        // /api/queue/add aufrufen, ohne sich irgendwo anzumelden - ein
+        // Skript haette den Speicher vollaufen lassen und die Liste beim
+        // Gastgeber unbedienbar gemacht. 200 ist mehr, als eine Feier je
+        // braucht.
+        if q.len() >= QUEUE_LIMIT {
+            return Err("Warteschlange ist voll.".into());
+        }
         q.push(entry.clone());
         q.clone()
     };
@@ -280,6 +288,9 @@ fn queue_remove_inner(hub: &Hub, entry_id: &str) -> bool {
 }
 
 const CHAT_HISTORY_LIMIT: usize = 100;
+/// Obergrenzen fuer alles, was von aussen (LAN, ohne Anmeldung) waechst.
+const QUEUE_LIMIT: usize = 200;
+const PARTICIPANT_LIMIT: usize = 60;
 
 /// Sanitize + append a chat message, broadcast just the new message (not
 /// the whole history - guests append locally, only a fresh page load needs
@@ -660,6 +671,26 @@ async fn api_party_join(
                 existing_id.clone().unwrap()
             }
             None => {
+                // Ohne Obergrenze legt jeder Aufruf ohne bekannte id einen
+                // NEUEN Eintrag an - ein Skript im selben Netz konnte die
+                // Liste beliebig lang machen (der Aufraeumer greift erst
+                // nach Ablauf der Zeit). Ist es voll, faellt der aelteste
+                // Eintrag raus; echte Gaeste melden sich per Herzschlag
+                // ohnehin staendig neu.
+                if list.len() >= PARTICIPANT_LIMIT {
+                    let oldest = list
+                        .iter()
+                        .enumerate()
+                        .min_by(|a, b| {
+                            let sa = a.1.get("last_seen").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                            let sb = b.1.get("last_seen").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                            sa.total_cmp(&sb)
+                        })
+                        .map(|(i, _)| i);
+                    if let Some(i) = oldest {
+                        list.remove(i);
+                    }
+                }
                 let new_id = uuid::Uuid::new_v4().to_string();
                 list.push(json!({ "id": new_id, "name": name, "last_seen": now }));
                 new_id

@@ -529,6 +529,28 @@ mod tests {
     const ORIGIN: &str = "https://wine-vertical-attorney-mounting.trycloudflare.com";
 
     #[test]
+    fn erlaubte_endung_laesst_musik_und_beidateien_durch() {
+        for name in [
+            "Song.mp3", "Song.M4A", "Video.mp4", "Song.opus", "Song.flac",
+            "Song.jpg", "Song.cover_cache.jpg", "Song.artist.txt", "Song.album.txt",
+            "Song.lyrics.json",
+        ] {
+            assert!(erlaubte_endung(name), "{name} sollte erlaubt sein");
+        }
+    }
+
+    #[test]
+    fn erlaubte_endung_blockt_ausfuehrbares_und_versteckte_dateien() {
+        for name in [
+            "boese.exe", "boese.bat", "boese.cmd", "boese.ps1", "boese.lnk",
+            "boese.dll", "boese.sh", "boese", "Song.mp3.exe", ".bashrc",
+            ".config", "autorun.inf",
+        ] {
+            assert!(!erlaubte_endung(name), "{name} haette abgelehnt werden muessen");
+        }
+    }
+
+    #[test]
     fn code_round_trip_keeps_address_and_pin() {
         let slug = tunnel_slug(ORIGIN).unwrap();
         let code = format!("{slug}-482913");
@@ -671,6 +693,33 @@ fn receive_allowed(headers: &HeaderMap) -> bool {
     !through_tunnel
 }
 
+/// Was ueberhaupt in der Bibliothek landen darf. Genau die Dateiarten, die
+/// die App selbst erzeugt - Musik, Video und die Beidateien daneben.
+///
+/// Warum das noetig ist: /sync/receive nimmt Anfragen aus dem lokalen Netz
+/// ohne Kopplung an (das war immer die Vertrauensgrenze, siehe
+/// receive_allowed). Im heimischen WLAN vertretbar - im Cafe-, Hotel- oder
+/// Uni-WLAN heisst das aber, dass ein Fremder eine beliebige Datei mit
+/// beliebigem Namen in einen Ordner legen kann, den man selbst regelmaessig
+/// oeffnet. Eine .exe/.bat/.lnk dort ist genau der Koeder, der so etwas
+/// gefaehrlich macht. Mit dieser Liste kann bestenfalls eine kaputte
+/// Musikdatei ankommen.
+fn erlaubte_endung(filename: &str) -> bool {
+    const ERLAUBT: &[&str] = &[
+        // Musik/Video
+        ".mp3", ".m4a", ".mp4", ".opus", ".webm", ".flac", ".wav", ".ogg", ".aac",
+        // Beidateien (siehe commands.rs/lyrics.rs: with_extension(...))
+        ".jpg", ".jpeg", ".png", ".artist.txt", ".album.txt", ".lyrics.json",
+        ".cover_cache.jpg", ".loudness.json",
+    ];
+    let lower = filename.to_ascii_lowercase();
+    // Kein Punkt am Anfang (".bashrc") und kein Name ohne Endung.
+    if lower.starts_with('.') {
+        return false;
+    }
+    ERLAUBT.iter().any(|e| lower.ends_with(e))
+}
+
 /// Writes whatever bytes arrive straight into `<music_root>/<playlist>/
 /// <filename>` - the sender already picked a real audio file or one of its
 /// sidecars, so this never needs to interpret the bytes, just store them.
@@ -688,7 +737,17 @@ pub async fn api_sync_receive(
     if playlist.is_empty() || filename.is_empty() {
         return (StatusCode::BAD_REQUEST, "playlist/filename fehlt").into_response();
     }
-    let rel = format!("{}/{}", crate::commands::safe_filename(&playlist), filename);
+    // Der Dateiname lief bisher UNGEFILTERT in den Pfad - nur die Playlist
+    // ging durch safe_filename. Beides jetzt, sonst landet hier alles, was
+    // das Gegenueber schickt, unter genau dem Namen im Musikordner.
+    let rel = format!(
+        "{}/{}",
+        crate::commands::safe_filename(&playlist),
+        crate::commands::safe_filename(&filename)
+    );
+    if !erlaubte_endung(&filename) {
+        return (StatusCode::BAD_REQUEST, "Dateityp nicht erlaubt").into_response();
+    }
     let path = match crate::commands::safe_join(&hub.0.music_root, &rel) {
         Ok(p) => p,
         Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),

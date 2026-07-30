@@ -192,6 +192,12 @@
   pullIndicator.className = "pull-refresh-indicator";
   pullIndicator.textContent = t("↓ Loslassen zum Aktualisieren");
   document.body.appendChild(pullIndicator);
+  // Der Text wird hier EINMAL beim Start gesetzt - beim Sprachwechsel
+  // blieb er dadurch in der alten Sprache stehen (das Element gehoert
+  // keinem data-i18n-Durchlauf an, weil es erst zur Laufzeit entsteht).
+  document.addEventListener("i18n-changed", () => {
+    if (!pulling) pullIndicator.textContent = t("↓ Loslassen zum Aktualisieren");
+  });
 
   let pullStartY = null;
   let pulling = false;
@@ -201,6 +207,18 @@
     "touchstart",
     (e) => {
       if (!mq.matches) return;
+      // anyOverlayOpen() gab es bisher nur fuer die Leisten. Songtext,
+      // Video, Visualizer, Warteschlange und die Einstellungen liegen als
+      // eigene Vollbild-Ebene DARUEBER und rollen in sich selbst - die
+      // Seite darunter steht dabei ganz oben, nearTop() war also wahr.
+      // Ergebnis: einmal im Songtext nach unten gewischt und die
+      // Bibliothek hat sich im Hintergrund neu geladen, samt Anzeige
+      // quer ueber dem Text.
+      if (anyOverlayOpen()) {
+        pullStartY = null;
+        pulling = false;
+        return;
+      }
       pullStartY = nearTop() ? e.touches[0].clientY : null;
       pulling = false;
     },

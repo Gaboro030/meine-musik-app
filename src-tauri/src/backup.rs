@@ -2,6 +2,11 @@ use crate::commands::AppState;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+/// Obergrenze je entpacktem Eintrag (siehe import_library_zip). 4 GB liegt
+/// weit ueber jeder echten Musik-/Videodatei und weit unter dem, was einer
+/// praeparierten Datei den Speicher sprengen liesse.
+const MAX_ENTRY_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
 /// Recursively adds every file under `dir` to `zip`, with paths relative to
 /// `root` (so the archive, unpacked anywhere, reproduces the same
 /// Playlist/Datei-Struktur as music_root itself).
@@ -77,9 +82,24 @@ pub async fn import_library_zip(state: tauri::State<'_, AppState>, src_path: Str
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
-            let mut buf = Vec::new();
-            entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-            std::fs::write(&dest, &buf).map_err(|e| e.to_string())?;
+            // Direkt auf die Platte streamen statt erst komplett in den
+            // Speicher zu lesen. Zwei Gruende: ein einzelner grosser Track
+            // (oder ein ganzes Video) lag vorher zusaetzlich in voller
+            // Groesse im RAM, und ein praeparierter Archiveintrag ("Zip-
+            // Bombe": winzig gepackt, riesig entpackt) konnte den Speicher
+            // ohne jede Obergrenze auffuellen. Beim Streamen faellt
+            // ausserdem sofort auf, wenn die Grenze reisst.
+            let mut out = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
+            let mut begrenzt = entry.by_ref().take(MAX_ENTRY_BYTES);
+            let geschrieben = std::io::copy(&mut begrenzt, &mut out).map_err(|e| e.to_string())?;
+            if geschrieben >= MAX_ENTRY_BYTES {
+                drop(out);
+                std::fs::remove_file(&dest).ok();
+                return Err(format!(
+                    "Eintrag im Backup ist groesser als {} GB - abgebrochen.",
+                    MAX_ENTRY_BYTES / (1024 * 1024 * 1024)
+                ));
+            }
             imported += 1;
         }
         Ok(imported)

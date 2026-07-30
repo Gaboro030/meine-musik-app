@@ -68,10 +68,34 @@ pub struct PlaylistOut {
 /// "../../" anywhere in `rel` canonicalizes outside `root` and is rejected
 /// here, before any read/write ever touches disk - mirrors the
 /// realpath()+commonpath() check the previous Flask backend used.
+///
+/// Die rein RECHNERISCHE Pruefung davor ist kein Gueretel-und-Hosentraeger,
+/// sondern der eigentliche Fix eines echten Lochs: frueher stand
+/// create_dir_all() VOR der Pruefung. Ein Pfad wie "../../../Autostart/x"
+/// wurde also erst angelegt und danach abgelehnt - Anlegen beliebiger
+/// Ordner ausserhalb des Musikordners, ohne dass irgendeine Anfrage
+/// erfolgreich aussah. Erreichbar war das unter anderem ueber
+/// /sync/receive, also aus dem lokalen Netz. Jetzt entscheidet zuerst die
+/// Zeichenkette allein, und erst ein sauberer Pfad darf ueberhaupt etwas
+/// auf der Platte anfassen.
 pub(crate) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.is_empty() {
         return Err("Leerer Pfad".into());
     }
+    let as_path = Path::new(rel);
+    if as_path.is_absolute() {
+        return Err("Ungueltiger Pfad (absolut)".into());
+    }
+    for part in as_path.components() {
+        match part {
+            std::path::Component::Normal(_) => {}
+            // ".." raus, ebenso Windows-Praefixe wie "C:" oder "\\\\server\\share"
+            // und fuehrende Wurzeln - alles, was aus einem relativen Pfad
+            // wieder einen absoluten machen kann.
+            _ => return Err("Ungueltiger Pfad (Path Traversal geblockt)".into()),
+        }
+    }
+
     let candidate = root.join(rel);
     let parent = candidate.parent().unwrap_or(root);
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -83,6 +107,8 @@ pub(crate) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
         .canonicalize()
         .map_err(|_| "Ungueltiger Pfad".to_string())?;
 
+    // Bleibt trotzdem stehen: gegen Symlinks/Verzweigungen INNERHALB des
+    // Musikordners hilft die reine Zeichenketten-Pruefung oben nicht.
     if !canon_parent.starts_with(&canon_root) {
         return Err("Ungueltiger Pfad (Path Traversal geblockt)".into());
     }
@@ -1151,6 +1177,41 @@ mod tests {
     fn safe_join_blocks_path_traversal_out_of_root() {
         let root = temp_root();
         assert!(safe_join(&root, "../outside.mp3").is_err());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Der eigentliche Punkt am Traversal-Schutz: es darf dabei auch
+    /// NICHTS entstehen. Vorher lief create_dir_all vor der Pruefung, der
+    /// Ordner ausserhalb war also schon angelegt, wenn die Anfrage
+    /// abgelehnt wurde.
+    #[test]
+    fn safe_join_creates_nothing_outside_root_when_rejecting() {
+        let root = temp_root();
+        let outside = root.parent().unwrap().join("darf-nicht-entstehen");
+        std::fs::remove_dir_all(&outside).ok();
+
+        let rel = format!("../{}/tief/tiefer/x.mp3", outside.file_name().unwrap().to_string_lossy());
+        assert!(safe_join(&root, &rel).is_err());
+        assert!(!outside.exists(), "Traversal-Versuch hat einen Ordner ausserhalb angelegt");
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn safe_join_blocks_absolute_paths() {
+        let root = temp_root();
+        #[cfg(windows)]
+        let absolut = "C:/Windows/Temp/x.mp3";
+        #[cfg(not(windows))]
+        let absolut = "/tmp/x.mp3";
+        assert!(safe_join(&root, absolut).is_err());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn safe_join_blocks_traversal_in_the_middle() {
+        let root = temp_root();
+        assert!(safe_join(&root, "Playlist/../../weg.mp3").is_err());
         std::fs::remove_dir_all(&root).ok();
     }
 

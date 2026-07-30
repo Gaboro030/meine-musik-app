@@ -169,7 +169,14 @@
         playlistListEl.appendChild(row);
       }
     } catch (err) {
-      playlistListEl.innerHTML = `<div class="sync-peer-empty">${String(err)}</div>`;
+      // Fehlertext als TEXT einsetzen, nicht als HTML. Er kann Dateinamen
+      // oder Antworten der Gegenstelle enthalten - alles, was nicht aus
+      // dieser Datei stammt, gehoert nicht ungeprueft in den Seitenbaum.
+      playlistListEl.textContent = "";
+      const box = document.createElement("div");
+      box.className = "sync-peer-empty";
+      box.textContent = String(err);
+      playlistListEl.appendChild(box);
     }
   }
 

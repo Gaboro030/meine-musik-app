@@ -72,7 +72,31 @@
         if (!parsed || parsed.kind !== "settings-backup" || !parsed.localStorage) {
           throw new Error(t("Keine gültige Einstellungs-Backup-Datei."));
         }
-        Object.entries(parsed.localStorage).forEach(([k, v]) => localStorage.setItem(k, v));
+        // Inhalt pruefen statt blind uebernehmen. Die Datei kommt aus dem
+        // Dateisystem, kann also auch von woanders stammen (weitergegeben,
+        // heruntergeladen). Erlaubt sind nur Zeichenketten-Paare in
+        // vernuenftiger Groesse - alles andere wuerde beim setItem() still
+        // zu "[object Object]" verkuemmern und Einstellungen zerschiessen,
+        // und ein aufgeblaehter Eintrag koennte den Speicher der App
+        // sprengen.
+        const eintraege = Object.entries(parsed.localStorage);
+        const MAX_SCHLUESSEL = 2000;
+        const MAX_WERT_ZEICHEN = 5 * 1024 * 1024;
+        if (eintraege.length > MAX_SCHLUESSEL) {
+          throw new Error(t("Keine gültige Einstellungs-Backup-Datei."));
+        }
+        const sauber = eintraege.filter(
+          ([k, v]) =>
+            typeof k === "string" &&
+            k.length > 0 &&
+            k.length <= 200 &&
+            typeof v === "string" &&
+            v.length <= MAX_WERT_ZEICHEN
+        );
+        if (!sauber.length) {
+          throw new Error(t("Keine gültige Einstellungs-Backup-Datei."));
+        }
+        sauber.forEach(([k, v]) => localStorage.setItem(k, v));
         toast(t("💾 Einstellungen wiederhergestellt – App startet neu …"));
         setTimeout(() => window.location.reload(), 1200);
       } catch (err) {
