@@ -1,6 +1,6 @@
 {
-  "name": "Meine Musik",
-  "short_name": "Meine Musik",
+  "name": "Meld",
+  "short_name": "Meld",
   "description": "Lokaler Spotify-Klon – eigene Musikbibliothek, im WLAN und offline abspielbar.",
   "start_url": "/player",
   "scope": "/",

@@ -57,7 +57,7 @@ for (const f of files) {
   // One universal (non-split-per-abi) debug-signed APK is expected in
   // android mode - give it a clean, predictable name instead of Gradle's
   // "app-universal-debug.apk" so it's obvious which file to install.
-  const name = mode === "android" && files.length === 1 ? "MeineMusik.apk" : f.split(/[\\/]/).pop();
+  const name = mode === "android" && files.length === 1 ? "Meld.apk" : f.split(/[\\/]/).pop();
   const dest = join(distApp, `${mode}-${name}`);
   copyFileSync(f, dest);
   console.log(`-> dist-app/${dest.split(/[\\/]/).pop()}`);

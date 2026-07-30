@@ -1,3 +1,4 @@
+mod appicon;
 mod backup;
 mod commands;
 mod cover;
@@ -176,6 +177,7 @@ pub fn run() {
             nowplaying::clear_now_playing,
             discord::discord_update,
             discord::discord_clear,
+            appicon::set_app_icon,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

@@ -5359,6 +5359,48 @@ function updateAmbientGlow(coverSrc) {
   img.src = coverSrc;
 }
 
+/* ===== Settings: App-Symbol (dunkel/hell) =====
+   Umgeschaltet wird das Symbol des laufenden Fensters (Titelleiste,
+   Taskleiste, Alt+Tab) - dafuer ist der Rust-Befehl set_app_icon da - und
+   das Zeichen in der Seitenleiste. Das Symbol der INSTALLIERTEN App
+   (Verknuepfung, Startmenue, Android-Startbildschirm) steckt fest im
+   gebauten Paket und laesst sich zur Laufzeit grundsaetzlich nicht
+   aendern; dort gilt immer die dunkle Standardfassung. */
+const APP_ICON_KEY = "appIconVariant";
+const APP_ICON_FILES = { dunkel: "icon.svg", hell: "icon-hell.svg" };
+const brandIcon = document.getElementById("brandIcon");
+const appIconSwitch = document.getElementById("appIconSwitch");
+
+function currentAppIconVariant() {
+  return localStorage.getItem(APP_ICON_KEY) === "hell" ? "hell" : "dunkel";
+}
+
+function applyAppIcon(variant, persist) {
+  const v = variant === "hell" ? "hell" : "dunkel";
+  if (persist) localStorage.setItem(APP_ICON_KEY, v);
+  if (brandIcon) brandIcon.src = APP_ICON_FILES[v];
+  const favicon = document.querySelector('link[rel="icon"]');
+  if (favicon) favicon.href = APP_ICON_FILES[v];
+  if (appIconSwitch) {
+    appIconSwitch.querySelectorAll(".app-icon-choice").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.appIcon === v);
+    });
+  }
+  // Nur im echten App-Fenster vorhanden - im Browser-Test gibt es kein
+  // Fenster-Symbol, das man setzen koennte.
+  if (window.__TAURI__ && window.__TAURI__.core) {
+    window.__TAURI__.core.invoke("set_app_icon", { variant: v }).catch(() => {});
+  }
+}
+
+if (appIconSwitch) {
+  appIconSwitch.addEventListener("click", (e) => {
+    const btn = e.target.closest(".app-icon-choice");
+    if (btn) applyAppIcon(btn.dataset.appIcon, true);
+  });
+}
+applyAppIcon(currentAppIconVariant(), false);
+
 /* ===== Settings: Dynamic Glow toggle ===== */
 const GLOW_ENABLED_KEY = "glowEnabled";
 let glowEnabled = localStorage.getItem(GLOW_ENABLED_KEY) !== "0";
