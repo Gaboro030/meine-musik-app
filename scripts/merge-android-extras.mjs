@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const androidRoot = join(root, "src-tauri", "gen", "android");
-const pkgDir = join(androidRoot, "app", "src", "main", "java", "com", "meinemusik", "app");
+const pkgDir = join(androidRoot, "app", "src", "main", "java", "com", "reson", "app");
 const manifestPath = join(androidRoot, "app", "src", "main", "AndroidManifest.xml");
 const gradlePath = join(androidRoot, "app", "build.gradle.kts");
 

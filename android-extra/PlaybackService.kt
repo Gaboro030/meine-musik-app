@@ -1,4 +1,4 @@
-// Copy this into src-tauri/gen/android/app/src/main/java/com/meinemusik/app/
+// Copy this into src-tauri/gen/android/app/src/main/java/com/reson/app/
 // (that package dir only exists after `npm run android:init`).
 //
 // Why this is needed: Tauri's Android WebView pauses JS/audio once the
@@ -11,7 +11,7 @@
 // see nowplaying.rs) whenever a track starts, changes, or playback stops.
 // Notification button taps get broadcast back out (ACTION_MEDIA_CONTROL) -
 // NowPlayingPlugin listens for that and relays it to JS as "media-control".
-package com.meinemusik.app
+package com.reson.app
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -35,16 +35,16 @@ class PlaybackService : Service() {
     companion object {
         const val CHANNEL_ID = "meine_musik_playback"
         const val NOTIF_ID = 1
-        const val ACTION_PLAY = "com.meinemusik.app.PLAY"
-        const val ACTION_PAUSE = "com.meinemusik.app.PAUSE"
-        const val ACTION_NEXT = "com.meinemusik.app.NEXT"
-        const val ACTION_PREV = "com.meinemusik.app.PREV"
-        const val ACTION_MEDIA_CONTROL = "com.meinemusik.app.MEDIA_CONTROL"
+        const val ACTION_PLAY = "com.reson.app.PLAY"
+        const val ACTION_PAUSE = "com.reson.app.PAUSE"
+        const val ACTION_NEXT = "com.reson.app.NEXT"
+        const val ACTION_PREV = "com.reson.app.PREV"
+        const val ACTION_MEDIA_CONTROL = "com.reson.app.MEDIA_CONTROL"
     }
 
     override fun onCreate() {
         super.onCreate()
-        mediaSession = MediaSessionCompat(this, "MeineMusikSession")
+        mediaSession = MediaSessionCompat(this, "ResonSession")
         mediaSession.isActive = true
 
         val mgr = getSystemService(NotificationManager::class.java)

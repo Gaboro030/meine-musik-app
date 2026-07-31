@@ -17,7 +17,7 @@ pub mod android {
     use tauri::plugin::{Builder, PluginHandle, TauriPlugin};
     use tauri::{Manager, Wry};
 
-    const PLUGIN_IDENTIFIER: &str = "com.meinemusik.app";
+    const PLUGIN_IDENTIFIER: &str = "com.reson.app";
 
     pub struct NowPlaying(pub PluginHandle<Wry>);
 

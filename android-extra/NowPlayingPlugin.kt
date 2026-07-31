@@ -1,11 +1,11 @@
-// Copy this into src-tauri/gen/android/app/src/main/java/com/meinemusik/app/
+// Copy this into src-tauri/gen/android/app/src/main/java/com/reson/app/
 // (merge-android-extras.mjs does this automatically after `tauri android
 // init`). Rust<->Kotlin bridge for the PlaybackService foreground-service
 // notification (see PlaybackService.kt) - updateNowPlaying/clearNowPlaying
 // are called from nowplaying.rs whenever a track starts/changes/stops.
 // Notification button taps arrive here via a broadcast from
 // PlaybackService and get relayed to JS as a "media-control" event.
-package com.meinemusik.app
+package com.reson.app
 
 import android.app.Activity
 import android.content.BroadcastReceiver
