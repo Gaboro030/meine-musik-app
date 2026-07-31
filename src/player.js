@@ -3559,6 +3559,18 @@ function attachDragSlider({ wrap, track, axis, onStart, onPreview, onCommit, onD
   let downX = 0;
   let downY = 0;
 
+  /* EINE Stelle, an der die Achse einfliesst. Vorher stand
+     pctFromPointer(track, e, axis) an drei Stellen einzeln da - und beim
+     pointermove, also waehrend des GANZEN Ziehens, fehlte das dritte
+     Argument. Der Helfer fiel dort auf die waagerechte Achse zurueck.
+     Fuer Fortschritt und Lautstaerke fiel das nicht auf (die sind
+     waagerecht), aber die Equalizer-Baender sind die einzigen
+     senkrechten Regler: hoch/runter ziehen hat dort gar nichts bewirkt,
+     stattdessen aenderte seitliches Wackeln um wenige Pixel den Wert,
+     und erst beim Loslassen sprang das Band auf die richtige Hoehe.
+     Genau das war "der Equalizer laesst sich nicht richtig ziehen". */
+  const pctVon = (e) => pctFromPointer(track, e, axis);
+
   const flush = () => {
     rafId = 0;
     if (pendingPct === null) return;
@@ -3583,13 +3595,13 @@ function attachDragSlider({ wrap, track, axis, onStart, onPreview, onCommit, onD
     }
     wrap.classList.add("dragging");
     if (onStart) onStart();
-    onPreview(pctFromPointer(track, e, axis)); // sofort, ohne ein Bild Verzögerung
+    onPreview(pctVon(e)); // sofort, ohne ein Bild Verzögerung
     e.preventDefault(); // kein Text-Markieren, kein synthetischer Maus-Klick
   });
 
   wrap.addEventListener("pointermove", (e) => {
     if (e.pointerId !== activePointerId) return;
-    pendingPct = pctFromPointer(track, e);
+    pendingPct = pctVon(e);
     if (!rafId) rafId = requestAnimationFrame(flush);
   });
 
@@ -3606,7 +3618,7 @@ function attachDragSlider({ wrap, track, axis, onStart, onPreview, onCommit, onD
     pendingPct = null;
     wrap.classList.remove("dragging");
     if (wrap.hasPointerCapture(e.pointerId)) wrap.releasePointerCapture(e.pointerId);
-    onCommit(keep ? pctFromPointer(track, e, axis) : null);
+    onCommit(keep ? pctVon(e) : null);
 
     /* Doppeltipp wird erst BEIM LOSLASSEN entschieden, nie beim Aufsetzen.
        Vorher wurde ein zweites Aufsetzen in der Nähe sofort als Doppeltipp
