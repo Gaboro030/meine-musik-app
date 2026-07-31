@@ -710,7 +710,12 @@ pub async fn upgrade_track(
     }
     let old_kbps = ffmpeg_bitrate(&app, &full).await?;
 
-    let best = crate::discovery::best_audio_match(&app, &title, &artist)
+    // Dauer der VORHANDENEN Datei als Vergleichswert: hier wird die eigene
+    // Datei ersetzt, ein Treffer auf eine andere Aufnahme (Live-Mitschnitt,
+    // Extended Mix, anderer Song mit gleichem Namen) waere also nicht bloss
+    // ein schlechter Download, sondern stiller Datenverlust.
+    let eigene_dauer = crate::commands::read_track_meta(&full).duration;
+    let best = crate::discovery::best_audio_match(&app, &title, &artist, eigene_dauer)
         .await
         .ok_or_else(|| "Keine passende Quelle gefunden.".to_string())?;
 

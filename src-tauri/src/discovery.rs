@@ -81,6 +81,198 @@ pub(crate) fn audio_preference_score(title: &str, uploader: &str) -> i32 {
     }
 }
 
+/* ===== Welche FASSUNG ist es? ============================================
+   Bisher entschied allein der Upload-Typ, welches Suchergebnis gewinnt.
+   Das ging regelmaessig daneben, und zwar aus drei Gruenden:
+
+   1. Ein "- Topic"-Upload bekam Platz 1, auch wenn es ein ganz ANDERER
+      Song war. Der Titel selbst ging in die Wertung ueberhaupt nicht ein.
+   2. Die Spieldauer war bekannt (Spotify liefert sie zu jedem Titel mit),
+      wurde aber nirgends benutzt. Genau sie unterscheidet aber die
+      Studiofassung von Extended Mix, Snippet, Stundenschleife oder einer
+      voellig anderen Aufnahme.
+   3. Die Sperrliste kannte weder "acoustic" noch "remix", "extended",
+      "demo" oder "radio edit" - die kamen also ganz normal durch.
+
+   Die Marker unten werden SYMMETRISCH geprueft: ein Kandidat darf einen
+   Marker nur tragen, wenn der gesuchte Titel ihn auch traegt. Sucht man
+   "Blinding Lights", fliegt "Blinding Lights (Acoustic)" raus; sucht man
+   ausdruecklich "Someone Like You (Acoustic)", ist genau diese Fassung
+   gewollt und gewinnt. Das loest zugleich das Problem mit Songs, die so
+   ein Wort echt im Namen haben ("Cover Me", "Live and Let Die"): steht es
+   auf beiden Seiten, ist es kein Unterschied. */
+const VERSION_MARKERS: &[(&str, &str)] = &[
+    ("akustisch", r"(?i)\bacoustic\b|\bakustisch\b|\bunplugged\b"),
+    (
+        "live",
+        r"(?i)\(live\)|\[live\]|-\s*live\b|\blive\s+(?:at|in|from|session|performance|version)\b",
+    ),
+    (
+        "remix",
+        r"(?i)\bremix\b|\bbootleg\b|\bmashup\b|\brework\b|\bvip\s*mix\b|\bflip\b",
+    ),
+    (
+        "tempo",
+        r"(?i)\bsped[\s-]?up\b|\bspeed\s*up\b|\bslowed\b|\bnightcore\b|\bdaycore\b",
+    ),
+    (
+        "effekt",
+        r"(?i)\breverb\b|\b8d\s*audio\b|\bbass\s*boost(?:ed)?\b",
+    ),
+    ("karaoke", r"(?i)\bkaraoke\b|\binstrumental\b|\bplayback\b"),
+    (
+        "nachgespielt",
+        r"(?i)\bcover\b|\btribute\b|made popular by|in the style of",
+    ),
+    ("roh", r"(?i)\bdemo\b|\bsnippet\b|\bteaser\b|\bpreview\b"),
+    (
+        "laenge",
+        r"(?i)\bextended\b|\b\d+\s*(?:hour|hours|stunde|stunden)\b|\bloop(?:ed)?\b",
+    ),
+    ("kurzfassung", r"(?i)\bradio\s*edit\b|\bshort\s*version\b"),
+];
+
+fn marker_regexes() -> &'static Vec<(&'static str, Regex)> {
+    static CELL: OnceLock<Vec<(&'static str, Regex)>> = OnceLock::new();
+    CELL.get_or_init(|| {
+        VERSION_MARKERS
+            .iter()
+            .map(|(name, pat)| (*name, Regex::new(pat).unwrap()))
+            .collect()
+    })
+}
+
+fn version_markers(text: &str) -> HashSet<&'static str> {
+    marker_regexes()
+        .iter()
+        .filter(|(_, re)| re.is_match(text))
+        .map(|(name, _)| *name)
+        .collect()
+}
+
+/// Der Kandidat darf keinen Marker tragen, den der gesuchte Titel nicht
+/// auch hat. Umgekehrt ist es erlaubt (der gesuchte Titel heisst
+/// "... (Acoustic)", das Suchergebnis schreibt es nur nicht dazu) - das
+/// faellt dann ueber die Punktzahl weiter unten hinten runter, statt den
+/// Kandidaten ganz auszuschliessen.
+fn markers_ok(wanted: &str, candidate: &str) -> bool {
+    let w = version_markers(wanted);
+    version_markers(candidate).iter().all(|m| w.contains(m))
+}
+
+fn tokens(text: &str) -> Vec<String> {
+    normalize_title(text)
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// 0 = jedes Wort des gesuchten Titels kommt im Kandidaten vor, 3 = kaum
+/// Ueberschneidung (dann ist es schlicht ein anderer Song).
+fn title_penalty(wanted: &str, candidate: &str) -> u32 {
+    let w = tokens(wanted);
+    if w.is_empty() {
+        return 1;
+    }
+    let c = tokens(candidate);
+    let hits = w.iter().filter(|t| c.contains(t)).count();
+    let ratio = hits as f64 / w.len() as f64;
+    if ratio >= 1.0 {
+        0
+    } else if ratio >= 0.75 {
+        1
+    } else if ratio >= 0.5 {
+        2
+    } else {
+        3
+    }
+}
+
+/// Spotify liefert oft mehrere Interpreten ("A, B") - einer reicht.
+fn artist_penalty(wanted_artist: &str, cand_title: &str, cand_uploader: &str) -> u32 {
+    if wanted_artist.trim().is_empty() {
+        return 0;
+    }
+    let hay = tokens(&format!("{cand_title} {cand_uploader}"));
+    let found = tokens(wanted_artist)
+        .into_iter()
+        .filter(|t| t.chars().count() >= 3)
+        .any(|t| hay.contains(&t));
+    if found {
+        0
+    } else {
+        1
+    }
+}
+
+/// 0 = praktisch gleich lang, 4 = so weit daneben, dass es eine andere
+/// Aufnahme sein muss. 3 heisst "eine der beiden Dauern ist unbekannt" -
+/// weder Bonus noch Strafe, aber schlechter als eine bestaetigte.
+fn duration_bucket(wanted: Option<f64>, candidate: Option<f64>) -> u32 {
+    match (wanted, candidate) {
+        (Some(w), Some(c)) if w > 0.0 && c > 0.0 => {
+            let diff = (w - c).abs();
+            if diff <= 3.0 {
+                0
+            } else if diff <= 8.0 {
+                1
+            } else if diff <= 20.0 {
+                2
+            } else {
+                4
+            }
+        }
+        _ => 3,
+    }
+}
+
+/// Reine Herkunft des Uploads, ohne Ruecksicht auf den Titel.
+fn lyric_video_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| Regex::new(r"(?i)\blyrics?\b|\blyric\s*video\b|\bvisualizer\b").unwrap())
+}
+
+fn upload_kind(title: &str, uploader: &str) -> u32 {
+    if uploader.to_lowercase().trim_end().ends_with("- topic") {
+        0
+    } else if official_video_re().is_match(title) {
+        3
+    } else if lyric_video_re().is_match(title) {
+        2
+    } else {
+        1
+    }
+}
+
+/// Gesamtwertung, kleiner ist besser. `None` = kommt gar nicht in Frage.
+///
+/// Die Gewichte sagen die Rangfolge der Kriterien: erst muss es der
+/// richtige SONG sein, dann der richtige Interpret, dann die richtige
+/// LAENGE (also dieselbe Aufnahme) - und erst danach zaehlt, ob die Quelle
+/// ein reiner Ton-Upload oder ein Musikvideo ist. Vorher war genau diese
+/// Reihenfolge auf den Kopf gestellt: die Quelle war das einzige Kriterium.
+pub(crate) fn candidate_rank(
+    wanted_title: &str,
+    wanted_artist: &str,
+    wanted_duration: Option<f64>,
+    cand: &OnlineTrack,
+) -> Option<u32> {
+    let cand_text = format!("{} {}", cand.title, cand.artist);
+    if !markers_ok(wanted_title, &cand_text) {
+        return None;
+    }
+    let tp = title_penalty(wanted_title, &cand.title);
+    if tp >= 3 {
+        return None;
+    }
+    let db = duration_bucket(wanted_duration, cand.duration);
+    if db >= 4 {
+        return None;
+    }
+    let ap = artist_penalty(wanted_artist, &cand.title, &cand.artist);
+    Some(tp * 10_000 + ap * 3_000 + db * 500 + upload_kind(&cand.title, &cand.artist) * 10)
+}
+
 /// Searches for the best audio-preferring match for a title/uploader: a
 /// plain query PLUS a second, "- Topic"-boosted query (YouTube Music's
 /// auto-generated audio-only channels are named exactly that, so nudging
@@ -129,8 +321,10 @@ pub(crate) async fn find_audio_alternative(
     }
     let mut candidates = best_audio_candidates(app, title, uploader).await;
     candidates.retain(|r| r.video_id != original_id);
-    candidates.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
-    let best = candidates.into_iter().next()?;
+    // Ueber dieselbe Wertung wie ueberall sonst: ein Tausch lohnt nur,
+    // wenn der Ersatz auch wirklich derselbe Song in derselben Fassung ist
+    // - vorher reichte "ist ein Topic-Upload", egal was drauf stand.
+    let best = pick_best(title, uploader, None, candidates)?;
     if audio_preference_score(&best.title, &best.artist) < own_score {
         Some(best.video_id)
     } else {
@@ -146,10 +340,35 @@ pub(crate) async fn best_audio_match(
     app: &tauri::AppHandle,
     title: &str,
     uploader: &str,
+    duration: Option<f64>,
 ) -> Option<OnlineTrack> {
-    let mut candidates = best_audio_candidates(app, title, uploader).await;
-    candidates.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
-    candidates.into_iter().next()
+    let candidates = best_audio_candidates(app, title, uploader).await;
+    pick_best(title, uploader, duration, candidates)
+}
+
+/// Waehlt aus den Suchergebnissen. Zwei Durchgaenge, und der zweite ist
+/// wichtig: waere nur der strenge Durchgang da, wuerde ein Titel, den die
+/// Suche nur schlecht trifft (ungewoehnliche Schreibweise, fehlende
+/// Dauer-Angabe, Sonderzeichen), gar nicht mehr gefunden - vorher kam
+/// wenigstens IRGENDETWAS. Also: erst streng auswaehlen, und nur wenn dabei
+/// nichts uebrig bleibt, auf die alte, nachsichtige Rangfolge zurueckfallen.
+pub(crate) fn pick_best(
+    title: &str,
+    uploader: &str,
+    duration: Option<f64>,
+    candidates: Vec<OnlineTrack>,
+) -> Option<OnlineTrack> {
+    let mut streng: Vec<(u32, OnlineTrack)> = candidates
+        .iter()
+        .filter_map(|c| candidate_rank(title, uploader, duration, c).map(|s| (s, c.clone())))
+        .collect();
+    if !streng.is_empty() {
+        streng.sort_by_key(|(s, _)| *s);
+        return streng.into_iter().next().map(|(_, c)| c);
+    }
+    let mut locker = candidates;
+    locker.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
+    locker.into_iter().next()
 }
 
 /// Lowercases a track title and strips bracketed/video-only noise words,
@@ -406,6 +625,103 @@ mod tests {
     #[test]
     fn audio_preference_score_ranks_topic_channel_best() {
         assert_eq!(audio_preference_score("Blinding Lights", "The Weeknd - Topic"), 0);
+    }
+
+    // ---- Auswahl der richtigen Fassung ---------------------------------
+
+    fn kandidat(title: &str, artist: &str, dauer: Option<f64>) -> OnlineTrack {
+        OnlineTrack {
+            video_id: format!("id-{title}"),
+            title: title.to_string(),
+            artist: artist.to_string(),
+            duration: dauer,
+            cover: None,
+            url: String::new(),
+        }
+    }
+
+    #[test]
+    fn akustik_und_remix_fliegen_raus_wenn_die_normale_fassung_gesucht_ist() {
+        for (t, a) in [
+            ("Blinding Lights (Acoustic)", "The Weeknd"),
+            ("Blinding Lights - Acoustic Version", "The Weeknd"),
+            ("Blinding Lights (Chris Remix)", "The Weeknd"),
+            ("Blinding Lights (Extended Mix)", "The Weeknd"),
+            ("Blinding Lights (Demo)", "The Weeknd"),
+            ("Blinding Lights (Radio Edit)", "The Weeknd"),
+            ("Blinding Lights (Live at Wembley)", "The Weeknd"),
+            ("Blinding Lights [1 Hour Loop]", "Loops"),
+        ] {
+            assert!(
+                candidate_rank("Blinding Lights", "The Weeknd", None, &kandidat(t, a, None)).is_none(),
+                "{t} haette rausfallen muessen"
+            );
+        }
+    }
+
+    #[test]
+    fn ausdruecklich_gesuchte_fassung_bleibt_erlaubt() {
+        // Steht der Marker auf BEIDEN Seiten, ist es kein Unterschied.
+        let r = candidate_rank(
+            "Someone Like You (Acoustic)",
+            "Adele",
+            None,
+            &kandidat("Someone Like You (Acoustic)", "Adele - Topic", None),
+        );
+        assert!(r.is_some());
+    }
+
+    #[test]
+    fn song_mit_markerwort_im_echten_namen_faellt_nicht_raus() {
+        // "Live and Let Die" / "Cover Me" duerfen nicht als Live- bzw.
+        // Cover-Fassung missverstanden werden.
+        assert!(candidate_rank("Live and Let Die", "Wings", None, &kandidat("Live and Let Die", "Wings - Topic", None)).is_some());
+        assert!(candidate_rank("Cover Me", "Bruce Springsteen", None, &kandidat("Cover Me", "Bruce Springsteen - Topic", None)).is_some());
+    }
+
+    #[test]
+    fn falsche_laenge_fliegt_raus_richtige_gewinnt() {
+        let gesucht_dauer = Some(200.0);
+        // 6 Minuten statt 3:20 - andere Aufnahme.
+        assert!(candidate_rank("Blinding Lights", "The Weeknd", gesucht_dauer, &kandidat("Blinding Lights", "The Weeknd - Topic", Some(360.0))).is_none());
+        let passend = candidate_rank("Blinding Lights", "The Weeknd", gesucht_dauer, &kandidat("Blinding Lights", "The Weeknd - Topic", Some(201.0))).unwrap();
+        let knapp_daneben = candidate_rank("Blinding Lights", "The Weeknd", gesucht_dauer, &kandidat("Blinding Lights", "The Weeknd - Topic", Some(212.0))).unwrap();
+        assert!(passend < knapp_daneben);
+    }
+
+    #[test]
+    fn richtiger_song_schlaegt_bessere_quelle_beim_falschen_song() {
+        // Genau der Fall, der vorher schiefging: der Topic-Upload eines
+        // ANDEREN Songs stand vor der richtigen Studiofassung.
+        let kandidaten = vec![
+            kandidat("Save Your Tears", "The Weeknd - Topic", Some(215.0)),
+            kandidat("The Weeknd - Blinding Lights (Official Audio)", "The Weeknd", Some(200.0)),
+        ];
+        let treffer = pick_best("Blinding Lights", "The Weeknd", Some(200.0), kandidaten).unwrap();
+        assert!(treffer.title.contains("Blinding Lights"));
+    }
+
+    #[test]
+    fn bei_gleichem_song_gewinnt_der_reine_ton_upload_vor_dem_musikvideo() {
+        let kandidaten = vec![
+            kandidat("Blinding Lights (Official Video)", "The Weeknd", Some(200.0)),
+            kandidat("Blinding Lights", "The Weeknd - Topic", Some(200.0)),
+        ];
+        let treffer = pick_best("Blinding Lights", "The Weeknd", Some(200.0), kandidaten).unwrap();
+        assert_eq!(treffer.artist, "The Weeknd - Topic");
+    }
+
+    #[test]
+    fn faellt_auf_die_alte_rangfolge_zurueck_wenn_streng_nichts_uebrig_bleibt() {
+        // Alles unpassend (falsche Laenge) - lieber irgendein Treffer als
+        // ein Titel, den man gar nicht mehr herunterladen kann.
+        let kandidaten = vec![kandidat("Blinding Lights", "The Weeknd - Topic", Some(999.0))];
+        assert!(pick_best("Blinding Lights", "The Weeknd", Some(200.0), kandidaten).is_some());
+    }
+
+    #[test]
+    fn voellig_anderer_song_wird_abgelehnt() {
+        assert!(candidate_rank("Blinding Lights", "The Weeknd", None, &kandidat("Bohemian Rhapsody", "Queen - Topic", None)).is_none());
     }
 
     #[test]

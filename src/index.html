@@ -839,6 +839,16 @@
 
   <div id="uploadToast" class="player-toast upload-toast hidden"></div>
 
+  <!-- Downloader als Ebene UEBER dem Player statt als eigene Seite: so
+       bleibt die Player-Seite geladen und die Musik laeuft weiter. Die
+       Ebene endet ueber der Player-Leiste, die bleibt also sichtbar und
+       bedienbar (Anhalten ohne Umweg). Der Rahmen bekommt seine Adresse
+       erst beim ersten Oeffnen - vorher wird nichts geladen. -->
+  <div id="downloaderOverlay" class="downloader-overlay hidden">
+    <button type="button" id="downloaderCloseBtn" class="downloader-close" data-i18n-title="Schließen" title="Schließen">✕</button>
+    <iframe id="downloaderFrame" class="downloader-frame" title="Downloader"></iframe>
+  </div>
+
   <div id="lyricsOverlay" class="lyrics-overlay hidden">
     <div class="lyrics-panel">
       <div class="lyrics-panel-header">
@@ -969,6 +979,7 @@
   <audio id="audioEl" preload="auto" crossorigin="anonymous"></audio>
 
   <script src="i18n.js"></script>
+  <script src="frame-bridge.js"></script>
   <script src="tauri-shim.js"></script>
   <script src="player.js"></script>
   <script src="hotkeys-native.js"></script>

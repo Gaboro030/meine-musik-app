@@ -2421,6 +2421,39 @@ body.modal-scroll-lock { overflow: hidden; }
 }
 .video-player-el { width: 100%; height: 100%; object-fit: contain; }
 
+/* ========= DOWNLOADER-EBENE =========
+   Endet wie das Songtext-Overlay ueber der Player-Leiste: die bleibt
+   sichtbar und bedienbar, waehrend oben der Downloader liegt. Genau
+   darum geht es - Musik laeuft weiter und laesst sich trotzdem anhalten,
+   ohne den Downloader zu verlassen. */
+.downloader-overlay {
+  position: fixed;
+  inset: 0;
+  bottom: 90px;
+  z-index: 905;
+  background: var(--sp-bg, #0a0a10);
+}
+.downloader-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+.downloader-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--sp-text);
+  font-size: 1rem;
+  line-height: 1;
+}
+.downloader-close:hover { background: rgba(255, 255, 255, 0.18); }
+
 /* ========= LYRICS OVERLAY ========= */
 /* KEIN backdrop-filter (war blur(20px) hinter 82% Schwarz) und KEINE Maske
    mehr - weder hier noch weiter unten am Textbereich.
@@ -4030,6 +4063,12 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   .lyrics-overlay {
     bottom: calc(var(--mobile-player-bar-h) + 28px);
     padding: 20px 14px;
+  }
+  /* Gleiche Rechnung wie beim Songtext: die Player-Leiste ist auf dem
+     Handy hoeher und klebt unten - ohne das laege sie ueber dem
+     Downloader-Rahmen statt darunter. */
+  .downloader-overlay {
+    bottom: calc(var(--mobile-player-bar-h) + 28px);
   }
   body.mobile-bars-hidden .player-bar {
     transform: translateY(150px);

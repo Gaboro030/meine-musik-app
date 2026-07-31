@@ -7146,6 +7146,60 @@ function closeLyrics() {
   lyricsShownForKey = null;
 }
 
+/* ===== Downloader als Ebene ueber dem Player =====
+   Bisher fuehrte jeder Downloader-Link auf eine eigene Seite. Damit wurde
+   die Player-Seite entladen - samt <audio>-Element, an dem die Wiedergabe
+   haengt. Die Musik brach also jedes Mal ab, sobald man etwas laden
+   wollte.
+
+   Jetzt bleibt die Player-Seite stehen und der Downloader liegt in einem
+   Rahmen darueber. Die Ebene endet ueber der Player-Leiste: die bleibt
+   sichtbar, man kann also weiterhoeren UND jederzeit anhalten, ohne den
+   Downloader zu verlassen. (Wer die Seite direkt aufruft, bekommt sie
+   weiterhin als ganz normale eigene Seite - dieser Weg bleibt heil.) */
+const downloaderOverlay = document.getElementById("downloaderOverlay");
+const downloaderFrame = document.getElementById("downloaderFrame");
+const downloaderCloseBtn = document.getElementById("downloaderCloseBtn");
+
+function openDownloaderOverlay() {
+  if (!downloaderOverlay || !downloaderFrame) return;
+  // Adresse erst beim ersten Oeffnen setzen: sonst laedt der Downloader
+  // bei jedem App-Start unnoetig mit, obwohl ihn die meisten Sitzungen
+  // gar nicht brauchen.
+  if (!downloaderFrame.getAttribute("src")) downloaderFrame.src = "downloader.html";
+  downloaderOverlay.classList.remove("hidden");
+  document.body.classList.add("modal-scroll-lock");
+}
+
+function closeDownloaderOverlay() {
+  if (!downloaderOverlay) return;
+  downloaderOverlay.classList.add("hidden");
+  document.body.classList.remove("modal-scroll-lock");
+  // Der Rahmen bleibt geladen (Suchergebnisse und laufende Downloads
+  // ueberstehen das Schliessen), aber seine Ereignis-Horcher im Backend
+  // muessen weg - darum kuemmert sich frame-bridge.js.
+  window.dispatchEvent(new CustomEvent("meld-downloader-closed"));
+  // Frisch heruntergeladene Titel sollen sofort in der Bibliothek stehen.
+  if (typeof refreshLibrary === "function") refreshLibrary();
+}
+// frame-bridge.js ruft das auf, wenn im Rahmen "Zum Player" geklickt wird.
+window.closeDownloaderOverlay = closeDownloaderOverlay;
+
+if (downloaderOverlay) {
+  // Jeden Link auf die Downloader-Seite abfangen (Dock, Seitenleiste,
+  // Kopfzeile und der Hinweis in der leeren Bibliothek).
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest('a[href="downloader.html"]');
+    if (!link) return;
+    e.preventDefault();
+    openDownloaderOverlay();
+  });
+  if (downloaderCloseBtn) downloaderCloseBtn.addEventListener("click", closeDownloaderOverlay);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !downloaderOverlay.classList.contains("hidden")) closeDownloaderOverlay();
+  });
+}
+
 /* Bei JEDEM Trackwechsel aufgerufen (direkter Wechsel UND Crossfade-
    Handoff) - reicht ein offenes Songtext-Overlay auf den neuen Song durch,
    statt die alten Zeilen weiter hervorzuheben. Ein "loadedmetadata"-Listener

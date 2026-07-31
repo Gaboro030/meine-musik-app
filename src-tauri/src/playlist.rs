@@ -274,7 +274,12 @@ async fn extract_spotify(app: &tauri::AppHandle, url: &str) -> Result<PlaylistEx
         // a plain search with a second "Topic"-boosted one instead of a
         // single 5-result query, since the Topic upload often doesn't even
         // appear in a bare title+artist search.
-        let best = best_audio_match(app, &t.title, &t.artist).await;
+        // Die Spieldauer von Spotify MIT uebergeben: sie ist das schaerfste
+        // Merkmal dafuer, ob ein Suchtreffer wirklich dieselbe Aufnahme ist
+        // (Extended Mix, Snippet, Stundenschleife und schlicht ein anderer
+        // Song fallen darueber sofort raus). Sie lag hier die ganze Zeit
+        // vor und wurde nie benutzt.
+        let best = best_audio_match(app, &t.title, &t.artist, t.duration).await;
         match best {
             Some(r) => entries.push(PlaylistTrack {
                 id: r.video_id.clone(),

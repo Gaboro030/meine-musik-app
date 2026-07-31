@@ -39,7 +39,8 @@
   // extra fuer sie freilaesst ("die Bar soll doch unten sein").
   const OVERLAY_SELECTOR =
     ".lyrics-overlay:not(.hidden), .visualizer-overlay:not(.hidden), " +
-    ".video-overlay:not(.hidden), .modal-overlay:not(.hidden), .queue-panel:not(.hidden)";
+    ".video-overlay:not(.hidden), .modal-overlay:not(.hidden), .queue-panel:not(.hidden), " +
+    ".downloader-overlay:not(.hidden)";
   function anyOverlayOpen() {
     return !!document.querySelector(OVERLAY_SELECTOR);
   }

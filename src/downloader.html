@@ -108,7 +108,12 @@
     </div>
   </div>
 
+  <!-- MUSS vor downloader.js stehen: laeuft diese Seite als Ebene im
+       Player (damit die Musik weiterlaeuft), stellt frame-bridge.js erst
+       die Verbindung zum Backend her, die downloader.js gleich in seiner
+       ersten Zeile auspackt. -->
   <script src="i18n.js"></script>
+  <script src="frame-bridge.js"></script>
   <script src="downloader.js"></script>
   <script type="module" src="potoken-init.js"></script>
 </body>
