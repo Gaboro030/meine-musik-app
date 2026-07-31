@@ -7190,7 +7190,7 @@ function closeDownloaderOverlay() {
   // Der Rahmen bleibt geladen (Suchergebnisse und laufende Downloads
   // ueberstehen das Schliessen), aber seine Ereignis-Horcher im Backend
   // muessen weg - darum kuemmert sich frame-bridge.js.
-  window.dispatchEvent(new CustomEvent("meld-downloader-closed"));
+  window.dispatchEvent(new CustomEvent("reson-downloader-closed"));
   // Frisch heruntergeladene Titel sollen sofort in der Bibliothek stehen.
   if (typeof refreshLibrary === "function") refreshLibrary();
 }

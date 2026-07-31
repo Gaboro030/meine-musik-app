@@ -273,7 +273,7 @@
     "Monospace (Terminal)": "Monospace (terminal)",
     "Weich / Rund": "Soft / rounded",
     "Animierter Farbverlauf im Hintergrund": "Animated gradient in the background",
-    "Dunkle oder helle Fassung des Meld-Zeichens": "Dark or light version of the Meld mark",
+    "Dunkle oder helle Fassung des Reson-Zeichens": "Dark or light version of the Reson mark",
     "Dunkel": "Dark",
     "Hell": "Light",
     "Dynamic Glow": "Dynamic glow",

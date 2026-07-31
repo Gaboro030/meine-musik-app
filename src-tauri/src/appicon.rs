@@ -1,4 +1,4 @@
-// Umschaltbares App-Symbol (dunkle/helle Fassung des Meld-Zeichens).
+// Umschaltbares App-Symbol (dunkle/helle Fassung des Reson-Zeichens).
 //
 // WICHTIG, damit die Erwartung stimmt: was hier zur Laufzeit umgeschaltet
 // wird, ist das Symbol des laufenden FENSTERS - Titelleiste, Taskleiste,

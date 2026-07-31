@@ -51,7 +51,7 @@ jobs:
       - name: Generate app icons
         shell: bash
         run: |
-          npx tauri icon icons-source.png   # icons-source.png = dunkle Meld-Fassung (Standard)
+          npx tauri icon icons-source.png   # icons-source.png = dunkle Reson-Fassung (Standard)
 
       # Muss VOR "Run Rust tests" stehen: Tauris build.rs prueft beim
       # Kompilieren (auch bei `cargo test`, nicht nur `cargo build`), ob
@@ -144,7 +144,7 @@ jobs:
 
       - name: Generate app icons
         run: |
-          npx tauri icon icons-source.png   # icons-source.png = dunkle Meld-Fassung (Standard)
+          npx tauri icon icons-source.png   # icons-source.png = dunkle Reson-Fassung (Standard)
 
       - name: Init Android project
         run: npx tauri android init

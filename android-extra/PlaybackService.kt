@@ -29,7 +29,7 @@ import android.support.v4.media.session.PlaybackStateCompat
 
 class PlaybackService : Service() {
     private lateinit var mediaSession: MediaSessionCompat
-    private var lastTitle = "Meld"
+    private var lastTitle = "Reson"
     private var lastArtist = ""
 
     companion object {

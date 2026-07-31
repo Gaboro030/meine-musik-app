@@ -42,7 +42,7 @@
         if (frame.contentWindow) frame.contentWindow.postMessage(nachricht, "*");
       };
 
-      if (d.kind === "meld-close") {
+      if (d.kind === "reson-close") {
         if (typeof window.closeDownloaderOverlay === "function") window.closeDownloaderOverlay();
         return;
       }
@@ -50,38 +50,38 @@
       const core = window.__TAURI__ && window.__TAURI__.core;
       const ereignis = window.__TAURI__ && window.__TAURI__.event;
 
-      if (d.kind === "meld-invoke") {
+      if (d.kind === "reson-invoke") {
         if (!core) {
-          antwort({ kind: "meld-invoke-result", id: d.id, ok: false, error: "Keine Verbindung zur App." });
+          antwort({ kind: "reson-invoke-result", id: d.id, ok: false, error: "Keine Verbindung zur App." });
           return;
         }
         try {
           const value = await core.invoke(d.cmd, d.args);
-          antwort({ kind: "meld-invoke-result", id: d.id, ok: true, value });
+          antwort({ kind: "reson-invoke-result", id: d.id, ok: true, value });
         } catch (err) {
-          antwort({ kind: "meld-invoke-result", id: d.id, ok: false, error: String(err && err.message ? err.message : err) });
+          antwort({ kind: "reson-invoke-result", id: d.id, ok: false, error: String(err && err.message ? err.message : err) });
         }
         return;
       }
 
-      if (d.kind === "meld-listen") {
+      if (d.kind === "reson-listen") {
         if (!ereignis) {
-          antwort({ kind: "meld-listen-ready", id: d.id, ok: false });
+          antwort({ kind: "reson-listen-ready", id: d.id, ok: false });
           return;
         }
         try {
           const un = await ereignis.listen(d.event, (ev) => {
-            antwort({ kind: "meld-event", id: d.id, payload: ev.payload });
+            antwort({ kind: "reson-event", id: d.id, payload: ev.payload });
           });
           laufendeHorcher.set(d.id, un);
-          antwort({ kind: "meld-listen-ready", id: d.id, ok: true });
+          antwort({ kind: "reson-listen-ready", id: d.id, ok: true });
         } catch (_) {
-          antwort({ kind: "meld-listen-ready", id: d.id, ok: false });
+          antwort({ kind: "reson-listen-ready", id: d.id, ok: false });
         }
         return;
       }
 
-      if (d.kind === "meld-unlisten") {
+      if (d.kind === "reson-unlisten") {
         const un = laufendeHorcher.get(d.id);
         if (un) {
           try { un(); } catch (_) {}
@@ -92,7 +92,7 @@
 
     // Wird der Rahmen geschlossen, muessen auch seine Horcher weg -
     // sonst haengen sie fuer den Rest der Sitzung im Backend fest.
-    window.addEventListener("meld-downloader-closed", () => {
+    window.addEventListener("reson-downloader-closed", () => {
       laufendeHorcher.forEach((un) => {
         try { un(); } catch (_) {}
       });
@@ -105,8 +105,8 @@
 
   // Zurueck zum Player heisst hier: Ebene schliessen, nicht den Rahmen
   // woandershin schicken (sonst laege der Player IM Rahmen, doppelt).
-  window.meldZurueckZumPlayer = function () {
-    window.parent.postMessage({ kind: "meld-close" }, "*");
+  window.resonZurueckZumPlayer = function () {
+    window.parent.postMessage({ kind: "reson-close" }, "*");
   };
 
   // "Zum Player" und der Player-Link im Bibliotheks-Hinweis: im Rahmen
@@ -117,7 +117,7 @@
     const link = e.target.closest('a[href="index.html"]');
     if (!link) return;
     e.preventDefault();
-    window.meldZurueckZumPlayer();
+    window.resonZurueckZumPlayer();
   });
 
   if (eigenesTauri) return; // Rahmen hat selbst Zugriff - nichts zu tun.
@@ -130,7 +130,7 @@
     if (e.source !== window.parent) return;
     const d = e.data;
     if (!d || typeof d !== "object") return;
-    if (d.kind === "meld-invoke-result") {
+    if (d.kind === "reson-invoke-result") {
       const eintrag = offeneAufrufe.get(d.id);
       if (!eintrag) return;
       offeneAufrufe.delete(d.id);
@@ -138,14 +138,14 @@
       else eintrag.reject(new Error(d.error || "Fehlgeschlagen"));
       return;
     }
-    if (d.kind === "meld-listen-ready") {
+    if (d.kind === "reson-listen-ready") {
       const eintrag = offeneAufrufe.get(d.id);
       if (!eintrag) return;
       offeneAufrufe.delete(d.id);
       eintrag.resolve(d.ok);
       return;
     }
-    if (d.kind === "meld-event") {
+    if (d.kind === "reson-event") {
       const cb = ereignisRueckrufe.get(d.id);
       if (cb) cb({ payload: d.payload });
     }
@@ -161,7 +161,7 @@
 
   window.__TAURI__ = {
     core: {
-      invoke: (cmd, args) => frage({ kind: "meld-invoke", cmd, args }),
+      invoke: (cmd, args) => frage({ kind: "reson-invoke", cmd, args }),
     },
     event: {
       listen: async (event, cb) => {
@@ -169,11 +169,11 @@
         ereignisRueckrufe.set(id, cb);
         await new Promise((resolve) => {
           offeneAufrufe.set(id, { resolve, reject: resolve });
-          window.parent.postMessage({ kind: "meld-listen", id, event }, "*");
+          window.parent.postMessage({ kind: "reson-listen", id, event }, "*");
         });
         return () => {
           ereignisRueckrufe.delete(id);
-          window.parent.postMessage({ kind: "meld-unlisten", id }, "*");
+          window.parent.postMessage({ kind: "reson-unlisten", id }, "*");
         };
       },
     },

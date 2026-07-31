@@ -15,7 +15,7 @@
   function push(playing) {
     if (!nowPlayingMeta) return;
     invoke("update_now_playing", {
-      title: nowPlayingMeta.title || "Meld",
+      title: nowPlayingMeta.title || "Reson",
       artist: nowPlayingMeta.artist || "",
       playing,
     }).catch(() => {});

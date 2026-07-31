@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Meld",
+  "productName": "Reson",
   "version": "0.1.0",
   "identifier": "com.meinemusik.app",
   "build": {
@@ -16,7 +16,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Meld",
+        "title": "Reson",
         "width": 1280,
         "height": 800,
         "minWidth": 360,
@@ -41,7 +41,7 @@
     ],
     "category": "Music",
     "shortDescription": "Eigener Musik-Player mit Download, Party-Modus und mehr",
-    "longDescription": "Meld ist ein eigenstaendiger Musik-Player fuer Windows, Linux und Android: Songs aus Spotify-/YouTube-Playlists herunterladen, in Playlists organisieren, mit Freunden im selben WLAN synchron mithoeren (Party-Modus) und zwischen Geraeten synchronisieren.",
+    "longDescription": "Reson ist ein eigenstaendiger Musik-Player fuer Windows, Linux und Android: Songs aus Spotify-/YouTube-Playlists herunterladen, in Playlists organisieren, mit Freunden im selben WLAN synchron mithoeren (Party-Modus) und zwischen Geraeten synchronisieren.",
     "publisher": "Gaboro030",
     "homepage": "https://github.com/Gaboro030/meine-musik-app",
     "linux": {

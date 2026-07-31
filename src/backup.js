@@ -40,13 +40,13 @@
         data[key] = localStorage.getItem(key);
       }
       const json = JSON.stringify(
-        { app: "meld", kind: "settings-backup", version: 1, exportedAt: Date.now(), localStorage: data },
+        { app: "reson", kind: "settings-backup", version: 1, exportedAt: Date.now(), localStorage: data },
         null,
         2
       );
       const path = await window.__TAURI__.dialog.save({
-        defaultPath: `meld-einstellungen-${todayStamp()}.json`,
-        filters: [{ name: "Meld-Backup", extensions: ["json"] }],
+        defaultPath: `reson-einstellungen-${todayStamp()}.json`,
+        filters: [{ name: "Reson-Backup", extensions: ["json"] }],
       });
       if (!path) return;
       await window.__TAURI__.fs.writeTextFile(path, json);
@@ -64,7 +64,7 @@
       try {
         const path = await window.__TAURI__.dialog.open({
           multiple: false,
-          filters: [{ name: "Meld-Backup", extensions: ["json"] }],
+          filters: [{ name: "Reson-Backup", extensions: ["json"] }],
         });
         if (!path) return;
         const text = await window.__TAURI__.fs.readTextFile(path);
@@ -113,7 +113,7 @@
       exportZipBtn.textContent = t("Wird gepackt …");
       try {
         const path = await window.__TAURI__.dialog.save({
-          defaultPath: `meld-bibliothek-${todayStamp()}.zip`,
+          defaultPath: `reson-bibliothek-${todayStamp()}.zip`,
           filters: [{ name: "ZIP-Archiv", extensions: ["zip"] }],
         });
         if (!path) return;

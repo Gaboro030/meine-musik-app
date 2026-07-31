@@ -1,6 +1,6 @@
 {
-  "name": "Meld",
-  "short_name": "Meld",
+  "name": "Reson",
+  "short_name": "Reson",
   "description": "Lokaler Spotify-Klon – eigene Musikbibliothek, im WLAN und offline abspielbar.",
   "start_url": "/player",
   "scope": "/",
