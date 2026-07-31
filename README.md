@@ -154,6 +154,51 @@ tauri-app/
 
 ---
 
+## 📦 In den Google Play Store bringen
+
+Play nimmt **keine Debug-APK** an. Gebraucht wird ein **signiertes AAB** —
+das baut die CI automatisch, sobald ein Schlüssel hinterlegt ist. Ohne
+Schlüssel ändert sich nichts: es entsteht weiter die Debug-APK zum
+Selbst-Installieren.
+
+**Einmalig: Upload-Schlüssel erzeugen.** `keytool` kommt mit dem JDK.
+
+```bash
+keytool -genkeypair -v -keystore upload-keystore.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+> **Diese Datei und das Passwort niemals verlieren und niemals
+> veröffentlichen.** Ohne sie lässt sich die App bei Play nie wieder
+> aktualisieren — es gibt keinen Weg zurück, auch nicht über den Support.
+> Die Datei gehört **nicht** ins Projekt (`.gitignore` blockt `*.jks`).
+> Sichere Ablage: Passwort-Manager oder verschlüsselter Datenträger.
+
+**Dann in GitHub → Settings → Secrets and variables → Actions** vier
+Geheimnisse anlegen:
+
+| Name | Inhalt |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | die `.jks`-Datei als Base64 (siehe unten) |
+| `ANDROID_KEYSTORE_PASSWORD` | Passwort des Schlüsselspeichers |
+| `ANDROID_KEY_ALIAS` | `upload` (bzw. der gewählte Alias) |
+| `ANDROID_KEY_PASSWORD` | Passwort des Schlüssels |
+
+Base64 erzeugen:
+
+```bash
+base64 -w0 upload-keystore.jks > keystore.base64.txt
+```
+
+Ab dem nächsten Push liegen in den CI-Artefakten `android-Reson.aab`
+(→ Play) **und** `android-Reson.apk` (→ eigenes Handy).
+
+**Wichtig zum Versionieren:** Play lehnt jeden Upload ab, dessen
+`versionCode` nicht höher ist als der letzte. Der kommt aus `version` in
+`tauri.conf.json` — vor jedem neuen Play-Upload also hochzählen.
+
+---
+
 ## ⚠️ Hinweise
 
 - Nur für Inhalte verwenden, an denen du die **Rechte besitzt**.

@@ -6,3 +6,11 @@ src-tauri/binaries/
 src-tauri/icons/
 *.log
 .DS_Store
+
+# Signaturschluessel und Passwoerter gehoeren NIE ins Projekt. src-tauri/gen/
+# ist zwar schon ausgeschlossen, aber ein versehentlich woanders abgelegter
+# Schluessel waere sonst mit einem "git add ." sofort im Verlauf - und ein
+# einmal veroeffentlichter Upload-Schluessel ist verbrannt.
+*.jks
+*.keystore
+keystore.properties

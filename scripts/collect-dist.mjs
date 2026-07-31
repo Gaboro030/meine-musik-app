@@ -35,11 +35,12 @@ function walk(dir, exts) {
 
 let files = [];
 if (mode === "android") {
-  // .apk only - the user installs this by tapping it directly on their
-  // phone. An .aab (Android App Bundle) can't be sideloaded at all, it
-  // only exists for Play Store uploads, so it's deliberately excluded here
-  // (and "npm run build:android" now passes --apk to skip building one).
-  files = walk(join(root, "src-tauri", "gen", "android", "app", "build", "outputs"), [".apk"]);
+  // .apk zum direkten Antippen auf dem eigenen Handy, .aab fuer den
+  // Play-Store-Upload (ein AAB laesst sich NICHT sideloaden, ein APK
+  // nimmt Play bei neuen Apps nicht an - man braucht also beides, je
+  // nachdem wohin es geht). Der Release-Build erzeugt beide; der
+  // Debug-Build ohne Schluessel nur das APK.
+  files = walk(join(root, "src-tauri", "gen", "android", "app", "build", "outputs"), [".apk", ".aab"]);
 } else {
   files = walk(join(root, "src-tauri", "target", "release", "bundle"), [
     ".exe",
@@ -54,10 +55,16 @@ if (!files.length) {
   console.warn(`No build artifacts found for mode="${mode}" - did the build actually succeed?`);
 }
 for (const f of files) {
-  // One universal (non-split-per-abi) debug-signed APK is expected in
-  // android mode - give it a clean, predictable name instead of Gradle's
-  // "app-universal-debug.apk" so it's obvious which file to install.
-  const name = mode === "android" && files.length === 1 ? "Reson.apk" : f.split(/[\\/]/).pop();
+  // Gradle nennt seine Ergebnisse "app-universal-release.apk" bzw.
+  // "app-release.aab" - daraus wird hier ein Name, dem man ansieht, was
+  // er ist und wohin er gehoert. Pro Endung gibt es genau eine Datei
+  // (ein universelles APK, ein Bundle), deshalb reicht die Endung als
+  // Unterscheidung.
+  const endung = f.slice(f.lastIndexOf(".")).toLowerCase();
+  const name =
+    mode === "android" && (endung === ".apk" || endung === ".aab")
+      ? `Reson${endung}`
+      : f.split(/[\\/]/).pop();
   const dest = join(distApp, `${mode}-${name}`);
   copyFileSync(f, dest);
   console.log(`-> dist-app/${dest.split(/[\\/]/).pop()}`);

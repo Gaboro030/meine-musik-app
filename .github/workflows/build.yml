@@ -93,6 +93,11 @@ jobs:
 
   android:
     runs-on: ubuntu-22.04
+    # Ein Geheimnis laesst sich in einer if-Bedingung nicht direkt
+    # abfragen - deshalb einmal hier auf eine Umgebungsvariable legen und
+    # unten die pruefen.
+    env:
+      HAT_SCHLUESSEL: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -149,11 +154,41 @@ jobs:
       - name: Init Android project
         run: npx tauri android init
 
+      # Muss VOR merge-android-extras.mjs laufen: das Skript setzt den
+      # Signatur-Block nur dann in build.gradle.kts ein, wenn es hier eine
+      # keystore.properties vorfindet.
+      #
+      # Der Schluessel liegt ausschliesslich in den GitHub-Geheimnissen,
+      # nie im Projekt. Sind sie nicht hinterlegt, wird dieser Schritt
+      # uebersprungen und es entsteht wie bisher ein unsigniertes
+      # Debug-APK - zum Selbst-Installieren gut, fuer Play nicht.
+      - name: Android-Signatur einrichten (nur mit hinterlegtem Schluessel)
+        if: env.HAT_SCHLUESSEL == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 -d > src-tauri/gen/android/upload-keystore.jks
+          # storeFile ist relativ zu gen/android (dort liegt das
+          # Gradle-Wurzelprojekt, siehe rootProject.file(...) im Patch).
+          printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\npassword=%s\n' \
+            "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" \
+            > src-tauri/gen/android/keystore.properties
+          echo "Schluessel eingerichtet."
+
       - name: Merge background-playback service into generated Android project
         run: node scripts/merge-android-extras.mjs
 
-      - name: Build APK
-        run: npm run build:android
+      - name: Build APK (+ signiertes AAB, wenn ein Schluessel hinterlegt ist)
+        run: |
+          if [ "$HAT_SCHLUESSEL" = "true" ]; then
+            npm run build:android:release
+          else
+            npm run build:android
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
