@@ -61,6 +61,27 @@ if (!gradle.includes(mediaDep)) {
   console.log("-> androidx.media dependency already present");
 }
 
+/* ===== R8/Minify im Release abschalten =====
+   Der Debug-Build (bisher der einzige) laeuft mit isMinifyEnabled = false,
+   der Release-Build mit true. R8 wirft dabei alles weg, was es fuer
+   unerreichbar haelt - und erkennt Reflection nicht. Tauri laedt seine
+   Kotlin-Plugins aber genau so: NowPlayingPlugin wird ueber seinen
+   Klassennamen geladen und seine @Command-Methoden per Reflection
+   aufgerufen. Die mitgelieferten Keep-Regeln (proguard-tauri.pro,
+   proguard-wry.pro) decken nur Tauris eigene Klassen ab, nicht unsere.
+
+   Das Tueckische: der Build bliebe gruen, der Fehler zeigte sich erst auf
+   dem Handy als Absturz oder als tote Medien-Benachrichtigung. Der Gewinn
+   waere dabei minimal - der Loewenanteil des APK sind die nativen
+   Rust-Bibliotheken und die WebView-Assets, an die R8 gar nicht rangeht. */
+const minifyAn = "isMinifyEnabled = true";
+if (gradle.includes(minifyAn)) {
+  gradle = gradle.replace(minifyAn, "isMinifyEnabled = false");
+  console.log("-> R8/Minify im Release abgeschaltet");
+} else {
+  console.log("-> R8/Minify bereits aus");
+}
+
 /* ===== Signatur fuer den Play-Store =====
    Google Play nimmt nur Uploads an, die mit einem echten Schluessel
    signiert sind - die Debug-Signatur, mit der Gradle sonst baut, lehnt es
@@ -80,9 +101,15 @@ if (!gradle.includes(mediaDep)) {
 const keystorePropsPath = join(androidRoot, "keystore.properties");
 if (existsSync(keystorePropsPath)) {
   if (!gradle.includes('signingConfigs.getByName("release")')) {
-    // Importe muessen in einem Kotlin-Skript ganz oben stehen.
+    // Importe muessen in einem Kotlin-Skript ganz oben stehen. Das
+    // generierte Skript bringt Properties schon selbst mit - deshalb hier
+    // nur nachlegen, wenn es fehlt, und sonst nichts anfassen. Gelesen wird
+    // bewusst ueber propsFile.inputStream() statt FileInputStream: sonst
+    // haengt der eingesetzte Block an einem zweiten Import, der bei
+    // vorhandenem Properties-Import nie mitkaeme (genau daran ist der Build
+    // gescheitert - "Unresolved reference: FileInputStream").
     if (!gradle.includes("import java.util.Properties")) {
-      gradle = `import java.io.FileInputStream\nimport java.util.Properties\n\n${gradle}`;
+      gradle = `import java.util.Properties\n\n${gradle}`;
     }
 
     const signingBlock = `
@@ -91,15 +118,25 @@ if (existsSync(keystorePropsPath)) {
             val propsFile = rootProject.file("keystore.properties")
             if (propsFile.exists()) {
                 val props = Properties()
-                props.load(FileInputStream(propsFile))
-                keyAlias = props["keyAlias"] as String
-                keyPassword = props["password"] as String
+                propsFile.inputStream().use { props.load(it) }
+                // ?: error(...) statt "as String": fehlt ein Wert (leeres
+                // GitHub-Geheimnis, vertippter Name), sagt Gradle sonst nur
+                // "null cannot be cast to non-null type kotlin.String" und
+                // man sucht im falschen Eck.
+                keyAlias = props.getProperty("keyAlias")
+                    ?: error("keystore.properties: keyAlias fehlt")
+                keyPassword = props.getProperty("password")
+                    ?: error("keystore.properties: password fehlt")
                 // rootProject.file und NICHT file(): dieses Skript gehoert
                 // zum app-Modul, file() wuerde also in gen/android/app/
                 // suchen - die Schluesseldatei liegt aber eine Ebene
                 // hoeher neben keystore.properties.
-                storeFile = rootProject.file(props["storeFile"] as String)
-                storePassword = props["storePassword"] as String
+                storeFile = rootProject.file(
+                    props.getProperty("storeFile")
+                        ?: error("keystore.properties: storeFile fehlt")
+                )
+                storePassword = props.getProperty("storePassword")
+                    ?: error("keystore.properties: storePassword fehlt")
             }
         }
     }
