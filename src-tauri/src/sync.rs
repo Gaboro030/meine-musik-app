@@ -377,17 +377,37 @@ pub async fn sync_send_playlists(
         }
     }
 
-    let total = all_files.len();
     let event = format!("sync-progress-{task_id}");
     let done = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let failed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    // A stuck connection (peer unreachable, firewall silently dropping the
-    // packets) would otherwise hang - a real error surfaces much faster and
-    // actually tells the user something instead of just spinning.
+    // Frueher stand hier ein Gesamt-Timeout von 15 Sekunden. Das galt fuer
+    // die KOMPLETTE Anfrage, also inklusive Hochladen der Datei - ein
+    // 8-MB-Song ueber WLAN oder gar durch den Tunnel braucht laenger und
+    // wurde deshalb zuverlaessig mittendrin abgeschnitten. Je groesser der
+    // Song, desto sicherer schlug er fehl.
+    //
+    // Richtig ist die Unterscheidung "haengt" vs. "dauert": connect_timeout
+    // erkennt eine Gegenstelle, die gar nicht antwortet, read_timeout eine
+    // Verbindung, auf der nichts mehr passiert. Eine langsame, aber
+    // lebendige Uebertragung laeuft dagegen so lange sie braucht.
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(30))
         .build()
         .unwrap_or_default();
+
+    // Was drueben schon liegt, muss nicht noch einmal ueber die Leitung.
+    // Wichtig nach einem Abbruch: sonst faengt jeder neue Versuch wieder
+    // bei Datei 1 an, und bei einer grossen Bibliothek kommt man nie durch.
+    let vorhanden = fetch_manifest(&client, &target_base, &token, &playlist_names).await;
+    let vorher = all_files.len();
+    all_files.retain(|(playlist, path)| {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { return true };
+        let Ok(meta) = std::fs::metadata(path) else { return true };
+        vorhanden.get(&format!("{playlist}/{name}")) != Some(&meta.len())
+    });
+    let uebersprungen = vorher - all_files.len();
+    let total = all_files.len();
 
     // Three at a time, same reasoning as the batch downloader: noticeably
     // faster than one file after another, without piling up so many
@@ -415,13 +435,58 @@ pub async fn sync_send_playlists(
     .collect::<Vec<()>>()
     .await;
 
+    // Abschluss melden, damit die Bibliothek drueben die zuletzt
+    // eingetroffenen Dateien auch sieht (siehe Drosselung in
+    // bibliothek_melden_faellig).
+    {
+        let mut req = client.post(format!("{target_base}/sync/done"));
+        if !token.is_empty() {
+            req = req.header(SYNC_TOKEN_HEADER, &token);
+        }
+        let _ = req.send().await;
+    }
+
     let failed = failed.lock().unwrap().clone();
     Ok(serde_json::json!({
         "sent": total - failed.len(),
         "failed": failed,
         "total": total,
+        "skipped": uebersprungen,
         "peer": peer_name,
     }))
+}
+
+/// Fragt beim Gegenueber ab, was dort schon liegt: Schluessel
+/// "<playlist>/<dateiname>", Wert die Groesse in Bytes. Schlaegt die
+/// Abfrage fehl (aeltere Gegenstelle, die die Route noch nicht kennt),
+/// kommt eine leere Liste zurueck - dann wird eben alles gesendet wie
+/// frueher, statt den ganzen Vorgang daran scheitern zu lassen.
+async fn fetch_manifest(
+    client: &reqwest::Client,
+    base_url: &str,
+    token: &str,
+    playlists: &[String],
+) -> HashMap<String, u64> {
+    let mut out = HashMap::new();
+    for name in playlists {
+        let url = format!(
+            "{base_url}/sync/manifest?playlist={}",
+            percent_encoding::utf8_percent_encode(name, percent_encoding::NON_ALPHANUMERIC)
+        );
+        let mut req = client.get(&url);
+        if !token.is_empty() {
+            req = req.header(SYNC_TOKEN_HEADER, token);
+        }
+        let Ok(resp) = req.send().await else { continue };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let Ok(map) = resp.json::<HashMap<String, u64>>().await else { continue };
+        for (datei, groesse) in map {
+            out.insert(format!("{name}/{datei}"), groesse);
+        }
+    }
+    out
 }
 
 async fn send_one_file(
@@ -432,13 +497,36 @@ async fn send_one_file(
     filename: &str,
     path: &std::path::Path,
 ) -> Result<(), String> {
-    let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
+    // Frueher: tokio::fs::read - die ganze Datei im Speicher, und wegen
+    // buffer_unordered(3) gleich dreimal nebeneinander. Ein Video von ein
+    // paar hundert MB hat das Handy damit umgebracht. Jetzt wandert die
+    // Datei in 64-KB-Haeppchen durch, egal wie gross sie ist.
+    let datei = tokio::fs::File::open(path).await.map_err(|e| e.to_string())?;
+    let laenge = datei.metadata().await.map(|m| m.len()).unwrap_or(0);
+    let strom = futures_util::stream::try_unfold(datei, |mut f| async move {
+        use tokio::io::AsyncReadExt;
+        let mut buf = vec![0u8; 64 * 1024];
+        let n = f.read(&mut buf).await?;
+        if n == 0 {
+            Ok::<_, std::io::Error>(None)
+        } else {
+            buf.truncate(n);
+            Ok(Some((buf, f)))
+        }
+    });
+
     let url = format!(
         "{base_url}/sync/receive?playlist={}&filename={}",
         percent_encoding::utf8_percent_encode(playlist, percent_encoding::NON_ALPHANUMERIC),
         percent_encoding::utf8_percent_encode(filename, percent_encoding::NON_ALPHANUMERIC),
     );
-    let mut req = client.post(&url).body(bytes);
+    let mut req = client
+        .post(&url)
+        // Ohne Content-Length ginge das als "chunked" raus - die
+        // Gegenstelle koennte dann nicht sagen, ob die Datei vollstaendig
+        // war oder die Verbindung mittendrin abriss.
+        .header(reqwest::header::CONTENT_LENGTH, laenge)
+        .body(reqwest::Body::wrap_stream(strom));
     // LAN-Geraete haben kein Token (siehe Modul-Kommentar) - dann bleibt
     // die Kopfzeile einfach weg.
     if !token.is_empty() {
@@ -463,10 +551,40 @@ async fn send_one_file(
 /// turn to speak. Beacons carry a random per-launch instance id purely so
 /// a device doesn't add its own broadcast right back to its peer list.
 async fn beacon_loop(state: SyncState, hub: Hub, app: tauri::AppHandle) {
-    let Ok(sock) = tokio::net::UdpSocket::bind(("0.0.0.0", BEACON_PORT)).await else {
-        eprintln!("Sync: Broadcast-Port {BEACON_PORT} nicht verfuegbar.");
-        state.0.running.store(false, Ordering::SeqCst);
-        return;
+    // Android verwirft eingehende WLAN-Broadcasts, solange keine
+    // MulticastLock gehalten wird - der Beacon der Gegenstelle kommt sonst
+    // nie an, und das Handy zeigt eine leere Geraeteliste, obwohl beide im
+    // selben WLAN sind. Genau das war "Sync findet den PC nicht".
+    netzsperren(&app, true);
+
+    let sock = match tokio::net::UdpSocket::bind(("0.0.0.0", BEACON_PORT)).await {
+        Ok(s) => s,
+        Err(e) => {
+            // Frueher endete die Schleife hier einfach - fuer den Nutzer
+            // sah das aus wie ein Sync, der nichts findet und nichts sagt.
+            // Mit einem beliebigen freien Port koennen wir immerhin noch
+            // gefunden WERDEN, sehen aber selbst niemanden; das ist ein
+            // Unterschied, den man wissen muss.
+            match tokio::net::UdpSocket::bind(("0.0.0.0", 0)).await {
+                Ok(s) => {
+                    let _ = app.emit(
+                        "sync-warnung",
+                        format!(
+                            "Port {BEACON_PORT} ist belegt ({e}) - dieses Geraet sieht andere nicht \
+                             von selbst. Andere Geraete finden es weiterhin, und der Einladungscode \
+                             funktioniert normal."
+                        ),
+                    );
+                    s
+                }
+                Err(e2) => {
+                    let _ = app.emit("sync-warnung", format!("Netzwerk nicht erreichbar: {e2}"));
+                    state.0.running.store(false, Ordering::SeqCst);
+                    netzsperren(&app, false);
+                    return;
+                }
+            }
+        }
     };
     let _ = sock.set_broadcast(true);
 
@@ -518,6 +636,30 @@ async fn beacon_loop(state: SyncState, hub: Hub, app: tauri::AppHandle) {
                 }
             }
         }
+    }
+    netzsperren(&app, false);
+}
+
+/// Android verwirft eingehende WLAN-Broadcast-Pakete, solange die App
+/// keine MulticastLock haelt - eine Eigenheit der Plattform, kein Fehler
+/// im Code hier. Dazu die WifiLock, damit das WLAN waehrend einer
+/// laufenden Uebertragung nicht in den Stromsparmodus faellt.
+///
+/// Beides kostet Akku, deshalb nur solange der Sync tatsaechlich laeuft.
+/// Auf Desktop gibt es nichts zu tun.
+fn netzsperren(app: &tauri::AppHandle, an: bool) {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        if let Some(state) = app.try_state::<crate::nowplaying::android::NowPlaying>() {
+            let _ = state
+                .0
+                .run_mobile_plugin::<()>("setNetzSperren", serde_json::json!({ "an": an }));
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, an);
     }
 }
 
@@ -727,7 +869,7 @@ pub async fn api_sync_receive(
     State(hub): State<Hub>,
     Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
-    body: Bytes,
+    body: axum::body::Body,
 ) -> Response {
     if !receive_allowed(&headers) {
         return (StatusCode::UNAUTHORIZED, "Nicht gekoppelt").into_response();
@@ -752,15 +894,113 @@ pub async fn api_sync_receive(
         Ok(p) => p,
         Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
     };
-    match tokio::fs::write(&path, &body).await {
+    if let Some(parent) = path.parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+
+    // Erst unter ".teil" schreiben, am Ende umbenennen. Reisst die
+    // Verbindung mittendrin ab, liegt sonst eine halbe Musikdatei in der
+    // Bibliothek - abspielbar aussehend, aber kaputt, und beim naechsten
+    // Versuch schwer von einer fertigen zu unterscheiden. Das Umbenennen
+    // selbst ist der einzige Schritt, den ein Abbruch nicht halb erwischen
+    // kann.
+    let temp = path.with_file_name(format!(
+        "{}.teil",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("datei")
+    ));
+    let schreiben = async {
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+        let mut datei = tokio::fs::File::create(&temp).await?;
+        let mut strom = body.into_data_stream();
+        while let Some(teil) = strom.next().await {
+            let teil = teil.map_err(|e| std::io::Error::other(e.to_string()))?;
+            datei.write_all(&teil).await?;
+        }
+        datei.flush().await?;
+        drop(datei);
+        tokio::fs::rename(&temp, &path).await
+    };
+    match schreiben.await {
         Ok(_) => {
             // The write lands straight on disk - nothing tells this
             // device's own UI a file just appeared unless we say so. Was
             // the actual bug behind "gesendet, aber nichts auf dem Handy":
             // transfer worked, the library view just never re-fetched.
-            hub.notify_app("library-changed");
+            // Gedrosselt, weil sonst bei 500 Dateien 500 Neuaufbauten der
+            // Bibliotheksansicht hintereinander laufen und die Oberflaeche
+            // waehrend des Empfangs unbenutzbar wird.
+            if bibliothek_melden_faellig() {
+                hub.notify_app("library-changed");
+            }
             (StatusCode::OK, "ok").into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&temp).await;
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
     }
+}
+
+/// Meldet dem Empfaenger, dass die Uebertragung durch ist. Noetig wegen
+/// der Drosselung unten: die letzten Dateien fallen sonst womoeglich in
+/// dasselbe Zwei-Sekunden-Fenster und die Bibliothek drueben zeigt sie
+/// erst nach dem naechsten manuellen Aktualisieren.
+pub async fn api_sync_done(State(hub): State<Hub>, headers: HeaderMap) -> Response {
+    if !receive_allowed(&headers) {
+        return (StatusCode::UNAUTHORIZED, "Nicht gekoppelt").into_response();
+    }
+    hub.notify_app("library-changed");
+    (StatusCode::OK, "ok").into_response()
+}
+
+/// Hoechstens alle zwei Sekunden ein "library-changed". Die letzte Datei
+/// einer Uebertragung wuerde damit unter Umstaenden verschluckt - deshalb
+/// schickt der Sender zum Schluss noch einmal /sync/done hinterher.
+fn bibliothek_melden_faellig() -> bool {
+    use std::sync::atomic::AtomicU64;
+    static LETZTE: AtomicU64 = AtomicU64::new(0);
+    static START: OnceLock<Instant> = OnceLock::new();
+    let jetzt = START.get_or_init(Instant::now).elapsed().as_millis() as u64;
+    let letzte = LETZTE.load(Ordering::Relaxed);
+    if jetzt.saturating_sub(letzte) < 2000 && letzte != 0 {
+        return false;
+    }
+    LETZTE.store(jetzt, Ordering::Relaxed);
+    true
+}
+
+/// Was in einer Playlist drueben schon liegt, mit Groesse. Der Sender
+/// vergleicht das gegen seine eigenen Dateien und schickt nur, was fehlt
+/// oder sich unterscheidet.
+pub async fn api_sync_manifest(
+    State(hub): State<Hub>,
+    Query(params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if !receive_allowed(&headers) {
+        return (StatusCode::UNAUTHORIZED, "Nicht gekoppelt").into_response();
+    }
+    let playlist = params.get("playlist").cloned().unwrap_or_default();
+    if playlist.is_empty() {
+        return (StatusCode::BAD_REQUEST, "playlist fehlt").into_response();
+    }
+    let dir = hub.0.music_root.join(crate::commands::safe_filename(&playlist));
+    let mut out: HashMap<String, u64> = HashMap::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            if let Some(name) = entry.file_name().to_str() {
+                // Angefangene Uebertragungen zaehlen nicht als vorhanden.
+                if name.ends_with(".teil") {
+                    continue;
+                }
+                out.insert(name.to_string(), meta.len());
+            }
+        }
+    }
+    axum::Json(out).into_response()
 }

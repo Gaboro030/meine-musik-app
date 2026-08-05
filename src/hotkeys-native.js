@@ -17,7 +17,24 @@
 
   function syncGlobalHotkeys() {
     const bindings = HOTKEY_ACTIONS.map((a) => ({ id: a.id, ...hotkeyBindings[a.id] }));
-    invoke("set_global_hotkeys", { bindings }).catch(() => {});
+    invoke("set_global_hotkeys", { bindings })
+      .then((belegt) => {
+        // Windows vergibt eine Tastenkombination systemweit nur einmal.
+        // War ein anderes Programm zuerst da, tat der Hotkey ausserhalb
+        // des Fensters bisher wortlos nichts - man sucht den Fehler dann
+        // in der App, obwohl er woanders liegt.
+        if (!Array.isArray(belegt) || !belegt.length) return;
+        const namen = belegt
+          .map((id) => (HOTKEY_ACTIONS.find((a) => a.id === id) || {}).label || id)
+          .join(", ");
+        if (typeof showToast === "function") {
+          showToast(
+            `Schon von einem anderen Programm belegt, wirkt nur im Fenster: ${namen}. ` +
+              `Die Medientasten der Tastatur funktionieren unabhängig davon überall.`
+          );
+        }
+      })
+      .catch(() => {});
   }
 
   syncGlobalHotkeys();

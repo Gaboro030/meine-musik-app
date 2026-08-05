@@ -31,6 +31,12 @@ const permissions = [
   '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />',
   '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
   '<uses-permission android:name="android.permission.WAKE_LOCK" />',
+  // Geraete-Sync: ohne CHANGE_WIFI_MULTICAST_STATE laesst sich keine
+  // MulticastLock anfordern, und ohne die verwirft Android eingehende
+  // WLAN-Broadcasts - das Handy sieht den PC dann nie (NowPlayingPlugin.kt,
+  // setNetzSperren).
+  '<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />',
+  '<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />',
 ];
 for (const perm of permissions) {
   if (!manifest.includes(perm)) {

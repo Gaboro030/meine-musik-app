@@ -546,6 +546,11 @@ pub async fn run_server(hub: Hub) {
         // /sync/receive nur ein winziges JSON, hier ist die 2MB-Vorgabe
         // von axum genau richtig.
         .route("/sync/pair", post(crate::sync::api_sync_pair))
+        // Was liegt drueben schon? Der Sender ueberspringt damit alles,
+        // was er nicht noch einmal schicken muss - nach einem Abbruch der
+        // Unterschied zwischen "macht da weiter" und "faengt von vorn an".
+        .route("/sync/manifest", get(crate::sync::api_sync_manifest))
+        .route("/sync/done", post(crate::sync::api_sync_done))
         .with_state(hub.clone());
 
     let listener = match tokio::net::TcpListener::bind(("0.0.0.0", DEFAULT_PORT)).await {
