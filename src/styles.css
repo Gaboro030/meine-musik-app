@@ -1206,6 +1206,27 @@ body.has-dynamic-colors .playlist-hero {
 }
 .settings-text-input:focus { outline: none; border-color: var(--sp-green); }
 
+/* Auswahlfeld an derselben Stelle wie das Eingabefeld oben (Zielgeraet
+   fuer die Sprachchat-Weitergabe). Geraetenamen koennen sehr lang sein
+   ("CABLE Input (VB-Audio Virtual Cable)"), deshalb feste Breite mit
+   Kuerzung statt Umbruch - sonst schiebt ein einzelnes Geraet die ganze
+   Zeile auseinander. */
+.settings-select {
+  flex-shrink: 0;
+  width: 190px;
+  max-width: 45%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sp-border);
+  background: var(--sp-elevated);
+  color: var(--sp-text);
+  font-size: 0.82rem;
+  font-family: inherit;
+  text-overflow: ellipsis;
+}
+.settings-select:focus { outline: none; border-color: var(--sp-green); }
+.settings-select:disabled { opacity: 0.5; }
+
 .toggle-switch {
   position: relative;
   width: 44px;

@@ -154,6 +154,46 @@ tauri-app/
 
 ---
 
+## 🎙️ Musik im Sprachchat mithören lassen
+
+Freunde, die dich in Discord/TeamSpeak hören, sollen die Musik mithören?
+Windows lässt keine Anwendung sich als Mikrofon ausgeben — dafür braucht
+es einen Treiber. Der übliche Weg ist ein **virtuelles Kabel**: es meldet
+sich beim System gleichzeitig als Ausgabe- *und* als Aufnahmegerät an.
+Reson schickt die Musik an die Ausgabeseite, dein Sprachchat nimmt die
+Aufnahmeseite als Mikrofon.
+
+**Einrichtung (einmalig):**
+
+1. [VB-Cable](https://vb-audio.com/Cable/) installieren (kostenlos), danach
+   neu starten.
+2. In Reson: **Einstellungen → Wiedergabe & Sound → Musik an den Sprachchat
+   weitergeben** einschalten.
+3. Als **Zielgerät** `CABLE Input` wählen — nicht deine Kopfhörer, sonst
+   hörst du alles doppelt.
+4. **Lautstärke im Sprachchat** einstellen. Deutlich leiser als deine
+   Stimme, sonst redest du gegen die Musik an. 30–40 % ist ein guter Start.
+5. In Discord: **Einstellungen → Sprache & Video → Eingabegerät** auf
+   `CABLE Output` stellen.
+
+Du hörst weiter ganz normal über deine Kopfhörer — der zweite Ausgang
+hängt parallel an derselben Stelle und ändert an deiner Wiedergabe nichts.
+
+> **Deine Stimme fällt damit weg**, weil Discord jetzt das Kabel statt
+> deines Mikrofons hört. Willst du beides gleichzeitig, brauchst du einen
+> Mischer: **VoiceMeeter** (ebenfalls kostenlos, vom selben Hersteller)
+> nimmt Mikrofon und Kabel entgegen und gibt beides zusammen als ein
+> Gerät aus. In Reson bleibt die Einstellung dieselbe, nur das Zielgerät
+> heißt dann `VoiceMeeter Input`.
+
+**Ohne Zusatzsoftware** geht es auch — dann aber nicht über den
+Sprachchat: der **Party-Modus** (👥 in der Seitenleiste) lässt Freunde
+synchron mithören, in voller Qualität, per Link oder QR-Code. Der Umweg
+über das Mikrofon ist nur nötig, wenn alle ohnehin schon im Sprachchat
+sitzen.
+
+---
+
 ## 📦 In den Google Play Store bringen
 
 Play nimmt **keine Debug-APK** an. Gebraucht wird ein **signiertes AAB** —

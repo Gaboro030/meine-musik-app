@@ -66,6 +66,19 @@
       "Shows friends on Discord „Listening to … by …“ including cover art and a progress bar. Desktop only. Discord needs its own application ID for this - you can create one for free in a minute at discord.com/developers/applications; the application's name is also the name your friends will see.",
     "Discord-Anwendungs-ID": "Discord application ID",
     "Die lange Zahl aus deiner Discord-Anwendung („Application ID“)": "The long number from your Discord application („Application ID“)",
+    "Musik an den Sprachchat weitergeben": "Share music into voice chat",
+    "Schickt die Musik zusätzlich an ein zweites Ausgabegerät. Wählst du dort ein virtuelles Kabel und stellst dieses in Discord/TeamSpeak als Mikrofon ein, hören deine Freunde die Musik mit. Du selbst hörst unverändert über deine Kopfhörer. Nur am PC.":
+      "Sends the music to a second output device as well. Pick a virtual cable there and set that same cable as your microphone in Discord/TeamSpeak, and your friends hear the music too. You keep hearing it through your headphones as before. Desktop only.",
+    "Zielgerät für den Sprachchat": "Voice chat target device",
+    "Das Gerät, das dein Sprachchat als Mikrofon benutzt - typischerweise „CABLE Input“. Nicht deine Kopfhörer wählen, sonst hörst du alles doppelt.":
+      "The device your voice chat uses as its microphone - typically „CABLE Input“. Don't pick your headphones, or you'll hear everything twice.",
+    "Lautstärke im Sprachchat": "Volume in voice chat",
+    "Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.":
+      "How loud your friends hear the music - independent of your own volume. Set it below your voice, or you'll be talking over the music.",
+    "Zielgerät für den Sprachchat lässt sich nicht öffnen. Ist es noch angeschlossen?":
+      "Can't open the voice chat target device. Is it still connected?",
+    "Das geht nur am PC - Android kennt keine zweiten Ausgabegeräte.":
+      "Desktop only - Android has no concept of a second output device.",
     "Bitte zuerst die Discord-Anwendungs-ID eintragen.": "Please enter the Discord application ID first.",
     "Nicht im selben WLAN? Dann per Code verbinden:": "Not on the same Wi-Fi? Connect with a code:",
     "📥 Code zum Empfangen erstellen": "📥 Create a code to receive",

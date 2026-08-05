@@ -582,6 +582,30 @@
           </div>
           <div class="settings-row">
             <div>
+              <div class="settings-row-label" data-i18n="Musik an den Sprachchat weitergeben">Musik an den Sprachchat weitergeben</div>
+              <div class="settings-row-desc" data-i18n="Schickt die Musik zusätzlich an ein zweites Ausgabegerät. Wählst du dort ein virtuelles Kabel und stellst dieses in Discord/TeamSpeak als Mikrofon ein, hören deine Freunde die Musik mit. Du selbst hörst unverändert über deine Kopfhörer. Nur am PC.">Schickt die Musik zusätzlich an ein zweites Ausgabegerät. Wählst du dort ein virtuelles Kabel und stellst dieses in Discord/TeamSpeak als Mikrofon ein, hören deine Freunde die Musik mit. Du selbst hörst unverändert über deine Kopfhörer. Nur am PC.</div>
+            </div>
+            <button type="button" id="voiceShareToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Zielgerät für den Sprachchat">Zielgerät für den Sprachchat</div>
+              <div class="settings-row-desc" data-i18n="Das Gerät, das dein Sprachchat als Mikrofon benutzt - typischerweise „CABLE Input“. Nicht deine Kopfhörer wählen, sonst hörst du alles doppelt.">Das Gerät, das dein Sprachchat als Mikrofon benutzt - typischerweise „CABLE Input“. Nicht deine Kopfhörer wählen, sonst hörst du alles doppelt.</div>
+            </div>
+            <select id="voiceShareDeviceSelect" class="settings-select" disabled></select>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Lautstärke im Sprachchat">Lautstärke im Sprachchat</div>
+              <div class="settings-row-desc" data-i18n="Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.">Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.</div>
+            </div>
+          </div>
+          <div class="settings-slider-row">
+            <input type="range" id="voiceShareVolumeSlider" min="0" max="100" step="1" value="35" />
+            <span id="voiceShareVolumeReadout" class="pbtools-readout">35%</span>
+          </div>
+          <div class="settings-row">
+            <div>
               <div class="settings-row-label" data-i18n="Stille überspringen (Skip-Silence)">Stille überspringen (Skip-Silence)</div>
               <div class="settings-row-desc" data-i18n="Leise Anfänge/Enden bei jedem Song automatisch überspringen">Leise Anfänge/Enden bei jedem Song automatisch überspringen</div>
             </div>
@@ -985,6 +1009,7 @@
   <script src="hotkeys-native.js"></script>
   <script src="nowplaying-native.js"></script>
   <script src="discord-presence.js"></script>
+  <script src="sprachchat.js"></script>
   <script src="themes.js"></script>
   <script src="sync.js"></script>
   <script src="m3u-export.js"></script>
