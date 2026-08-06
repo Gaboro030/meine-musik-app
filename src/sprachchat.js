@@ -118,10 +118,19 @@
      irgendwas mit "cable", "virtual" oder "voicemeeter". Das ist keine
      exakte Wissenschaft, aber es reicht, um zu sagen "da ist offenbar
      keines installiert" statt den Nutzer raten zu lassen, warum in
-     Discord nichts ankommt. */
+     Discord nichts ankommt.
+
+     "reson" steht mit in der Liste, weil Windows das Umbenennen von
+     Audiogeraeten erlaubt: wer sein Kabel in "Reson Mikro" umbenannt hat
+     (siehe Hinweis unten), soll es hier trotzdem wiederfinden. */
   function istKabel(name) {
     const n = (name || "").toLowerCase();
-    return n.includes("cable") || n.includes("voicemeeter") || n.includes("virtual");
+    return (
+      n.includes("cable") ||
+      n.includes("voicemeeter") ||
+      n.includes("virtual") ||
+      n.includes("reson")
+    );
   }
 
   function hinweisSetzen(text) {
@@ -211,11 +220,25 @@
     } else {
       const ziel = ausgaenge.find((g) => g.deviceId === geraetId);
       const zielName = (ziel && ziel.label) || uebersetzt("dem gewählten Gerät");
+      // Ist die Gegenseite schon umbenannt worden, ist der Tipp erledigt -
+      // dann nur noch sagen, was einzustellen ist.
+      const schonUmbenannt = eingaenge.some((g) => (g.label || "").toLowerCase().includes("reson"));
+      const aufnahmeseite =
+        eingaenge.find((g) => (g.label || "").toLowerCase().includes("reson")) ||
+        eingaenge.find((g) => istKabel(g.label));
+      const aufnahmeName = (aufnahmeseite && aufnahmeseite.label) || "CABLE Output";
       hinweisSetzen(
-        uebersetzt("Bereit. Stelle in Discord/WhatsApp/im Spiel als Mikrofon die Aufnahmeseite von {name} ein - meist „CABLE Output“.").replace(
-          "{name}",
-          zielName
-        )
+        uebersetzt("Bereit. Stelle in Discord/WhatsApp/im Spiel als Mikrofon „{mikro}“ ein.").replace(
+          "{mikro}",
+          aufnahmeName
+        ) +
+          (schonUmbenannt
+            ? ""
+            : " " +
+              uebersetzt(
+                "Tipp: Windows lässt dich Geräte umbenennen - unter Einstellungen › System › Sound › Weitere Soundeinstellungen kannst du „{mikro}“ in „Reson Mikro“ umbenennen. Dann steht in Discord und in jedem Spiel genau das in der Mikrofonliste."
+              ).replace("{mikro}", aufnahmeName)) +
+          ` (${uebersetzt("Ziel gerade")}: ${zielName})`
       );
     }
   }

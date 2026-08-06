@@ -191,6 +191,18 @@ eigene Stimme dabei verloren geht.
 4. In Discord/WhatsApp/im Spiel als Mikrofon **`CABLE Output`** wählen.
    Einmal pro Programm — danach nie wieder.
 
+**Damit es „Reson Mikro“ heißt:** Windows lässt Audiogeräte umbenennen.
+Einstellungen → **System** → **Sound** → **Weitere Soundeinstellungen** →
+`CABLE Output` → **Umbenennen** → `Reson Mikro`. Ab dann steht genau das
+in der Mikrofonliste von Discord, WhatsApp und jedem Spiel. Dasselbe geht
+mit `CABLE Input` (z. B. `Reson Ausgang`), damit auch die Auswahl in Reson
+selbst eindeutig ist.
+
+> Ein wirklich *eigenes* Gerät mitzubringen ginge nur als Audiotreiber,
+> und Windows lädt Audiotreiber nur mit EV-Zertifikat und
+> Microsoft-Gegenzeichnung. Deshalb der Umweg über ein vorhandenes Kabel
+> plus Umbenennen — das Ergebnis ist in Discord und im Spiel dasselbe.
+
 Du hörst weiter ganz normal über deine Kopfhörer: der Abzweig hängt
 parallel an derselben Stelle und ändert an deiner Wiedergabe nichts.
 Die beiden Regler gelten nur für das, was drüben ankommt.
