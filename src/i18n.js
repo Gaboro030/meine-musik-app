@@ -72,9 +72,27 @@
     "Zielgerät für den Sprachchat": "Voice chat target device",
     "Das Gerät, das dein Sprachchat als Mikrofon benutzt - typischerweise „CABLE Input“. Nicht deine Kopfhörer wählen, sonst hörst du alles doppelt.":
       "The device your voice chat uses as its microphone - typically „CABLE Input“. Don't pick your headphones, or you'll hear everything twice.",
-    "Lautstärke im Sprachchat": "Volume in voice chat",
+    "Lautstärke der Musik im Sprachchat": "Music volume in voice chat",
     "Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.":
       "How loud your friends hear the music - independent of your own volume. Set it below your voice, or you'll be talking over the music.",
+    "Eigenes Mikrofon dazumischen": "Mix in your own microphone",
+    "Mischt deine Stimme zur Musik, damit beides zusammen ankommt. Ohne das hören deine Freunde nur die Musik und dich nicht mehr. Benutze Kopfhörer - über Lautsprecher nimmt dein Mikrofon die Musik ein zweites Mal auf und es hallt.":
+      "Mixes your voice into the music so both come through together. Without it your friends hear only the music and not you. Use headphones - through speakers your microphone picks the music up a second time and it echoes.",
+    "Mikrofon": "Microphone",
+    "Dein echtes Mikrofon - das, was du sonst im Sprachchat direkt eingestellt hättest":
+      "Your real microphone - the one you'd otherwise have selected in the voice chat itself",
+    "Lautstärke deiner Stimme": "Your voice volume",
+    "Wie laut deine Stimme gegenüber der Musik ankommt": "How loud your voice comes through against the music",
+    "Kein Gerät gefunden": "No device found",
+    "– bitte wählen –": "– please choose –",
+    "– Standardmikrofon –": "– default microphone –",
+    "dem gewählten Gerät": "the selected device",
+    "Kein virtuelles Kabel gefunden. Ohne eines kann keine Anwendung Ton in ein Mikrofon schicken - das ist eine Vorgabe von Windows. Installiere VB-Cable (kostenlos, vb-audio.com/Cable) und starte neu; danach ist hier nichts mehr einzurichten.":
+      "No virtual cable found. Without one, no application can feed audio into a microphone - that's a Windows rule. Install VB-Cable (free, vb-audio.com/Cable) and restart; after that there is nothing left to set up here.",
+    "Bereit. Stelle in Discord/WhatsApp/im Spiel als Mikrofon die Aufnahmeseite von {name} ein - meist „CABLE Output“.":
+      "Ready. In Discord/WhatsApp/your game, set the recording side of {name} as your microphone - usually „CABLE Output“.",
+    "Mikrofon lässt sich nicht öffnen. Ist es angeschlossen und für Reson erlaubt?":
+      "Can't open the microphone. Is it connected and allowed for Reson?",
     "Zielgerät für den Sprachchat lässt sich nicht öffnen. Ist es noch angeschlossen?":
       "Can't open the voice chat target device. Is it still connected?",
     "Das geht nur am PC - Android kennt keine zweiten Ausgabegeräte.":

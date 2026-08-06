@@ -596,13 +596,40 @@
           </div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label" data-i18n="Lautstärke im Sprachchat">Lautstärke im Sprachchat</div>
+              <div class="settings-row-label" data-i18n="Lautstärke der Musik im Sprachchat">Lautstärke der Musik im Sprachchat</div>
               <div class="settings-row-desc" data-i18n="Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.">Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.</div>
             </div>
           </div>
           <div class="settings-slider-row">
             <input type="range" id="voiceShareVolumeSlider" min="0" max="100" step="1" value="35" />
             <span id="voiceShareVolumeReadout" class="pbtools-readout">35%</span>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Eigenes Mikrofon dazumischen">Eigenes Mikrofon dazumischen</div>
+              <div class="settings-row-desc" data-i18n="Mischt deine Stimme zur Musik, damit beides zusammen ankommt. Ohne das hören deine Freunde nur die Musik und dich nicht mehr. Benutze Kopfhörer - über Lautsprecher nimmt dein Mikrofon die Musik ein zweites Mal auf und es hallt.">Mischt deine Stimme zur Musik, damit beides zusammen ankommt. Ohne das hören deine Freunde nur die Musik und dich nicht mehr. Benutze Kopfhörer - über Lautsprecher nimmt dein Mikrofon die Musik ein zweites Mal auf und es hallt.</div>
+            </div>
+            <button type="button" id="voiceShareMicToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Mikrofon">Mikrofon</div>
+              <div class="settings-row-desc" data-i18n="Dein echtes Mikrofon - das, was du sonst im Sprachchat direkt eingestellt hättest">Dein echtes Mikrofon - das, was du sonst im Sprachchat direkt eingestellt hättest</div>
+            </div>
+            <select id="voiceShareMicSelect" class="settings-select" disabled></select>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Lautstärke deiner Stimme">Lautstärke deiner Stimme</div>
+              <div class="settings-row-desc" data-i18n="Wie laut deine Stimme gegenüber der Musik ankommt">Wie laut deine Stimme gegenüber der Musik ankommt</div>
+            </div>
+          </div>
+          <div class="settings-slider-row">
+            <input type="range" id="voiceShareMicVolumeSlider" min="0" max="200" step="5" value="100" />
+            <span id="voiceShareMicVolumeReadout" class="pbtools-readout">100%</span>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-desc" id="voiceShareHint"></div>
           </div>
           <div class="settings-row">
             <div>

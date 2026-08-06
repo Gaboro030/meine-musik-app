@@ -1,32 +1,46 @@
-/* ===== Musik an den Sprachchat weitergeben (Desktop) =====
+/* ===== Musik (und Stimme) an den Sprachchat weitergeben - Desktop =====
 
-   Zweck: Freunde, die einen im Sprachchat hoeren (Discord, TeamSpeak,
-   Teamspeak-artige Programme), sollen die Musik mithoeren koennen.
+   Ziel: Freunde in Discord, WhatsApp, TeamSpeak oder einem Spiel sollen
+   die Musik mithoeren - und einen dabei weiter reden hoeren.
 
-   Warum das so und nicht direkter geht: Windows laesst keine Anwendung
-   sich als Mikrofon ausgeben - dafuer braucht es einen Audiotreiber, und
-   den kann eine App nicht ersetzen. Der uebliche Weg ist deshalb ein
-   virtuelles Kabel (VB-Cable und Verwandte): das meldet sich beim System
-   als Ausgabegeraet UND als Aufnahmegeraet an. Wir schicken die Musik an
-   dessen Ausgabeseite, der Sprachchat nimmt die Aufnahmeseite als Mikrofon.
+   Warum ein virtuelles Kabel unvermeidlich ist: Windows laesst keine
+   Anwendung sich als Mikrofon anmelden. Welche Mikrofone es gibt,
+   entscheidet das Betriebssystem, und dort etwas Neues einzutragen ist
+   Treiberarbeit - kein Programm kann das umgehen, auch kein Soundboard.
+   Alle diese Programme (Voicemod, Soundpad und Verwandte) installieren
+   genau dafuer einen Treiber. Ein virtuelles Kabel wie VB-Cable meldet
+   sich beim System gleichzeitig als Ausgabe- UND als Aufnahmegeraet an;
+   was man in seine Ausgabeseite schickt, kommt auf der Aufnahmeseite
+   wieder heraus und ist damit fuer jedes andere Programm ein Mikrofon.
 
-   Diese Datei baut dafuer einen ZWEITEN Ausgang: an masterGain (Ende der
-   Kette in player.js, hinter Equalizer und Normalisierung) haengt
-   zusaetzlich eine eigene Lautstaerke und ein MediaStreamDestination. Der
-   daraus entstehende Strom laeuft ueber ein verstecktes <audio>, dessen
-   Ausgabegeraet per setSinkId auf das gewaehlte Geraet gelegt wird.
+   Was diese Datei uebernimmt, ist der Teil danach - und der spart die
+   ZWEITE Installation: das Mischen. Ueblicherweise braucht man dafuer
+   noch ein Mischprogramm (VoiceMeeter), weil ein Kabel allein nur eine
+   Quelle durchreicht und die eigene Stimme sonst verloren geht. Hier
+   passiert das Mischen in der App:
 
-   Der normale Weg zu den Kopfhoerern bleibt voellig unberuehrt - beide
-   Ausgaenge haengen parallel am selben Punkt. Deshalb hoert man selbst
-   weiter genau das, was man vorher gehoert hat, und die Lautstaerke fuer
-   den Sprachchat ist davon unabhaengig regelbar (in der Regel deutlich
-   leiser, sonst redet man gegen die eigene Musik an). */
+       Musik (hinter EQ/Normalisierung) --> Musik-Lautstaerke --\
+                                                                 >-- Kabel
+       Mikrofon (getUserMedia) ----------> Stimm-Lautstaerke ---/
+
+   Beides landet in einem MediaStreamDestination, dessen Strom ueber ein
+   verstecktes <audio> laeuft; setSinkId legt dessen Ausgabegeraet auf das
+   Kabel. Im Sprachchat waehlt man einmal die Aufnahmeseite des Kabels als
+   Mikrofon - danach gilt das fuer jedes Programm gleichermassen.
+
+   Der eigene Kopfhoerer-Weg bleibt voellig unberuehrt: der Abzweig haengt
+   parallel an derselben Stelle. Man hoert also weiter genau das, was man
+   vorher gehoert hat, und beide Lautstaerken hier haben damit nichts zu
+   tun - sie gelten nur fuer das, was drueben ankommt. */
 (function () {
   "use strict";
 
   const AN_KEY = "voiceShareEnabled";
   const GERAET_KEY = "voiceShareDeviceId";
   const LAUTSTAERKE_KEY = "voiceShareVolume";
+  const MIKRO_AN_KEY = "voiceShareMicEnabled";
+  const MIKRO_KEY = "voiceShareMicId";
+  const MIKRO_LAUTSTAERKE_KEY = "voiceShareMicVolume";
 
   // i18n.js haengt t() an window; ist die Sprache Deutsch (oder das Modul
   // noch nicht geladen), bleibt der Text schlicht wie er ist.
@@ -36,6 +50,11 @@
   const auswahl = document.getElementById("voiceShareDeviceSelect");
   const regler = document.getElementById("voiceShareVolumeSlider");
   const anzeige = document.getElementById("voiceShareVolumeReadout");
+  const mikroSchalter = document.getElementById("voiceShareMicToggleSwitch");
+  const mikroAuswahl = document.getElementById("voiceShareMicSelect");
+  const mikroRegler = document.getElementById("voiceShareMicVolumeSlider");
+  const mikroAnzeige = document.getElementById("voiceShareMicVolumeReadout");
+  const hinweis = document.getElementById("voiceShareHint");
   if (!schalter || !auswahl || !regler) return;
 
   // Android hat weder ein virtuelles Kabel noch setSinkId. Die Zeilen
@@ -48,23 +67,38 @@
     navigator.mediaDevices &&
     typeof navigator.mediaDevices.enumerateDevices === "function";
 
+  function zahlAusSpeicher(schluessel, standard, min, max) {
+    // Erst auf "noch nie gespeichert" pruefen, DANN umwandeln: Number(null)
+    // ist 0, und 0 liegt in jedem dieser Bereiche - beim allerersten Start
+    // stuenden die Regler damit auf stumm.
+    const roh = localStorage.getItem(schluessel);
+    const wert = roh === null ? standard : Number(roh);
+    if (!Number.isFinite(wert) || wert < min || wert > max) return standard;
+    return wert;
+  }
+
   let an = localStorage.getItem(AN_KEY) === "1";
   let geraetId = localStorage.getItem(GERAET_KEY) || "";
-  // Erst auf "noch nie gespeichert" pruefen, DANN umwandeln: Number(null)
-  // ist 0, und 0 liegt im erlaubten Bereich - beim allerersten Start
-  // stuende der Regler damit auf stumm, und die Weitergabe waere
-  // eingeschaltet, ohne dass drueben etwas ankommt.
-  const gespeicherteLautstaerke = localStorage.getItem(LAUTSTAERKE_KEY);
-  let lautstaerke = gespeicherteLautstaerke === null ? 35 : Number(gespeicherteLautstaerke);
-  if (!Number.isFinite(lautstaerke) || lautstaerke < 0 || lautstaerke > 100) lautstaerke = 35;
+  let lautstaerke = zahlAusSpeicher(LAUTSTAERKE_KEY, 35, 0, 100);
+  // Standardmaessig an: ohne die Stimme hoeren die Freunde nur noch Musik
+  // und einen selbst gar nicht mehr - das ist fast nie gewollt.
+  let mikroAn = localStorage.getItem(MIKRO_AN_KEY) !== "0";
+  let mikroId = localStorage.getItem(MIKRO_KEY) || "";
+  let mikroLautstaerke = zahlAusSpeicher(MIKRO_LAUTSTAERKE_KEY, 100, 0, 200);
 
-  let zweigGain = null; // eigene Lautstaerke fuer diesen Ausgang
-  let zweigZiel = null; // MediaStreamDestination
-  let zweigAudio = null; // verstecktes <audio>, das auf dem Zielgeraet spielt
+  let musikGain = null;
+  let zweigZiel = null; // MediaStreamDestination - hier laeuft alles zusammen
+  let zweigAudio = null; // verstecktes <audio>, spielt auf dem Zielgeraet
+  let mikroGain = null;
+  let mikroQuelle = null;
+  let mikroStrom = null;
   let warteAufGraph = null;
+
+  /* --- Anzeige ---------------------------------------------------------- */
 
   function reglerAnzeigen() {
     if (anzeige) anzeige.textContent = `${lautstaerke}%`;
+    if (mikroAnzeige) mikroAnzeige.textContent = `${mikroLautstaerke}%`;
   }
 
   function schalterAnzeigen() {
@@ -72,22 +106,57 @@
     schalter.setAttribute("aria-checked", an ? "true" : "false");
     auswahl.disabled = !an || !moeglich;
     regler.disabled = !an || !moeglich;
+    if (mikroSchalter) {
+      mikroSchalter.classList.toggle("active", mikroAn);
+      mikroSchalter.setAttribute("aria-checked", mikroAn ? "true" : "false");
+    }
+    if (mikroAuswahl) mikroAuswahl.disabled = !an || !mikroAn || !moeglich;
+    if (mikroRegler) mikroRegler.disabled = !an || !mikroAn || !moeglich;
   }
+
+  /* Ein virtuelles Kabel erkennt man am Namen - die gaengigen heissen alle
+     irgendwas mit "cable", "virtual" oder "voicemeeter". Das ist keine
+     exakte Wissenschaft, aber es reicht, um zu sagen "da ist offenbar
+     keines installiert" statt den Nutzer raten zu lassen, warum in
+     Discord nichts ankommt. */
+  function istKabel(name) {
+    const n = (name || "").toLowerCase();
+    return n.includes("cable") || n.includes("voicemeeter") || n.includes("virtual");
+  }
+
+  function hinweisSetzen(text) {
+    if (hinweis) hinweis.textContent = text;
+  }
+
+  /* --- Geraete ---------------------------------------------------------- */
 
   /* Geraetenamen gibt der Browser erst preis, wenn einmal eine
      Audio-Berechtigung erteilt wurde - ohne die heissen alle Eintraege
-     schlicht "" und sind nicht auseinanderzuhalten. Deshalb einmal kurz
-     ein Aufnahmegeraet oeffnen und sofort wieder schliessen; aufgenommen
-     wird dabei nichts, der Strom wird noch in derselben Funktion
-     gestoppt. Schlaegt es fehl (Berechtigung abgelehnt), geht es mit
-     Ersatznamen weiter statt gar nicht. */
-  async function namenFreischalten() {
+     schlicht "" und sind nicht auseinanderzuhalten. Der Zugriff wird hier
+     ohnehin gebraucht (fuers Mikrofon), also einmal anfragen. Wird er
+     abgelehnt, geht es mit Ersatznamen weiter statt gar nicht. */
+  async function berechtigungHolen() {
     try {
       const strom = await navigator.mediaDevices.getUserMedia({ audio: true });
       strom.getTracks().forEach((t) => t.stop());
+      return true;
     } catch (_) {
-      /* ohne Namen weitermachen */
+      return false;
     }
+  }
+
+  function listeFuellen(select, geraete, leerText) {
+    select.innerHTML = "";
+    const leer = document.createElement("option");
+    leer.value = "";
+    leer.textContent = geraete.length ? leerText : uebersetzt("Kein Gerät gefunden");
+    select.appendChild(leer);
+    geraete.forEach((g, i) => {
+      const opt = document.createElement("option");
+      opt.value = g.deviceId;
+      opt.textContent = g.label || `${leerText} ${i + 1}`;
+      select.appendChild(opt);
+    });
   }
 
   async function geraeteLaden() {
@@ -99,54 +168,145 @@
       return;
     }
     const ausgaenge = liste.filter((g) => g.kind === "audiooutput");
-    auswahl.innerHTML = "";
+    const eingaenge = liste.filter((g) => g.kind === "audioinput");
 
-    const leer = document.createElement("option");
-    leer.value = "";
-    leer.textContent = ausgaenge.length ? "– bitte wählen –" : "Kein Gerät gefunden";
-    auswahl.appendChild(leer);
+    listeFuellen(auswahl, ausgaenge, uebersetzt("– bitte wählen –"));
+    if (mikroAuswahl) listeFuellen(mikroAuswahl, eingaenge, uebersetzt("– Standardmikrofon –"));
 
-    ausgaenge.forEach((g, i) => {
-      const opt = document.createElement("option");
-      opt.value = g.deviceId;
-      opt.textContent = g.label || `Ausgabegerät ${i + 1}`;
-      auswahl.appendChild(opt);
-    });
-
-    // Das gemerkte Geraet kann verschwunden sein (Kabel abgezogen, VB-Cable
-    // deinstalliert). Dann bleibt die Auswahl leer statt auf einen
-    // Eintrag zu zeigen, den es nicht mehr gibt.
+    // Ein gemerktes Geraet kann verschwunden sein (Kabel abgezogen,
+    // VB-Cable deinstalliert). Dann bleibt die Auswahl leer statt auf
+    // einen Eintrag zu zeigen, den es nicht mehr gibt.
     auswahl.value = ausgaenge.some((g) => g.deviceId === geraetId) ? geraetId : "";
     if (auswahl.value !== geraetId) {
       geraetId = auswahl.value;
       localStorage.setItem(GERAET_KEY, geraetId);
     }
+    if (mikroAuswahl) {
+      mikroAuswahl.value = eingaenge.some((g) => g.deviceId === mikroId) ? mikroId : "";
+      if (mikroAuswahl.value !== mikroId) {
+        mikroId = mikroAuswahl.value;
+        localStorage.setItem(MIKRO_KEY, mikroId);
+      }
+    }
+
+    // Noch kein Ziel gewaehlt, aber ein Kabel liegt bereit: gleich
+    // vorschlagen. Das ist in praktisch allen Faellen das Richtige und
+    // erspart die Suche in einer Liste voller kryptischer Geraetenamen.
+    if (!geraetId) {
+      const kabel = ausgaenge.find((g) => istKabel(g.label));
+      if (kabel) {
+        geraetId = kabel.deviceId;
+        auswahl.value = kabel.deviceId;
+        localStorage.setItem(GERAET_KEY, geraetId);
+      }
+    }
+
+    const kabelDa = ausgaenge.some((g) => istKabel(g.label));
+    if (!kabelDa) {
+      hinweisSetzen(
+        uebersetzt(
+          "Kein virtuelles Kabel gefunden. Ohne eines kann keine Anwendung Ton in ein Mikrofon schicken - das ist eine Vorgabe von Windows. Installiere VB-Cable (kostenlos, vb-audio.com/Cable) und starte neu; danach ist hier nichts mehr einzurichten."
+        )
+      );
+    } else {
+      const ziel = ausgaenge.find((g) => g.deviceId === geraetId);
+      const zielName = (ziel && ziel.label) || uebersetzt("dem gewählten Gerät");
+      hinweisSetzen(
+        uebersetzt("Bereit. Stelle in Discord/WhatsApp/im Spiel als Mikrofon die Aufnahmeseite von {name} ein - meist „CABLE Output“.").replace(
+          "{name}",
+          zielName
+        )
+      );
+    }
   }
+
+  /* --- Audioweg --------------------------------------------------------- */
 
   /* Der Audiograph in player.js entsteht erst beim ersten Abspielen (ein
      AudioContext darf ohne Nutzergeste nicht starten) - vorher gibt es
      kein masterGain, an das sich etwas haengen liesse. Deshalb hier
      warten, bis er steht, statt einmalig zu scheitern. */
   function graphBereit() {
-    return typeof audioGraphReady !== "undefined" && audioGraphReady &&
-      typeof masterGain !== "undefined" && masterGain &&
-      typeof audioCtx !== "undefined" && audioCtx;
+    return (
+      typeof audioGraphReady !== "undefined" &&
+      audioGraphReady &&
+      typeof masterGain !== "undefined" &&
+      masterGain &&
+      typeof audioCtx !== "undefined" &&
+      audioCtx
+    );
   }
 
   function abzweigAufbauen() {
     if (zweigZiel || !graphBereit()) return false;
-    zweigGain = audioCtx.createGain();
-    zweigGain.gain.value = lautstaerke / 100;
+    musikGain = audioCtx.createGain();
+    musikGain.gain.value = lautstaerke / 100;
     zweigZiel = audioCtx.createMediaStreamDestination();
-    masterGain.connect(zweigGain).connect(zweigZiel);
+    masterGain.connect(musikGain).connect(zweigZiel);
+
+    mikroGain = audioCtx.createGain();
+    mikroGain.gain.value = mikroLautstaerke / 100;
+    mikroGain.connect(zweigZiel);
 
     zweigAudio = new Audio();
     zweigAudio.srcObject = zweigZiel.stream;
     zweigAudio.autoplay = true;
-    // Die eigene Lautstaerke steckt schon in zweigGain; hier auf 1 lassen,
-    // sonst multipliziert sich beides.
+    // Die Lautstaerken stecken schon in den Gain-Knoten; hier auf 1
+    // lassen, sonst multipliziert sich beides.
     zweigAudio.volume = 1;
     return true;
+  }
+
+  function mikroSchliessen() {
+    if (mikroQuelle) {
+      try {
+        mikroQuelle.disconnect();
+      } catch (_) {
+        /* schon getrennt */
+      }
+      mikroQuelle = null;
+    }
+    if (mikroStrom) {
+      // Wirklich freigeben, nicht nur trennen: sonst bleibt das Mikrofon
+      // dauerhaft offen, samt Aufnahme-Symbol im System.
+      mikroStrom.getTracks().forEach((t) => t.stop());
+      mikroStrom = null;
+    }
+  }
+
+  async function mikroOeffnen() {
+    if (!an || !mikroAn || !zweigZiel) {
+      mikroSchliessen();
+      return;
+    }
+    if (mikroStrom) return; // laeuft schon
+    try {
+      mikroStrom = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          // Ohne feste Kennung nimmt der Browser das Standardmikrofon -
+          // genau das, was "– Standardmikrofon –" verspricht.
+          ...(mikroId ? { deviceId: { exact: mikroId } } : {}),
+          // Echoausloeschung AN: sie filtert genau das aus dem Mikrofon,
+          // was gerade ueber die Lautsprecher laeuft - hier also die
+          // eigene Musik. Ohne sie kaeme die Musik ein zweites Mal,
+          // zeitversetzt und dumpf, wieder mit rein.
+          echoCancellation: true,
+          noiseSuppression: true,
+          // Automatische Aussteuerung AUS: die zieht in Sprechpausen die
+          // Verstaerkung hoch und laesst die Stimme dadurch dauernd im
+          // Pegel schwanken. Die Lautstaerke wird hier von Hand geregelt.
+          autoGainControl: false,
+        },
+      });
+    } catch (e) {
+      mikroStrom = null;
+      if (typeof showToast === "function") {
+        showToast(uebersetzt("Mikrofon lässt sich nicht öffnen. Ist es angeschlossen und für Reson erlaubt?"));
+      }
+      return;
+    }
+    mikroQuelle = audioCtx.createMediaStreamSource(mikroStrom);
+    mikroQuelle.connect(mikroGain);
   }
 
   async function zielSetzen() {
@@ -170,9 +330,10 @@
     if (!moeglich) return;
     if (!an || !geraetId) {
       // Verbindung wirklich kappen statt nur stummschalten: ein weiter
-      // mitlaufender Strom haelt das Geraet sonst dauerhaft geoeffnet.
+      // mitlaufender Strom haelt Geraet und Mikrofon sonst dauerhaft offen.
       if (zweigAudio) zweigAudio.pause();
-      if (zweigGain) zweigGain.gain.value = 0;
+      if (musikGain) musikGain.gain.value = 0;
+      mikroSchliessen();
       return;
     }
     if (!abzweigAufbauen() && !zweigZiel) {
@@ -184,14 +345,19 @@
             clearInterval(warteAufGraph);
             warteAufGraph = null;
             zielSetzen();
+            mikroOeffnen();
           }
         }, 500);
       }
       return;
     }
-    if (zweigGain) zweigGain.gain.value = lautstaerke / 100;
+    if (musikGain) musikGain.gain.value = lautstaerke / 100;
+    if (mikroGain) mikroGain.gain.value = mikroLautstaerke / 100;
     zielSetzen();
+    mikroOeffnen();
   }
+
+  /* --- Bedienung -------------------------------------------------------- */
 
   schalter.addEventListener("click", async () => {
     if (!moeglich) {
@@ -204,12 +370,24 @@
     localStorage.setItem(AN_KEY, an ? "1" : "0");
     schalterAnzeigen();
     if (an) {
-      await namenFreischalten();
+      await berechtigungHolen();
       await geraeteLaden();
       schalterAnzeigen();
+    } else {
+      hinweisSetzen("");
     }
     anwenden();
   });
+
+  if (mikroSchalter) {
+    mikroSchalter.addEventListener("click", () => {
+      mikroAn = !mikroAn;
+      localStorage.setItem(MIKRO_AN_KEY, mikroAn ? "1" : "0");
+      schalterAnzeigen();
+      if (mikroAn) mikroOeffnen();
+      else mikroSchliessen();
+    });
+  }
 
   auswahl.addEventListener("change", () => {
     geraetId = auswahl.value;
@@ -217,14 +395,34 @@
     anwenden();
   });
 
+  if (mikroAuswahl) {
+    mikroAuswahl.addEventListener("change", () => {
+      mikroId = mikroAuswahl.value;
+      localStorage.setItem(MIKRO_KEY, mikroId);
+      // Ein laufendes Mikrofon zeigt weiter auf das alte Geraet - erst
+      // schliessen, dann mit der neuen Kennung neu oeffnen.
+      mikroSchliessen();
+      mikroOeffnen();
+    });
+  }
+
   regler.addEventListener("input", () => {
     lautstaerke = Number(regler.value);
     localStorage.setItem(LAUTSTAERKE_KEY, String(lautstaerke));
     reglerAnzeigen();
-    if (zweigGain) zweigGain.gain.value = lautstaerke / 100;
+    if (musikGain) musikGain.gain.value = lautstaerke / 100;
   });
 
-  // Ein neu eingestecktes Kabel taucht ohne das nicht in der Liste auf.
+  if (mikroRegler) {
+    mikroRegler.addEventListener("input", () => {
+      mikroLautstaerke = Number(mikroRegler.value);
+      localStorage.setItem(MIKRO_LAUTSTAERKE_KEY, String(mikroLautstaerke));
+      reglerAnzeigen();
+      if (mikroGain) mikroGain.gain.value = mikroLautstaerke / 100;
+    });
+  }
+
+  // Ein neu eingestecktes Kabel oder Mikrofon taucht ohne das nicht auf.
   if (moeglich && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", () => {
       if (an) geraeteLaden().then(anwenden);
@@ -232,6 +430,7 @@
   }
 
   regler.value = String(lautstaerke);
+  if (mikroRegler) mikroRegler.value = String(mikroLautstaerke);
   reglerAnzeigen();
   schalterAnzeigen();
   if (an && moeglich) {

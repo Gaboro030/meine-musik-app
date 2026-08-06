@@ -156,41 +156,58 @@ tauri-app/
 
 ## 🎙️ Musik im Sprachchat mithören lassen
 
-Freunde, die dich in Discord/TeamSpeak hören, sollen die Musik mithören?
-Windows lässt keine Anwendung sich als Mikrofon ausgeben — dafür braucht
-es einen Treiber. Der übliche Weg ist ein **virtuelles Kabel**: es meldet
-sich beim System gleichzeitig als Ausgabe- *und* als Aufnahmegerät an.
-Reson schickt die Musik an die Ausgabeseite, dein Sprachchat nimmt die
-Aufnahmeseite als Mikrofon.
+Freunde sollen die Musik mithören — in Discord, WhatsApp, TeamSpeak oder
+einem Spiel — und dich dabei weiter reden hören.
+
+**Warum eine Installation nötig ist:** Windows lässt keine Anwendung sich
+als Mikrofon anmelden. Welche Mikrofone es gibt, entscheidet das
+Betriebssystem, und dort etwas einzutragen ist Treiberarbeit. Jedes
+Soundboard (Voicemod, Soundpad und alle anderen) installiert genau
+deshalb einen Treiber. Ein **virtuelles Kabel** meldet sich beim System
+gleichzeitig als Ausgabe- *und* als Aufnahmegerät an: was man in seine
+Ausgabeseite schickt, kommt auf der Aufnahmeseite wieder heraus — und ist
+damit für jedes andere Programm ein ganz normales Mikrofon.
+
+**Das Mischen übernimmt Reson selbst**, deshalb bleibt es bei dieser
+einen Installation. Sonst bräuchte man noch ein Mischprogramm
+(VoiceMeeter), weil ein Kabel allein nur eine Quelle durchreicht und die
+eigene Stimme dabei verloren geht.
+
+```
+   Musik (hinter EQ) ──> Lautstärke ─┐
+                                     ├──> Kabel ──> Discord / WhatsApp / Spiel
+   Dein Mikrofon ─────> Lautstärke ─┘
+```
 
 **Einrichtung (einmalig):**
 
 1. [VB-Cable](https://vb-audio.com/Cable/) installieren (kostenlos), danach
    neu starten.
 2. In Reson: **Einstellungen → Wiedergabe & Sound → Musik an den Sprachchat
-   weitergeben** einschalten.
-3. Als **Zielgerät** `CABLE Input` wählen — nicht deine Kopfhörer, sonst
-   hörst du alles doppelt.
-4. **Lautstärke im Sprachchat** einstellen. Deutlich leiser als deine
-   Stimme, sonst redest du gegen die Musik an. 30–40 % ist ein guter Start.
-5. In Discord: **Einstellungen → Sprache & Video → Eingabegerät** auf
-   `CABLE Output` stellen.
+   weitergeben** einschalten. Das Kabel wird automatisch als Ziel
+   vorgeschlagen.
+3. **Lautstärken** einstellen: Musik deutlich leiser als die Stimme,
+   30–40 % ist ein guter Start.
+4. In Discord/WhatsApp/im Spiel als Mikrofon **`CABLE Output`** wählen.
+   Einmal pro Programm — danach nie wieder.
 
-Du hörst weiter ganz normal über deine Kopfhörer — der zweite Ausgang
-hängt parallel an derselben Stelle und ändert an deiner Wiedergabe nichts.
+Du hörst weiter ganz normal über deine Kopfhörer: der Abzweig hängt
+parallel an derselben Stelle und ändert an deiner Wiedergabe nichts.
+Die beiden Regler gelten nur für das, was drüben ankommt.
 
-> **Deine Stimme fällt damit weg**, weil Discord jetzt das Kabel statt
-> deines Mikrofons hört. Willst du beides gleichzeitig, brauchst du einen
-> Mischer: **VoiceMeeter** (ebenfalls kostenlos, vom selben Hersteller)
-> nimmt Mikrofon und Kabel entgegen und gibt beides zusammen als ein
-> Gerät aus. In Reson bleibt die Einstellung dieselbe, nur das Zielgerät
-> heißt dann `VoiceMeeter Input`.
+> **Kopfhörer benutzen.** Über Lautsprecher nimmt dein Mikrofon die Musik
+> ein zweites Mal auf, zeitversetzt und dumpf. Die Echoauslöschung fängt
+> das größtenteils ab, aber sauber ist es nur mit Kopfhörern.
 
-**Ohne Zusatzsoftware** geht es auch — dann aber nicht über den
-Sprachchat: der **Party-Modus** (👥 in der Seitenleiste) lässt Freunde
-synchron mithören, in voller Qualität, per Link oder QR-Code. Der Umweg
-über das Mikrofon ist nur nötig, wenn alle ohnehin schon im Sprachchat
-sitzen.
+**Ganz ohne Installation** geht es auch, dann aber nicht über das
+Mikrofon:
+
+- **Discord-Bildschirmteilen mit Ton** — im Sprachkanal auf „Bildschirm",
+  Reson auswählen, den Schalter **„Ton"** anmachen. Dein Mikrofon bleibt
+  dabei unberührt, klingt besser als alles durch ein Mikrofon, kostet
+  keine Einrichtung. Nur eben Discord-spezifisch.
+- **Party-Modus** (👥 in der Seitenleiste) — Freunde hören synchron über
+  einen Link oder QR-Code mit, in voller Qualität, ganz ohne Sprachchat.
 
 ---
 
