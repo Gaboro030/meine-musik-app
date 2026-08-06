@@ -7151,6 +7151,101 @@ function stopLyricsLoop() {
   }
 }
 
+/* ===== Wächter über der laufenden Anzeige =====
+
+   Die Hervorhebung wird pro Bild aus audioEl.currentTime neu berechnet und
+   kann deshalb nicht davonlaufen - solange die Schleife läuft. Genau da
+   liegt die Schwachstelle: lyricsFrameLoop beendet sich selbst, sobald das
+   Overlay zu ist ODER der Titel pausiert, und wird nur von play/seeked/
+   ratechange wieder angeworfen. Fällt so ein Ereignis aus - ein Aussetzer
+   beim Nachladen, eine Übergabe zwischen den beiden Audio-Elementen des
+   Crossfades, ein Wechsel, den kein Ereignis begleitet -, steht die
+   Anzeige still, während die Musik weiterläuft. Von außen sieht das aus,
+   als würde "der Songtext nicht mitkommen".
+
+   Deshalb dieser Wächter: alle fünf Sekunden nachsehen, ob das, was
+   leuchtet, noch zur Abspielzeit passt, und stillschweigend geraderücken.
+   Er läuft dauerhaft mit, springt aber sofort wieder raus, solange das
+   Overlay zu ist - das kostet nichts. */
+const LYRICS_WACHT_MS = 5000;
+
+/* Wann hat der Nutzer zuletzt selbst im Text gescrollt? Wer hochscrollt,
+   um eine Stelle nachzulesen, soll nicht nach zwei Sekunden vom Wächter
+   zurückgerissen werden. Bewusst wheel/touchmove/keydown statt "scroll":
+   scrollIntoView löst selbst scroll-Ereignisse aus, die dann als
+   Nutzerabsicht durchgingen. */
+let lyricsLetzteNutzerBewegung = 0;
+if (lyricsOverlay) {
+  ["wheel", "touchmove", "keydown"].forEach((ev) => {
+    lyricsOverlay.addEventListener(
+      ev,
+      () => {
+        lyricsLetzteNutzerBewegung = Date.now();
+      },
+      { passive: true }
+    );
+  });
+}
+const LYRICS_NUTZER_RUHE_MS = 8000;
+
+/* Welche Zeile MÜSSTE gerade leuchten? Dieselbe Rechnung wie in
+   updateLyricsHighlight - bewusst hier noch einmal, weil der Wächter das
+   Soll unabhängig vom Ist bestimmen muss, um beides vergleichen zu können. */
+function erwarteterLyricsIndex() {
+  if (!lyricsSyncLines) return -1;
+  const t = audioEl.currentTime + lyricsSyncOffset;
+  let idx = -1;
+  for (let i = 0; i < lyricsSyncLines.length; i++) {
+    if (lyricsSyncLines[i].t <= t) idx = i;
+    else break;
+  }
+  return idx;
+}
+
+function lyricsWacht() {
+  if (!lyricsOverlay || lyricsOverlay.classList.contains("hidden")) return;
+
+  // 1. Zeigt das Overlay überhaupt noch den Titel, der gerade läuft?
+  //    Deckt den Fall ab, dass ein Trackwechsel ohne das übliche Ereignis
+  //    durchgerutscht ist.
+  refreshLyricsIfOpen();
+
+  // Ohne Zeitstempel gibt es nichts auszurichten - ein unsynchronisierter
+  // Text hat keine "richtige" Zeile.
+  if (!lyricsSyncLines) return;
+
+  // 2. Läuft Musik, aber die Schleife ist stehengeblieben? Dann wieder an.
+  if (!audioEl.paused && lyricsRafId === null) startLyricsLoop();
+
+  // 3. Passt das Leuchtende zur Abspielzeit? Wenn nicht, Hervorhebung
+  //    komplett neu setzen. lyricsActiveIdx auf einen Wert, den kein
+  //    echter Index annehmen kann, erzwingt in updateLyricsHighlight den
+  //    vollen Durchlauf inklusive Zurückscrollen - ein simples Aufrufen
+  //    würde am "idx !== lyricsActiveIdx"-Vergleich abprallen.
+  const soll = erwarteterLyricsIndex();
+  if (soll !== lyricsActiveIdx) {
+    lyricsActiveIdx = -2;
+    updateLyricsHighlight();
+    return; // das Zurückscrollen hat updateLyricsHighlight schon erledigt
+  }
+
+  // 4. Stimmt die Zeile, ist sie aber aus dem Blick gerutscht (eigenes
+  //    Scrollen, Fenstergröße geändert, Überblendung), wieder zentrieren -
+  //    außer der Nutzer hat gerade selbst gescrollt.
+  if (soll < 0) return;
+  if (Date.now() - lyricsLetzteNutzerBewegung < LYRICS_NUTZER_RUHE_MS) return;
+  const zeile = lyricsSyncLines[soll] && lyricsSyncLines[soll].el;
+  if (!zeile) return;
+  const z = zeile.getBoundingClientRect();
+  const o = lyricsOverlay.getBoundingClientRect();
+  const sichtbar = z.bottom > o.top && z.top < o.bottom;
+  if (!sichtbar) {
+    zeile.scrollIntoView({ block: "center", behavior: fensterHatFokus ? "smooth" : "auto" });
+  }
+}
+
+setInterval(lyricsWacht, LYRICS_WACHT_MS);
+
 async function openLyrics(force = false) {
   if (!nowPlayingMeta) {
     showToast(t("Gerade wird kein Titel abgespielt."));
