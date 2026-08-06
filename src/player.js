@@ -7045,7 +7045,14 @@ function updateLyricsHighlight() {
     });
     lyricsActiveIdx = idx;
     if (idx >= 0) {
-      lyricsSyncLines[groupStart].el.scrollIntoView({ block: "center", behavior: "smooth" });
+      // Ohne Fokus hart springen statt weich scrollen: ein weicher Scroll
+      // läuft über etliche Bilder, und jedes davon schiebt den kompletten
+      // Textblock samt Leuchten neu durch die Grafikkarte. Zusehen tut
+      // gerade ohnehin niemand - dann ist der Sprung das Günstigere.
+      lyricsSyncLines[groupStart].el.scrollIntoView({
+        block: "center",
+        behavior: fensterHatFokus ? "smooth" : "auto",
+      });
     }
   }
 
@@ -7060,14 +7067,14 @@ function updateLyricsHighlight() {
       const pct = Math.min(Math.max((t - w.start) / span, 0), 1) * 100;
       const value = `${pct.toFixed(1)}%`;
       // NUR schreiben, wenn sich wirklich etwas ändert. --wipe steuert ein
-      // clip-path; jede Zuweisung zeichnet das Wort samt Leuchten neu, und
-      // weil das Ganze hinter einem bildschirmfüllenden Weichzeichner
-      // liegt (.lyrics-overlay), muss die Grafikkarte danach auch den
-      // Hintergrund neu verwaschen. Zu jedem Zeitpunkt ist aber höchstens
-      // EIN Wort mitten im Wischen - alle anderen stehen längst auf 0%
-      // oder 100% und wurden bisher trotzdem 60-mal pro Sekunde neu
-      // beschrieben. Genau das hat die App ausgebremst, wenn sich die
-      // Grafikkarte nebenher noch um ein Spiel kümmern musste.
+      // clip-path, jede Zuweisung zeichnet das Wort also neu. Zu jedem
+      // Zeitpunkt ist aber höchstens EIN Wort mitten im Wischen - alle
+      // anderen stehen längst auf 0% oder 100% und wurden bisher trotzdem
+      // 60-mal pro Sekunde neu beschrieben. Genau das hat die App
+      // ausgebremst, wenn sich die Grafikkarte nebenher noch um ein Spiel
+      // kümmern musste. (Der bildschirmfüllende Weichzeichner, der das
+      // früher zusätzlich verschlimmert hat, ist inzwischen weg - siehe
+      // .lyrics-overlay in styles.css.)
       if (w.lastWipe === value) return;
       w.lastWipe = value;
       w.el.style.setProperty("--wipe", value);
@@ -7075,13 +7082,49 @@ function updateLyricsHighlight() {
   }
 }
 
+/* Hat das Reson-Fenster gerade den Tastaturfokus? Für den Songtext auf
+   einem zweiten Bildschirm ist das die entscheidende Frage: sichtbar ist
+   er dann zwar, aber bedient wird ein Spiel auf dem Hauptbildschirm - und
+   das braucht jede Bildwiederholung der Grafikkarte, die es kriegen kann.
+
+   document.visibilityState hilft hier NICHT: ein Fenster auf dem zweiten
+   Monitor gilt als sichtbar, egal was auf dem ersten passiert. Nur der
+   Fokus unterscheidet "ich schaue gerade auf den Songtext" von "der
+   Songtext läuft nebenher mit". */
+let fensterHatFokus = typeof document !== "undefined" ? document.hasFocus() : true;
+window.addEventListener("focus", () => {
+  fensterHatFokus = true;
+});
+window.addEventListener("blur", () => {
+  fensterHatFokus = false;
+});
+
+/* Wie oft die Hervorhebung im Hintergrund höchstens nachgezogen wird.
+   15-mal pro Sekunde ist für wanderndes Text-Leuchten praktisch nicht von
+   flüssig zu unterscheiden - anders als bei einer Bewegung quer über den
+   Bildschirm fällt bei einem Wort, das über ~0,3 s heller wird, keine
+   Zwischenstufe auf. Gegenüber den 60 bis 165 Bildern, die ein moderner
+   Monitor sonst anfordert, spart das den Löwenanteil der Neuzeichnungen. */
+const LYRICS_HINTERGRUND_MS = 66;
+let lyricsLetzterFrame = 0;
+
 /* Die Schleife läuft NUR, solange auch wirklich etwas läuft. Vorher lief
    sie mit voller Bildrate weiter, während der Titel pausiert war - da
    ändert sich nichts, es wurde also 60-mal pro Sekunde für nichts
    gerechnet und gezeichnet. Wieder angeworfen wird sie unten bei play,
-   nach einem Sprung und bei Tempowechsel. */
-function lyricsFrameLoop() {
-  updateLyricsHighlight();
+   nach einem Sprung und bei Tempowechsel.
+
+   Ohne Fokus kommt die Drosselung dazu: die Schleife wird weiter pro Bild
+   aufgerufen (anders lässt sie sich nicht sauber wieder beschleunigen),
+   rechnet und zeichnet aber nur noch alle LYRICS_HINTERGRUND_MS. Der reine
+   Aufruf ohne Arbeit kostet nichts Messbares - teuer ist das Schreiben von
+   --wipe, weil daran ein clip-path samt Leuchten hängt. */
+function lyricsFrameLoop(zeit) {
+  const jetzt = typeof zeit === "number" ? zeit : performance.now();
+  if (fensterHatFokus || jetzt - lyricsLetzterFrame >= LYRICS_HINTERGRUND_MS) {
+    lyricsLetzterFrame = jetzt;
+    updateLyricsHighlight();
+  }
   if (lyricsOverlay.classList.contains("hidden") || audioEl.paused) {
     lyricsRafId = null;
     return;

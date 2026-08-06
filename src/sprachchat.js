@@ -55,6 +55,15 @@
   const mikroRegler = document.getElementById("voiceShareMicVolumeSlider");
   const mikroAnzeige = document.getElementById("voiceShareMicVolumeReadout");
   const hinweis = document.getElementById("voiceShareHint");
+  const kabelKnopf = document.getElementById("voiceShareCableBtn");
+  if (kabelKnopf) {
+    // Erspart die Suche nach der richtigen Seite - der Name "VB-Cable"
+    // fuehrt in einer Suchmaschine auch zu einem Haufen Weiterverteiler
+    // mit fragwuerdigen Installern.
+    kabelKnopf.addEventListener("click", () => {
+      window.open("https://vb-audio.com/Cable/", "_blank", "noopener");
+    });
+  }
   if (!schalter || !auswahl || !regler) return;
 
   // Android hat weder ein virtuelles Kabel noch setSinkId. Die Zeilen
@@ -211,10 +220,11 @@
     }
 
     const kabelDa = ausgaenge.some((g) => istKabel(g.label));
+    if (kabelKnopf) kabelKnopf.style.display = kabelDa ? "none" : "";
     if (!kabelDa) {
       hinweisSetzen(
         uebersetzt(
-          "Kein virtuelles Kabel gefunden. Ohne eines kann keine Anwendung Ton in ein Mikrofon schicken - das ist eine Vorgabe von Windows. Installiere VB-Cable (kostenlos, vb-audio.com/Cable) und starte neu; danach ist hier nichts mehr einzurichten."
+          "⚠ Schritt 1 fehlt noch: ein virtuelles Kabel. Ohne eines kann keine Anwendung Ton in ein Mikrofon schicken - das ist eine Vorgabe von Windows, kein Umweg, den man sich sparen könnte. Rechts holen, installieren, PC neu starten. Danach stellt sich hier alles von selbst ein."
         )
       );
     } else {

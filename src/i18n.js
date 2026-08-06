@@ -87,8 +87,9 @@
     "– bitte wählen –": "– please choose –",
     "– Standardmikrofon –": "– default microphone –",
     "dem gewählten Gerät": "the selected device",
-    "Kein virtuelles Kabel gefunden. Ohne eines kann keine Anwendung Ton in ein Mikrofon schicken - das ist eine Vorgabe von Windows. Installiere VB-Cable (kostenlos, vb-audio.com/Cable) und starte neu; danach ist hier nichts mehr einzurichten.":
-      "No virtual cable found. Without one, no application can feed audio into a microphone - that's a Windows rule. Install VB-Cable (free, vb-audio.com/Cable) and restart; after that there is nothing left to set up here.",
+    "⚠ Schritt 1 fehlt noch: ein virtuelles Kabel. Ohne eines kann keine Anwendung Ton in ein Mikrofon schicken - das ist eine Vorgabe von Windows, kein Umweg, den man sich sparen könnte. Rechts holen, installieren, PC neu starten. Danach stellt sich hier alles von selbst ein.":
+      "⚠ Step 1 is still missing: a virtual cable. Without one, no application can feed audio into a microphone - that's a Windows rule, not a detour you could skip. Get it on the right, install it, restart your PC. Everything here then sets itself up.",
+    "VB-Cable holen": "Get VB-Cable",
     "Bereit. Stelle in Discord/WhatsApp/im Spiel als Mikrofon „{mikro}“ ein.":
       "Ready. In Discord/WhatsApp/your game, set „{mikro}“ as your microphone.",
     "Tipp: Windows lässt dich Geräte umbenennen - unter Einstellungen › System › Sound › Weitere Soundeinstellungen kannst du „{mikro}“ in „Reson Mikro“ umbenennen. Dann steht in Discord und in jedem Spiel genau das in der Mikrofonliste.":
