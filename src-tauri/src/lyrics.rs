@@ -55,8 +55,65 @@ fn normalize_for_compare(text: &str) -> HashSet<String> {
         .to_lowercase()
         .split_whitespace()
         .filter(|w| w.len() > 1) // "a"/"i"/"&" etc. sind zu generisch, um als Uebereinstimmung zu zaehlen
-        .map(|w| w.to_string())
+        .map(entpluralisiert)
         .collect()
+}
+
+/// Haengt ein einzelnes "s" hinten dran, wird es fuer den Vergleich
+/// abgeschnitten. Klingt kleinlich, ist aber genau der Unterschied
+/// zwischen "Kanye West" und dem, was manche YouTube-Titel daraus machen
+/// ("Kanye Wests"): der Wortmengen-Vergleich sah darin zwei voellig
+/// verschiedene Woerter, die Uebereinstimmung fiel unter die Schwelle,
+/// und der richtige Songtext wurde verworfen.
+///
+/// Nur ab vier Zeichen und nicht bei "ss": sonst wuerden aus "is"/"as"
+/// unbrauchbare Reste und aus "Bass" ein "Bas".
+fn entpluralisiert(w: &str) -> String {
+    if w.len() >= 4 && w.ends_with('s') && !w.ends_with("ss") {
+        w[..w.len() - 1].to_string()
+    } else {
+        w.to_string()
+    }
+}
+
+/// Wirft mehrfach genannte Interpreten raus. "Kanye Wests, Kanye Wests"
+/// wird zu "Kanye Wests" - so etwas entsteht, wenn beim Import Titel- und
+/// Kanalname zusammengeschrieben werden, und macht jede Suche kaputt:
+/// gesucht wird dann nach einem Kuenstler, den es so nicht gibt.
+fn entdoppelter_interpret(artist: &str) -> String {
+    static TRENNER: OnceLock<Regex> = OnceLock::new();
+    // Der Punkt gehoert HINTER die Wortgrenze: bei "feat." sitzt die
+    // Grenze zwischen "t" und ".", ein \bfeat\.?\b haette den Punkt also
+    // stehen lassen ("Eminem, . Rihanna"). \bfeat\b\.? frisst ihn mit,
+    // ohne dass "feature" mitgerissen wird - dort gibt es zwischen "t" und
+    // "u" gar keine Wortgrenze.
+    let trenner =
+        TRENNER.get_or_init(|| Regex::new(r"(?i)\s*(?:,|&|\bfeat\b\.?|\bft\b\.?|\bund\b|\band\b|\bx\b)\s*").unwrap());
+    let mut gesehen: Vec<String> = Vec::new();
+    let mut teile: Vec<&str> = Vec::new();
+    for teil in trenner.split(artist) {
+        let sauber = teil.trim();
+        if sauber.is_empty() {
+            continue;
+        }
+        // Vergleich ueber dieselbe Normalisierung wie beim Abgleich mit
+        // lrclib, damit "Kanye West" und "kanye  west" als dasselbe gelten.
+        let schluessel: Vec<String> = {
+            let mut v: Vec<String> = normalize_for_compare(sauber).into_iter().collect();
+            v.sort();
+            v
+        };
+        let key = schluessel.join(" ");
+        if key.is_empty() || gesehen.contains(&key) {
+            continue;
+        }
+        gesehen.push(key);
+        teile.push(sauber);
+    }
+    if teile.is_empty() {
+        return artist.trim().to_string();
+    }
+    teile.join(", ")
 }
 
 /// Ist `candidate` (Titel ODER Interpret aus der lrclib-Antwort) plausibel
@@ -300,6 +357,12 @@ pub async fn fetch_lyrics(
     if title.trim().is_empty() {
         return Err("Titel fehlt.".into());
     }
+    // Mehrfach genannte Interpreten raus, BEVOR irgendeine Quelle gefragt
+    // wird: mit "Kanye Wests, Kanye Wests" sucht man nach einem Kuenstler,
+    // den es nicht gibt - alle drei Quellen liefern dann nichts Passendes,
+    // und uebrig bleibt der schlechteste Ausweg (fremder Text ohne
+    // Zeitstempel). Genau das war "der dumme Songtext".
+    let artist = entdoppelter_interpret(&artist);
     let client = reqwest::Client::builder()
         .user_agent("meine-musik/0.1 (+https://github.com/Gaboro030/meine-musik-app)")
         .build()
@@ -447,6 +510,55 @@ pub async fn get_lyrics_cached(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn doppelt_genannter_interpret_wird_zusammengefasst() {
+        // Genau der Fall aus der Bibliothek: der Interpret stand zweimal
+        // da, damit fand keine Quelle etwas und uebrig blieb ein fremder
+        // Text ohne Zeitstempel.
+        assert_eq!(entdoppelter_interpret("Kanye Wests, Kanye Wests"), "Kanye Wests");
+        assert_eq!(entdoppelter_interpret("Eminem & Eminem"), "Eminem");
+        assert_eq!(entdoppelter_interpret("Drake feat. Drake"), "Drake");
+    }
+
+    #[test]
+    fn echte_zweitinterpreten_bleiben_erhalten() {
+        // Die Gegenprobe: hier waere Wegwerfen falsch.
+        assert_eq!(
+            entdoppelter_interpret("Kanye West, Jamie Foxx"),
+            "Kanye West, Jamie Foxx"
+        );
+        assert_eq!(entdoppelter_interpret("Eminem feat. Rihanna"), "Eminem, Rihanna");
+    }
+
+    #[test]
+    fn interpret_ohne_doppelung_bleibt_unveraendert() {
+        assert_eq!(entdoppelter_interpret("Kanye West"), "Kanye West");
+        assert_eq!(entdoppelter_interpret(""), "");
+    }
+
+    #[test]
+    fn angehaengtes_s_verhindert_den_treffer_nicht_mehr() {
+        // "Kanye Wests" vs. "Kanye West": ohne Entpluralisierung lag die
+        // Wortmengen-Ueberlappung bei 1/3 und damit unter der Schwelle -
+        // der richtige Songtext wurde deshalb verworfen.
+        assert!(similarity_ok("Kanye Wests", "Kanye West"));
+        assert!(similarity_ok("The Beatles", "The Beatle"));
+    }
+
+    #[test]
+    fn entpluralisieren_frisst_keine_kurzen_woerter_und_kein_doppel_s() {
+        assert_eq!(entpluralisiert("wests"), "west");
+        assert_eq!(entpluralisiert("bass"), "bass"); // nicht "bas"
+        assert_eq!(entpluralisiert("is"), "is"); // zu kurz
+        assert_eq!(entpluralisiert("west"), "west");
+    }
+
+    #[test]
+    fn verschiedene_kuenstler_gelten_weiter_als_verschieden() {
+        // Die Entpluralisierung darf die Trennschaerfe nicht aufweichen.
+        assert!(!similarity_ok("Kanye West", "Taylor Swift"));
+    }
 
     #[test]
     fn clean_query_text_strips_youtube_noise_and_brackets() {
