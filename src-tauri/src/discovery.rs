@@ -366,6 +366,33 @@ pub(crate) fn pick_best(
         streng.sort_by_key(|(s, _)| *s);
         return streng.into_iter().next().map(|(_, c)| c);
     }
+
+    /* Zwischenstufe, bevor es ganz nachsichtig wird. Vorher ging es vom
+       strengen Durchgang direkt auf audio_preference_score - und das
+       bewertet zwar Live-Mitschnitte am schlechtesten, schliesst sie aber
+       nicht aus. Blieb streng nichts uebrig (ungewoehnliche Schreibweise,
+       fehlende Dauer-Angabe), landete deshalb genau das im Download, was
+       niemand wollte: ein Konzertmitschnitt oder ein Remix, nur weil sonst
+       gerade nichts Besseres in der Trefferliste stand.
+
+       Hier fliegt jetzt erst einmal alles raus, dessen Fassung gar nicht
+       gesucht war. Wer "Gold Digger" sucht, bekommt keinen Live-Auftritt;
+       wer ausdruecklich "Gold Digger (Live)" sucht, sehr wohl - markers_ok
+       prueft nur, dass der Kandidat keine Merkmale MITBRINGT, die im
+       gesuchten Titel fehlen. */
+    let mut passende_fassung: Vec<OnlineTrack> = candidates
+        .iter()
+        .filter(|c| markers_ok(title, &c.title))
+        .cloned()
+        .collect();
+    if !passende_fassung.is_empty() {
+        passende_fassung.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
+        return passende_fassung.into_iter().next();
+    }
+
+    // Notnagel: gar nichts passt zur Fassung. Lieber irgendetwas als eine
+    // leere Antwort - ohne das faende man einen Titel, den es nur als
+    // Live-Aufnahme gibt, ueberhaupt nicht mehr.
     let mut locker = candidates;
     locker.sort_by_key(|r| audio_preference_score(&r.title, &r.artist));
     locker.into_iter().next()
@@ -746,6 +773,38 @@ mod tests {
         let plain = audio_preference_score("Blinding Lights", "The Weeknd");
         let mv = audio_preference_score("Blinding Lights [MV]", "The Weeknd");
         assert!(mv > plain);
+    }
+
+    #[test]
+    fn nachsichtiger_durchgang_nimmt_trotzdem_keinen_live_mitschnitt() {
+        // Der Fall aus der Praxis: der strenge Durchgang findet nichts
+        // (hier ueber eine Dauer, die zu keinem Kandidaten passt), und
+        // frueher landete dann das Beste aus der Restliste im Download -
+        // notfalls eben ein Konzertmitschnitt. Jetzt fliegt die falsche
+        // Fassung vorher raus.
+        let kandidaten = vec![
+            kandidat("Gold Digger (Live at Coachella)", "Kanye West", Some(400.0)),
+            kandidat("Gold Digger", "Kanye West", Some(400.0)),
+        ];
+        let gewaehlt = pick_best("Gold Digger", "Kanye West", Some(20.0), kandidaten).unwrap();
+        assert_eq!(gewaehlt.title, "Gold Digger");
+    }
+
+    #[test]
+    fn ausdruecklich_gesuchter_live_mitschnitt_bleibt_moeglich() {
+        // Gegenprobe: wer die Live-Fassung sucht, soll sie auch bekommen.
+        let kandidaten = vec![kandidat("Gold Digger (Live at Coachella)", "Kanye West", Some(400.0))];
+        let gewaehlt = pick_best("Gold Digger (Live)", "Kanye West", Some(20.0), kandidaten).unwrap();
+        assert!(gewaehlt.title.contains("Live"));
+    }
+
+    #[test]
+    fn gibt_es_nur_eine_live_fassung_wird_sie_als_notnagel_genommen() {
+        // Sonst faende man einen Titel, den es nur als Mitschnitt gibt,
+        // ueberhaupt nicht mehr.
+        let kandidaten = vec![kandidat("Irgendein Song (Live)", "Band", Some(400.0))];
+        let gewaehlt = pick_best("Irgendein Song", "Band", Some(20.0), kandidaten);
+        assert!(gewaehlt.is_some());
     }
 
     #[test]
