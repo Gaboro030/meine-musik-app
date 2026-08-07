@@ -117,6 +117,12 @@ pub async fn update_now_playing(
     }
     #[cfg(not(target_os = "android"))]
     {
+        // Auf Windows haengt daran auch das Symbol in der Taskleisten-
+        // Vorschau. Kein eigenes Kommando dafuer: das Frontend meldet
+        // Start und Stopp hier ohnehin schon, ein zweiter Weg waere nur
+        // eine weitere Stelle, die aus dem Tritt geraten kann.
+        #[cfg(target_os = "windows")]
+        crate::taskbar::zustand_setzen(playing);
         let _ = (app, title, artist, playing, playlist, file, position_ms, duration_ms);
     }
     Ok(())

@@ -13,6 +13,8 @@ mod nowplaying;
 mod party;
 mod playlist;
 mod sync;
+#[cfg(target_os = "windows")]
+mod taskbar;
 mod trash;
 
 use std::fs;
@@ -93,6 +95,17 @@ pub fn run() {
             // Handy-Sync: discovery/transfer state, off until the user opens
             // the Sync panel and starts it.
             app.manage(sync::SyncState::new());
+
+            // Knoepfe in der Taskleisten-Vorschau (Zurueck/Pause/Weiter).
+            // Braucht das echte Fensterhandle, das es erst hier gibt.
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(win) = app.get_webview_window("main") {
+                    if let Ok(hwnd) = win.hwnd() {
+                        taskbar::einrichten(&handle, hwnd.0 as isize);
+                    }
+                }
+            }
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("stream", |ctx, request, responder| {
