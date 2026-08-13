@@ -11,7 +11,31 @@ pub struct LyricsResult {
     pub lyrics: String,
     pub synced: Option<String>,
     pub found: bool,
+    /// Stand der Auswahl-Logik, mit der dieses Ergebnis zustande kam.
+    ///
+    /// Der Songtext liegt als Datei neben dem Track und wird nie wieder
+    /// angefasst - sonst muesste bei jedem Abspielen das Netz befragt
+    /// werden. Der Haken: verbessert sich die Auswahl (doppelte
+    /// Interpreten, angehaengtes "s", Untertitel-Fassungen), merkt man
+    /// davon bei allen schon geladenen Songs genau nichts, weil die alte,
+    /// falsche Antwort weiter von der Platte kommt.
+    ///
+    /// Diese Zahl loest das: liegt sie unter LYRICS_SCHEMA, wird der
+    /// Eintrag einmalig verworfen und frisch geholt. Alte Dateien haben
+    /// das Feld gar nicht - serde(default) macht daraus 0, und damit sind
+    /// sie automatisch veraltet.
+    #[serde(default)]
+    pub schema: u32,
 }
+
+/// Hochzaehlen, wenn sich an der Auswahl etwas aendert, das bereits
+/// gespeicherte Ergebnisse falsch aussehen laesst.
+///
+/// 1 -> 2: doppelt genannte Interpreten werden zusammengefasst, ein
+/// angehaengtes "s" verhindert den Treffer nicht mehr, und
+/// Untertitel-Reuploads ("Legendado" und Verwandte) gelten nicht mehr als
+/// dieselbe Aufnahme.
+pub const LYRICS_SCHEMA: u32 = 2;
 
 const LRCLIB_GET: &str = "https://lrclib.net/api/get";
 const LRCLIB_SEARCH: &str = "https://lrclib.net/api/search";
@@ -169,6 +193,19 @@ fn version_markers(text: &str) -> HashSet<&'static str> {
         ("instrumental", "instrumental"),
         ("karaoke", "instrumental"),
         ("cover", "cover"),
+        // Untertitel-Reuploads (portugiesisch "Legendado", spanisch
+        // "Subtitulado", tuerkisch "Ceviri" ...). Die haben fast nie einen
+        // sauberen Schnitt - Kanal-Vorspann davor, Abspann dahinter -,
+        // sind also laenger als das Original. Die Zeitstempel der
+        // Studiofassung passen dazu von der ersten Zeile an nicht.
+        ("legendado", "untertitel"),
+        ("legendas", "untertitel"),
+        ("traducao", "untertitel"),
+        ("tradução", "untertitel"),
+        ("subtitulado", "untertitel"),
+        ("ceviri", "untertitel"),
+        ("çeviri", "untertitel"),
+        ("vostfr", "untertitel"),
     ] {
         if lower.contains(needle) {
             out.insert(marker);
@@ -436,6 +473,7 @@ pub async fn fetch_lyrics(
             lyrics: plain.unwrap_or_default(),
             synced,
             found: true,
+            schema: LYRICS_SCHEMA,
         })
     } else {
         Ok(LyricsResult {
@@ -444,6 +482,7 @@ pub async fn fetch_lyrics(
             artist,
             synced: None,
             found: false,
+            schema: LYRICS_SCHEMA,
         })
     }
 }
@@ -491,7 +530,14 @@ pub async fn get_lyrics_cached(
         if let Some(path) = &sidecar {
             if let Ok(text) = std::fs::read_to_string(path) {
                 if let Ok(cached) = serde_json::from_str::<LyricsResult>(&text) {
-                    return Ok(cached);
+                    // Nur verwenden, wenn das Ergebnis mit der aktuellen
+                    // Auswahl-Logik zustande kam. Sonst haetten alle
+                    // Verbesserungen daran keinerlei Wirkung auf Songs, die
+                    // schon einmal geladen wurden - und genau die sind ja
+                    // die, bei denen etwas schiefging.
+                    if cached.schema >= LYRICS_SCHEMA {
+                        return Ok(cached);
+                    }
                 }
             }
         }
@@ -510,6 +556,38 @@ pub async fn get_lyrics_cached(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alte_zwischengespeicherte_songtexte_gelten_als_veraltet() {
+        // Dateien aus der Zeit vor dem Schema-Feld haben es gar nicht -
+        // serde(default) macht daraus 0, und damit werden sie einmalig
+        // neu geholt statt fuer immer falsch liegenzubleiben.
+        let alt: LyricsResult =
+            serde_json::from_str(r#"{"title":"A","artist":"B","lyrics":"x","synced":null,"found":true}"#)
+                .unwrap();
+        assert_eq!(alt.schema, 0);
+        assert!(alt.schema < LYRICS_SCHEMA);
+
+        let neu: LyricsResult = serde_json::from_str(
+            r#"{"title":"A","artist":"B","lyrics":"x","synced":null,"found":true,"schema":2}"#,
+        )
+        .unwrap();
+        assert!(neu.schema >= LYRICS_SCHEMA);
+    }
+
+    #[test]
+    fn untertitel_fassung_gilt_nicht_als_dieselbe_aufnahme() {
+        // Der Text der Studiofassung passt zeitlich nicht zu einem
+        // Untertitel-Reupload mit Vorspann und Abspann.
+        assert!(!candidate_ok(
+            "In the Closet (Legendado)",
+            "Michael Jackson",
+            "In the Closet",
+            "Michael Jackson"
+        ));
+        assert!(version_markers("In the Closet (Legendado)").contains("untertitel"));
+        assert!(version_markers("Sarki (Türkçe Çeviri)").contains("untertitel"));
+    }
 
     #[test]
     fn doppelt_genannter_interpret_wird_zusammengefasst() {

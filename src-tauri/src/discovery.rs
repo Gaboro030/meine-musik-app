@@ -72,6 +72,12 @@ fn live_re() -> &'static Regex {
 pub(crate) fn audio_preference_score(title: &str, uploader: &str) -> i32 {
     if uploader.to_lowercase().trim_end().ends_with("- topic") {
         0
+    // Untertitel-Reupload: noch hinter dem Live-Mitschnitt. Beim
+    // Mitschnitt bekommt man wenigstens den ganzen Song, hier bekommt man
+    // das Original mit Vorspann und Abspann drumherum - also eine Datei,
+    // deren Laenge nicht mehr zu irgendeinem Songtext passt.
+    } else if reupload_kanal_re().is_match(uploader) {
+        4
     } else if live_re().is_match(title) {
         3
     } else if official_video_re().is_match(title) {
@@ -130,7 +136,36 @@ const VERSION_MARKERS: &[(&str, &str)] = &[
         r"(?i)\bextended\b|\b\d+\s*(?:hour|hours|stunde|stunden)\b|\bloop(?:ed)?\b",
     ),
     ("kurzfassung", r"(?i)\bradio\s*edit\b|\bshort\s*version\b"),
+    /* Untertitel-Reuploads. Die tauchen bei praktisch jedem bekannten Song
+       weit oben in der Suche auf - portugiesische "Legendado"-Kanaele,
+       spanische "Sub Espanol", tuerkische "Turkce Ceviri" und Verwandte.
+       Sie sind kein anderer Mix, aber fast nie ein sauberer Schnitt: davor
+       ein Kanal-Vorspann, dahinter eine Abspann-Schleife, dazwischen
+       gelegentlich Pausen. Die Datei ist dadurch spuerbar laenger als das
+       Original (im gemeldeten Fall 6:04 statt 4:48), und jeder
+       synchronisierte Songtext laeuft von der ersten Zeile an daneben -
+       die Zeitstempel beziehen sich auf das Original.
+
+       Deshalb behandeln wir sie wie eine eigene Fassung: wer nicht
+       ausdruecklich danach sucht, bekommt sie nicht. */
+    (
+        "untertitel",
+        r"(?i)\blegendado\b|\blegendas?\b|\btraduc(?:ao|ão|ida|ido)\b|\bsub\s*(?:espanol|español|indo|ita)\b|\bsubtitulad[oa]\b|\bçeviri\b|\bceviri\b|\bперевод\b|\bvostfr\b|\bsub\s*esp\b",
+    ),
 ];
+
+/// Kanaele, die praktisch ausschliesslich fremde Musik mit Untertiteln
+/// neu hochladen. Der Titel verraet das nicht immer - "MoonLight
+/// Legendas" schreibt es in den Kanalnamen, nicht zwingend in jeden
+/// Videotitel. Solche Uploads sind fuer eine Musikbibliothek die
+/// schlechteste Wahl: falsche Laenge, oft schlechtere Tonspur.
+fn reupload_kanal_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| {
+        Regex::new(r"(?i)\blegendas?\b|\blegendado\b|\btraduc|\bceviri\b|\bçeviri\b|\bsubtitul|\blyrics?\s*(?:channel|videos?)\b|\bперевод\b")
+            .unwrap()
+    })
+}
 
 fn marker_regexes() -> &'static Vec<(&'static str, Regex)> {
     static CELL: OnceLock<Vec<(&'static str, Regex)>> = OnceLock::new();
@@ -773,6 +808,36 @@ mod tests {
         let plain = audio_preference_score("Blinding Lights", "The Weeknd");
         let mv = audio_preference_score("Blinding Lights [MV]", "The Weeknd");
         assert!(mv > plain);
+    }
+
+    #[test]
+    fn untertitel_reupload_verliert_gegen_das_original() {
+        // Der gemeldete Fall: "In the Closet (Legendado)" von "MoonLight
+        // Legendas", 6:04 statt 4:48. Kein anderer Mix, aber mit Vorspann
+        // und Abspann - jeder synchronisierte Songtext laeuft dazu daneben.
+        let kandidaten = vec![
+            kandidat("Michael Jackson - In the Closet (Legendado)", "MoonLight Legendas", Some(364.0)),
+            kandidat("In the Closet", "Michael Jackson - Topic", Some(288.0)),
+        ];
+        let gewaehlt = pick_best("In the Closet", "Michael Jackson", Some(288.0), kandidaten).unwrap();
+        assert_eq!(gewaehlt.title, "In the Closet");
+    }
+
+    #[test]
+    fn untertitel_kanal_verliert_auch_ohne_hinweis_im_titel() {
+        // "MoonLight Legendas" schreibt es in den Kanalnamen, nicht
+        // zwingend in jeden Videotitel - der Titel allein reicht also
+        // nicht als Erkennung.
+        let sauber = audio_preference_score("In the Closet", "Michael Jackson");
+        let reupload = audio_preference_score("In the Closet", "MoonLight Legendas");
+        assert!(reupload > sauber);
+    }
+
+    #[test]
+    fn ausdruecklich_gesuchte_untertitel_fassung_bleibt_moeglich() {
+        let kandidaten = vec![kandidat("In the Closet (Legendado)", "MoonLight Legendas", Some(364.0))];
+        let gewaehlt = pick_best("In the Closet (Legendado)", "Michael Jackson", Some(364.0), kandidaten);
+        assert!(gewaehlt.is_some());
     }
 
     #[test]
