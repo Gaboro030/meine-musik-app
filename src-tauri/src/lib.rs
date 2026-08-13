@@ -13,6 +13,7 @@ mod lyrics;
 mod nowplaying;
 mod party;
 mod playlist;
+mod spotifysync;
 mod sync;
 #[cfg(target_os = "windows")]
 mod taskbar;
@@ -127,6 +128,12 @@ pub fn run() {
             cloudauth::cloud_login,
             cloudauth::cloud_status,
             cloudauth::cloud_logout,
+            spotifysync::spotify_playlists,
+            spotifysync::spotify_playlist_tracks,
+            spotifysync::spotify_playlist_erstellen,
+            spotifysync::spotify_suche,
+            spotifysync::spotify_tracks_hinzufuegen,
+            spotifysync::spotify_tracks_entfernen,
             commands::list_playlists,
             commands::create_playlist,
             commands::rename_playlist,

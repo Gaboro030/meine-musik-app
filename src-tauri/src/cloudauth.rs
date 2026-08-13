@@ -148,9 +148,6 @@ fn ablage_schreiben(app: &tauri::AppHandle, ablage: &Ablage) {
     }
 }
 
-/// Noch ungenutzt: die Playlist-Module (Etappe 2 und 3) holen sich das
-/// Token ueber gueltiges_token, das wiederum hierauf aufsetzt.
-#[allow(dead_code)]
 fn token_holen(app: &tauri::AppHandle, dienst: Dienst) -> Option<Token> {
     ablage_lesen(app).tokens.get(dienst.schluessel()).cloned()
 }
@@ -329,7 +326,6 @@ fn aus_antwort(daten: &serde_json::Value, client_id: &str, alter_refresh: &str) 
     }
 }
 
-#[allow(dead_code)] // siehe token_holen - wird ab Etappe 2 gebraucht
 async fn erneuern(dienst: Dienst, client_id: &str, refresh: &str) -> Result<Token, String> {
     let formular = [
         ("grant_type", "refresh_token"),
@@ -354,7 +350,6 @@ async fn erneuern(dienst: Dienst, client_id: &str, refresh: &str) -> Result<Toke
 /// Gueltiges Zugriffs-Token, notfalls frisch erneuert. Das ist die
 /// Funktion, die die spaeteren Playlist-Module benutzen - sie sollen sich
 /// um Ablaufzeiten nicht kuemmern muessen.
-#[allow(dead_code)] // siehe token_holen - wird ab Etappe 2 gebraucht
 pub async fn gueltiges_token(
     app: &tauri::AppHandle,
     dienst: Dienst,
