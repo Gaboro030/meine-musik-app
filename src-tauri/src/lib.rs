@@ -18,6 +18,7 @@ mod sync;
 #[cfg(target_os = "windows")]
 mod taskbar;
 mod trash;
+mod youtubesync;
 
 use std::fs;
 use tauri::Manager;
@@ -134,6 +135,14 @@ pub fn run() {
             spotifysync::spotify_suche,
             spotifysync::spotify_tracks_hinzufuegen,
             spotifysync::spotify_tracks_entfernen,
+            youtubesync::youtube_kontingent,
+            youtubesync::youtube_playlists,
+            youtubesync::youtube_playlist_tracks,
+            youtubesync::youtube_dauern,
+            youtubesync::youtube_suche,
+            youtubesync::youtube_playlist_erstellen,
+            youtubesync::youtube_track_hinzufuegen,
+            youtubesync::youtube_track_entfernen,
             commands::list_playlists,
             commands::create_playlist,
             commands::rename_playlist,

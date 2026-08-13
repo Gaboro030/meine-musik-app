@@ -195,6 +195,27 @@ fn markers_ok(wanted: &str, candidate: &str) -> bool {
     version_markers(candidate).iter().all(|m| w.contains(m))
 }
 
+/// Taugt dieser Suchtreffer als dieselbe Aufnahme? Fasst die beiden
+/// Pruefungen zusammen, die sonst leicht auseinanderlaufen: Marker im
+/// Titel und Reupload-Kanal.
+///
+/// Wird auch beim Playlist-Abgleich mit YouTube benutzt (youtubesync.rs) -
+/// sonst landete in der Playlist drueben eine andere Aufnahme als in der
+/// eigenen Bibliothek, obwohl beide Wege dieselbe Frage beantworten.
+pub(crate) fn fassung_passt(gesucht: &str, kandidat_titel: &str, kandidat_kanal: &str) -> bool {
+    if !markers_ok(gesucht, kandidat_titel) {
+        return false;
+    }
+    // Ein Untertitel-Kanal ist nur dann in Ordnung, wenn ausdruecklich
+    // nach so einer Fassung gesucht wurde.
+    if reupload_kanal_re().is_match(kandidat_kanal)
+        && !version_markers(gesucht).contains("untertitel")
+    {
+        return false;
+    }
+    true
+}
+
 fn tokens(text: &str) -> Vec<String> {
     normalize_title(text)
         .split_whitespace()
