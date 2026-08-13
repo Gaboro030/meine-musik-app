@@ -1,5 +1,6 @@
 mod appicon;
 mod backup;
+mod cloudauth;
 mod commands;
 mod cover;
 mod discord;
@@ -123,6 +124,9 @@ pub fn run() {
             });
         })
         .invoke_handler(tauri::generate_handler![
+            cloudauth::cloud_login,
+            cloudauth::cloud_status,
+            cloudauth::cloud_logout,
             commands::list_playlists,
             commands::create_playlist,
             commands::rename_playlist,

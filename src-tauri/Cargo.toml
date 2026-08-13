@@ -30,6 +30,11 @@ uuid = { version = "1", features = ["v4"] }
 mime_guess = "2"
 percent-encoding = "2.3"
 base64 = "0.22"
+# Nur fuer den PKCE-Nachweis beim Anmelden (cloudauth.rs): der Anbieter
+# bekommt beim ersten Schritt den SHA-256-Abdruck einer Zufallszahl und
+# beim zweiten die Zahl selbst. Ohne das koennte ein anderes Programm auf
+# demselben Rechner den zurueckgeleiteten Code abfangen und einloesen.
+sha2 = "0.10"
 regex = "1"
 rand = "0.8"
 # Real MP3 playing time by walking the audio frames - id3 alone can't (it

@@ -90,6 +90,25 @@
     "⚠ Schritt 1 fehlt noch: ein virtuelles Kabel. Ohne eines kann keine Anwendung Ton in ein Mikrofon schicken - das ist eine Vorgabe von Windows, kein Umweg, den man sich sparen könnte. Rechts holen, installieren, PC neu starten. Danach stellt sich hier alles von selbst ein.":
       "⚠ Step 1 is still missing: a virtual cable. Without one, no application can feed audio into a microphone - that's a Windows rule, not a detour you could skip. Get it on the right, install it, restart your PC. Everything here then sets itself up.",
     "VB-Cable holen": "Get VB-Cable",
+    "Playlists abgleichen": "Sync playlists",
+    "Wie das funktioniert": "How this works",
+    "Abgeglichen werden nur Titel, keine Dateien - weder Spotify noch YouTube Music erlauben das Hochladen eigener MP3s. Reson legt drüben eine Playlist an und füllt sie über die Suche mit demselben Song. Was es dort nicht gibt, bleibt außen vor. Anmelden tust du dich beim Anbieter selbst im Browser; Reson bekommt dein Passwort nie zu sehen.":
+      "Only track titles are synced, not files - neither Spotify nor YouTube Music lets you upload your own MP3s. Reson creates a playlist over there and fills it by searching for the same song. Anything not available there is left out. You sign in with the provider yourself in your browser; Reson never sees your password.",
+    "Spotify-Client-ID": "Spotify client ID",
+    "Aus developer.spotify.com/dashboard. Dort als Redirect-URI genau http://127.0.0.1:8899/oauth/spotify eintragen. Ein Client-Secret wird nicht gebraucht.":
+      "From developer.spotify.com/dashboard. Add exactly http://127.0.0.1:8899/oauth/spotify as the redirect URI there. No client secret needed.",
+    "Bei Spotify anmelden": "Sign in with Spotify",
+    "Google-Client-ID (YouTube Music)": "Google client ID (YouTube Music)",
+    "Aus console.cloud.google.com: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client vom Typ Desktop erstellen, Redirect-URI http://127.0.0.1:8899/oauth/google. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.":
+      "From console.cloud.google.com: create a project, enable „YouTube Data API v3“, create an OAuth client of type Desktop, redirect URI http://127.0.0.1:8899/oauth/google. Google will warn about an unverified app when you sign in - that's fine for your own account.",
+    "Bei Google anmelden": "Sign in with Google",
+    "✅ Angemeldet.": "✅ Signed in.",
+    "Noch nicht angemeldet.": "Not signed in yet.",
+    "Client-ID fehlt noch.": "Client ID still missing.",
+    "Abmelden": "Sign out",
+    "Anmelden": "Sign in",
+    "Im Browser anmelden … dieses Fenster offen lassen.": "Sign in in your browser … keep this window open.",
+    "Bei {dienst} angemeldet.": "Signed in with {dienst}.",
     "Bereit. Stelle in Discord/WhatsApp/im Spiel als Mikrofon „{mikro}“ ein.":
       "Ready. In Discord/WhatsApp/your game, set „{mikro}“ as your microphone.",
     "Tipp: Windows lässt dich Geräte umbenennen - unter Einstellungen › System › Sound › Weitere Soundeinstellungen kannst du „{mikro}“ in „Reson Mikro“ umbenennen. Dann steht in Discord und in jedem Spiel genau das in der Mikrofonliste.":

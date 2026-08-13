@@ -632,6 +632,37 @@
             <div class="settings-row-desc" id="voiceShareHint"></div>
             <button type="button" id="voiceShareCableBtn" class="settings-select" style="display:none;cursor:pointer" data-i18n="VB-Cable holen">VB-Cable holen</button>
           </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title" data-i18n="Playlists abgleichen">Playlists abgleichen</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Wie das funktioniert">Wie das funktioniert</div>
+              <div class="settings-row-desc" data-i18n="Abgeglichen werden nur Titel, keine Dateien - weder Spotify noch YouTube Music erlauben das Hochladen eigener MP3s. Reson legt drüben eine Playlist an und füllt sie über die Suche mit demselben Song. Was es dort nicht gibt, bleibt außen vor. Anmelden tust du dich beim Anbieter selbst im Browser; Reson bekommt dein Passwort nie zu sehen.">Abgeglichen werden nur Titel, keine Dateien - weder Spotify noch YouTube Music erlauben das Hochladen eigener MP3s. Reson legt drüben eine Playlist an und füllt sie über die Suche mit demselben Song. Was es dort nicht gibt, bleibt außen vor. Anmelden tust du dich beim Anbieter selbst im Browser; Reson bekommt dein Passwort nie zu sehen.</div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Spotify-Client-ID">Spotify-Client-ID</div>
+              <div class="settings-row-desc" data-i18n="Aus developer.spotify.com/dashboard. Dort als Redirect-URI genau http://127.0.0.1:8899/oauth/spotify eintragen. Ein Client-Secret wird nicht gebraucht.">Aus developer.spotify.com/dashboard. Dort als Redirect-URI genau http://127.0.0.1:8899/oauth/spotify eintragen. Ein Client-Secret wird nicht gebraucht.</div>
+            </div>
+            <input type="text" id="spotifyClientIdInput" class="settings-text-input" placeholder="a1b2c3…" />
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-desc" id="spotifyAuthStatus"></div>
+            <button type="button" id="spotifyAuthBtn" class="settings-select" style="cursor:pointer" data-i18n="Bei Spotify anmelden">Bei Spotify anmelden</button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Google-Client-ID (YouTube Music)">Google-Client-ID (YouTube Music)</div>
+              <div class="settings-row-desc" data-i18n="Aus console.cloud.google.com: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client vom Typ Desktop erstellen, Redirect-URI http://127.0.0.1:8899/oauth/google. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.">Aus console.cloud.google.com: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client vom Typ Desktop erstellen, Redirect-URI http://127.0.0.1:8899/oauth/google. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.</div>
+            </div>
+            <input type="text" id="googleClientIdInput" class="settings-text-input" placeholder="…apps.googleusercontent.com" />
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-desc" id="googleAuthStatus"></div>
+            <button type="button" id="googleAuthBtn" class="settings-select" style="cursor:pointer" data-i18n="Bei Google anmelden">Bei Google anmelden</button>
+          </div>
           <div class="settings-row">
             <div>
               <div class="settings-row-label" data-i18n="Stille überspringen (Skip-Silence)">Stille überspringen (Skip-Silence)</div>
@@ -1038,6 +1069,7 @@
   <script src="nowplaying-native.js"></script>
   <script src="discord-presence.js"></script>
   <script src="sprachchat.js"></script>
+  <script src="cloudsync.js"></script>
   <script src="themes.js"></script>
   <script src="sync.js"></script>
   <script src="m3u-export.js"></script>
