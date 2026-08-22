@@ -15,6 +15,7 @@ mod party;
 mod playlist;
 mod spotifysync;
 mod sync;
+mod syncplan;
 #[cfg(target_os = "windows")]
 mod taskbar;
 mod trash;
@@ -143,6 +144,11 @@ pub fn run() {
             youtubesync::youtube_playlist_erstellen,
             youtubesync::youtube_track_hinzufuegen,
             youtubesync::youtube_track_entfernen,
+            syncplan::sync_plan,
+            syncplan::sync_zustand,
+            syncplan::sync_zustand_setzen,
+            syncplan::sync_zustand_loeschen,
+            syncplan::sync_abgleich_abschliessen,
             commands::list_playlists,
             commands::create_playlist,
             commands::rename_playlist,
