@@ -35,7 +35,11 @@ pub struct LyricsResult {
 /// angehaengtes "s" verhindert den Treffer nicht mehr, und
 /// Untertitel-Reuploads ("Legendado" und Verwandte) gelten nicht mehr als
 /// dieselbe Aufnahme.
-pub const LYRICS_SCHEMA: u32 = 2;
+///
+/// 2 -> 3: "Interpret - Titel" wird aufgeloest. Bei YouTube-Rips steht der
+/// echte Interpret im Titel und im Interpretenfeld der Kanalname - damit
+/// ging vorher jede Suche ins Leere.
+pub const LYRICS_SCHEMA: u32 = 3;
 
 const LRCLIB_GET: &str = "https://lrclib.net/api/get";
 const LRCLIB_SEARCH: &str = "https://lrclib.net/api/search";
@@ -212,6 +216,58 @@ fn version_markers(text: &str) -> HashSet<&'static str> {
         }
     }
     out
+}
+
+/// Zerlegt "Interpret - Titel", wie es aus YouTube-Rips kommt.
+///
+/// Bibliothekstitel sehen bei uns oft so aus: "Michael Jackson - In the
+/// Closet", und im Interpretenfeld steht der Kanalname ("MoonLight
+/// Legendas"). Gesucht wird damit nach einem Titel, den es so nirgends
+/// gibt, und nach einem Interpreten, den es gar nicht gibt - alle Quellen
+/// gehen leer aus, und uebrig bleibt der schlechteste Ausweg.
+///
+/// Zwei Faelle werden aufgeloest:
+///
+/// * Der bekannte Interpret passt zum linken Teil ("Kanye West - Gold
+///   Digger" von "Kanye West") - dann ist nur der Titel zu kuerzen.
+/// * Der bekannte Interpret passt zu nichts ("MoonLight Legendas") -
+///   dann ist der linke Teil hoechstwahrscheinlich der echte Interpret.
+///
+/// Nicht angefasst wird, wenn der rechte Teil nur eine Fassungsangabe ist
+/// ("Sunday Bloody Sunday - Live") oder der linke Teil zu lang fuer einen
+/// Kuenstlernamen ist - dort ist der Bindestrich Teil des Titels.
+fn titel_und_interpret_trennen(title: &str, artist: &str) -> (String, String) {
+    let unveraendert = || (title.to_string(), artist.to_string());
+    let Some((links, rechts)) = title.split_once(" - ") else {
+        return unveraendert();
+    };
+    let links = links.trim();
+    let rechts = rechts.trim();
+    if links.is_empty() || rechts.is_empty() {
+        return unveraendert();
+    }
+    // Kuenstlernamen sind kurz. Ist der linke Teil ein halber Satz, ist
+    // der Bindestrich Teil des Titels.
+    if links.split_whitespace().count() > 5 {
+        return unveraendert();
+    }
+    // "Song - Live" / "Song - Remastered": rechts steht keine Titelhaelfte,
+    // sondern eine Fassungsangabe.
+    if !version_markers(rechts).is_empty() && normalize_for_compare(rechts).len() <= 2 {
+        return unveraendert();
+    }
+
+    if similarity_ok(artist, links) {
+        // Interpret stimmt schon, nur der Titel trug ihn doppelt.
+        (rechts.to_string(), artist.to_string())
+    } else if similarity_ok(artist, rechts) {
+        // Umgekehrte Schreibweise: "In the Closet - Michael Jackson".
+        (links.to_string(), artist.to_string())
+    } else {
+        // Der bekannte Interpret passt zu keiner Haelfte - er ist also
+        // vermutlich der Kanalname. Dem Titel glauben.
+        (rechts.to_string(), links.to_string())
+    }
 }
 
 fn candidate_ok(requested_title: &str, requested_artist: &str, got_title: &str, got_artist: &str) -> bool {
@@ -400,6 +456,10 @@ pub async fn fetch_lyrics(
     // und uebrig bleibt der schlechteste Ausweg (fremder Text ohne
     // Zeitstempel). Genau das war "der dumme Songtext".
     let artist = entdoppelter_interpret(&artist);
+    // "Michael Jackson - In the Closet" mit dem Kanalnamen als Interpret
+    // ist bei YouTube-Rips der Normalfall. Vorher aufloesen, sonst sucht
+    // lrclib nach einem Titel, den es so nicht gibt.
+    let (title, artist) = titel_und_interpret_trennen(&title, &artist);
     let client = reqwest::Client::builder()
         .user_agent("meine-musik/0.1 (+https://github.com/Gaboro030/meine-musik-app)")
         .build()
@@ -568,11 +628,64 @@ mod tests {
         assert_eq!(alt.schema, 0);
         assert!(alt.schema < LYRICS_SCHEMA);
 
-        let neu: LyricsResult = serde_json::from_str(
-            r#"{"title":"A","artist":"B","lyrics":"x","synced":null,"found":true,"schema":2}"#,
-        )
+        // Bewusst gegen LYRICS_SCHEMA gebaut statt gegen eine feste Zahl:
+        // sonst faellt dieser Test bei jeder Erhoehung um, obwohl er das
+        // Gegenteil pruefen soll.
+        let neu: LyricsResult = serde_json::from_str(&format!(
+            r#"{{"title":"A","artist":"B","lyrics":"x","synced":null,"found":true,"schema":{LYRICS_SCHEMA}}}"#
+        ))
         .unwrap();
         assert!(neu.schema >= LYRICS_SCHEMA);
+    }
+
+    #[test]
+    fn kanalname_im_interpretenfeld_wird_durch_den_titel_ersetzt() {
+        // Genau der Fall aus der Bibliothek: der echte Interpret steht im
+        // Titel, im Interpretenfeld steht der YouTube-Kanal.
+        let (t, a) = titel_und_interpret_trennen(
+            "Michael Jackson - In the Closet",
+            "MoonLight Legendas",
+        );
+        assert_eq!(t, "In the Closet");
+        assert_eq!(a, "Michael Jackson");
+    }
+
+    #[test]
+    fn doppelt_genannter_interpret_wird_aus_dem_titel_gekuerzt() {
+        // Interpret stimmt bereits - dann darf er nicht ersetzt, sondern
+        // nur aus dem Titel entfernt werden.
+        let (t, a) = titel_und_interpret_trennen("Kanye West - Gold Digger", "Kanye West");
+        assert_eq!(t, "Gold Digger");
+        assert_eq!(a, "Kanye West");
+    }
+
+    #[test]
+    fn umgekehrte_schreibweise_wird_erkannt() {
+        let (t, a) = titel_und_interpret_trennen("Gold Digger - Kanye West", "Kanye West");
+        assert_eq!(t, "Gold Digger");
+        assert_eq!(a, "Kanye West");
+    }
+
+    #[test]
+    fn bindestrich_im_titel_bleibt_unangetastet() {
+        // "Live" rechts ist eine Fassungsangabe, kein Titel.
+        let (t, a) = titel_und_interpret_trennen("Sunday Bloody Sunday - Live", "U2");
+        assert_eq!(t, "Sunday Bloody Sunday - Live");
+        assert_eq!(a, "U2");
+
+        // Langer linker Teil: da ist der Bindestrich Teil des Titels.
+        let (t2, _) = titel_und_interpret_trennen(
+            "Ich weiss nicht was soll es bedeuten - der zweite Teil",
+            "Irgendwer",
+        );
+        assert!(t2.starts_with("Ich weiss nicht"));
+    }
+
+    #[test]
+    fn titel_ohne_bindestrich_bleibt_wie_er_ist() {
+        let (t, a) = titel_und_interpret_trennen("In the Closet", "Michael Jackson");
+        assert_eq!(t, "In the Closet");
+        assert_eq!(a, "Michael Jackson");
     }
 
     #[test]

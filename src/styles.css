@@ -2642,6 +2642,19 @@ body.modal-scroll-lock { overflow: hidden; }
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1.4;
+  /* Ein Songtext hat gern 60 bis 100 Zeilen, sichtbar sind davon acht.
+     contain sagt dem Browser, dass sich Aenderungen INNERHALB einer Zeile
+     nicht auf den Rest auswirken koennen: beim Aufleuchten eines Wortes
+     muss also weder die Liste neu umbrochen noch der Bereich ausserhalb
+     dieser Zeile neu gezeichnet werden. Genau das lief vorher bei jedem
+     Wortwechsel ueber den ganzen Textblock.
+
+     Bewusst OHNE content-visibility: das wuerde Zeilen ausserhalb des
+     Sichtfelds ganz ueberspringen und ihre Hoehe nur schaetzen - und an
+     dieser Hoehe haengt hier, wo scrollIntoView die aktive Zeile
+     hinsetzt. Ein bisschen weniger Ersparnis ist mir lieber als eine
+     Karaoke-Anzeige, die beim Mitlaufen springt. */
+  contain: layout paint style;
   /* margin, not padding: .lyrics-line-fill below is absolutely positioned
      with inset:0, which aligns to the PADDING edge of this box - if this
      element itself had padding, the fill layer would sit padding-top
