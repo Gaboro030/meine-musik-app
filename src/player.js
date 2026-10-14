@@ -7410,6 +7410,8 @@ async function openLyrics(force = false) {
   lyricsShownForKey = `${meta.playlist || ""}::${meta.file || ""}`;
   const token = ++lyricsRequestToken;
   lyricsOverlay.classList.remove("hidden");
+  pbLyrics.classList.add("active");
+  pbLyrics.setAttribute("aria-pressed", "true");
   startLyricsLoop();
   lyricsTitle.textContent = meta.title;
   lyricsArtist.textContent = meta.artist || t("Unbekannter Interpret");
@@ -7445,6 +7447,8 @@ async function openLyrics(force = false) {
 
 function closeLyrics() {
   lyricsOverlay.classList.add("hidden");
+  pbLyrics.classList.remove("active");
+  pbLyrics.setAttribute("aria-pressed", "false");
   stopLyricsLoop();
   lyricsSyncLines = null;
   lyricsActiveIdx = -1;
@@ -7522,8 +7526,15 @@ function refreshLyricsIfOpen() {
 // bekaeme das MouseEvent als ersten Parameter durchgereicht, also als
 // `force` - jeder normale Klick wuerde dann wie der Retry-Button Memory-
 // UND Backend-Cache umgehen und einen kompletten Netz-Refetch erzwingen.
-pbLyrics.addEventListener("click", () => openLyrics());
+// Mikrofon-Knopf schaltet um: zweiter Klick schliesst den offenen Songtext.
+pbLyrics.addEventListener("click", () => {
+  if (lyricsOverlay.classList.contains("hidden")) openLyrics();
+  else closeLyrics();
+});
 lyricsCloseBtn.addEventListener("click", closeLyrics);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !e.defaultPrevented && !lyricsOverlay.classList.contains("hidden")) closeLyrics();
+});
 lyricsOverlay.addEventListener("click", (e) => {
   if (e.target === lyricsOverlay) closeLyrics();
 });

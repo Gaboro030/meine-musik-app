@@ -88,7 +88,18 @@
 
   let an = localStorage.getItem(AN_KEY) === "1";
   let geraetId = localStorage.getItem(GERAET_KEY) || "";
-  let lautstaerke = zahlAusSpeicher(LAUTSTAERKE_KEY, 35, 0, 100);
+  // Musik-Regler hoerrichtig wie der Haupt-Lautstaerkeregler (player.js,
+  // VOLUME_CURVE): Pegel = Stellung^1.67. Linear klangen 10 % und 100 %
+  // fast gleich laut. Alte, lineare Werte einmalig umrechnen, damit der
+  // Pegel nach dem Update derselbe bleibt (alter Standard 35 % = 53 %).
+  const MUSIK_KURVE = 1.67;
+  const musikPegel = () => Math.pow(lautstaerke / 100, MUSIK_KURVE);
+  const LAUTSTAERKE_KURVE_KEY = "voiceShareVolumeCurve";
+  if (localStorage.getItem(LAUTSTAERKE_KURVE_KEY) === null) {
+    const alt = zahlAusSpeicher(LAUTSTAERKE_KEY, 35, 0, 100);
+    localStorage.setItem(LAUTSTAERKE_KURVE_KEY, String(Math.round(100 * Math.pow(alt / 100, 1 / MUSIK_KURVE))));
+  }
+  let lautstaerke = zahlAusSpeicher(LAUTSTAERKE_KURVE_KEY, 53, 0, 100);
   // Standardmaessig an: ohne die Stimme hoeren die Freunde nur noch Musik
   // und einen selbst gar nicht mehr - das ist fast nie gewollt.
   let mikroAn = localStorage.getItem(MIKRO_AN_KEY) !== "0";
@@ -273,7 +284,7 @@
   function abzweigAufbauen() {
     if (zweigZiel || !graphBereit()) return false;
     musikGain = audioCtx.createGain();
-    musikGain.gain.value = lautstaerke / 100;
+    musikGain.gain.value = musikPegel();
     zweigZiel = audioCtx.createMediaStreamDestination();
     masterGain.connect(musikGain).connect(zweigZiel);
 
@@ -384,7 +395,7 @@
       }
       return;
     }
-    if (musikGain) musikGain.gain.value = lautstaerke / 100;
+    if (musikGain) musikGain.gain.value = musikPegel();
     if (mikroGain) mikroGain.gain.value = mikroLautstaerke / 100;
     zielSetzen();
     mikroOeffnen();
@@ -441,9 +452,9 @@
 
   regler.addEventListener("input", () => {
     lautstaerke = Number(regler.value);
-    localStorage.setItem(LAUTSTAERKE_KEY, String(lautstaerke));
+    localStorage.setItem(LAUTSTAERKE_KURVE_KEY, String(lautstaerke));
     reglerAnzeigen();
-    if (musikGain) musikGain.gain.value = lautstaerke / 100;
+    if (musikGain) musikGain.gain.value = musikPegel();
   });
 
   if (mikroRegler) {
