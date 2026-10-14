@@ -131,6 +131,11 @@ jobs:
 
       - name: Set up Android SDK/NDK
         uses: android-actions/setup-android@v3
+        # Vorgabe der Action ist "tools platform-tools" - das uralte Paket
+        # "tools" gibt es in den cmdline-tools 16.0 des Runner-Images nicht
+        # mehr, sdkmanager bricht dann mit "Failed to find package 'tools'" ab.
+        with:
+          packages: platform-tools
 
       # Gradle-Abhaengigkeiten cachen - das generierte Android-Projekt
       # (npx tauri android init) existiert erst nach diesem Schritt, aber
