@@ -430,6 +430,14 @@
           }
         });
         qrPopover.appendChild(netBtn);
+        // friends.js schaltet den Tunnel beim Einladen selbst ein - Knopf
+        // und QR-Code sollen das sofort zeigen.
+        document.addEventListener("party-internet-changed", () => {
+          internetOn = true;
+          netBtn.textContent = tr("🌍 Internet-Link beenden");
+          netBtn.classList.add("active");
+          refreshQr();
+        });
       }
     }
 

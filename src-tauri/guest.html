@@ -479,6 +479,13 @@
        kennt er die id nicht mehr (Neustart) - dann neu joinen. */
     let guestId = localStorage.getItem("partyGuestId") || null;
 
+    // Kommt man über eine Freundes-Einladung aus der App (?name=...), steht
+    // gleich der richtige Name in der Teilnehmerliste statt "Gast-123".
+    {
+      const fromInvite = (new URLSearchParams(location.search).get("name") || "").trim().slice(0, 40);
+      if (fromInvite) localStorage.setItem("partyGuestName", fromInvite);
+    }
+
     function guestName() {
       let name = localStorage.getItem("partyGuestName");
       if (!name) {

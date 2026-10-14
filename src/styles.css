@@ -666,6 +666,48 @@ body.has-dynamic-colors .playlist-hero {
 }
 .sync-peer-unpair:hover { background: rgba(255,255,255,0.16); color: var(--sp-text); }
 
+/* ===== Freunde (friends.js) ===== */
+/* Mit Freundesliste wird das Popover deutlich höher - auf dem PC wächst es
+   nach oben aus der Leiste heraus und muss dort scrollen können. */
+#qrPopover { min-width: 260px; max-height: min(calc(100vh - 120px), 620px); overflow-y: auto; }
+.friends-section .friends-name-input { width: 100%; margin-bottom: 8px; }
+.friends-section .sync-remote-btn { margin-top: 0; }
+.friends-add-row { margin-bottom: 4px; }
+.friends-sub { margin: 10px 0 4px; }
+.friends-invite-btn { flex-shrink: 0; padding: 6px 10px; font-size: 0.78rem; }
+.friends-accept { color: var(--sp-green); }
+
+.friend-banner-stack {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 2000;
+}
+.friend-banner {
+  background: var(--sp-elevated);
+  border: 1px solid var(--sp-border);
+  border-left: 4px solid var(--sp-green);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+}
+.friend-banner-text { font-size: 0.9rem; font-weight: 600; color: var(--sp-text); margin-bottom: 10px; word-break: break-word; }
+.friend-banner-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.friend-banner-btn {
+  padding: 7px 14px;
+  border-radius: 100px;
+  background: rgba(255,255,255,0.08);
+  color: var(--sp-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.friend-banner-btn.primary { background: var(--sp-green); color: #000; }
+
 .sync-remote-actions { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--sp-border); }
 .sync-remote-hint { font-size: 0.76rem; color: var(--sp-muted-2); margin-bottom: 8px; }
 .sync-remote-btn { width: 100%; margin-bottom: 6px; font-size: 0.8rem; }
