@@ -353,7 +353,9 @@
     // Klick aktiviert das Custom-Theme; war es schon aktiv, öffnet der
     // Klick den Editor. Doppelklick öffnet ihn immer.
     customBtn.addEventListener("dblclick", openCustomEditor);
-    let customWasActive = false;
+    // Ist "Eigenes Theme" schon beim Start aktiv, soll der erste Klick
+    // darauf direkt den Editor öffnen - nicht erst der zweite.
+    let customWasActive = currentTheme() === "custom";
     document.querySelectorAll(".theme-option").forEach((b) => {
       b.addEventListener("click", () => {
         if (b === customBtn && customWasActive) openCustomEditor();
@@ -365,6 +367,9 @@
   function openCustomEditor() {
     if (document.getElementById("customThemeModal")) return;
     const c = loadCustom();
+    // Die Live-Vorschau schaltet sofort auf "Eigenes Theme" um - beim
+    // Abbrechen muss also auch das vorher aktive Theme zurück.
+    const prevTheme = currentTheme();
     const overlay = document.createElement("div");
     overlay.id = "customThemeModal";
     overlay.className = "custom-theme-overlay";
@@ -438,12 +443,32 @@
       });
     });
 
-    function close() { overlay.remove(); }
-    modal.querySelector(".custom-theme-close").addEventListener("click", () => {
-      localStorage.setItem(CUSTOM_KEY, JSON.stringify(c)); // Abbruch = alter Stand
-      if (currentTheme() === "custom") applyFullTheme("custom");
+    // Erfassungsphase + preventDefault: der allgemeine Escape-Handler in
+    // player.js würde sonst zusätzlich noch die Ebene darunter schliessen.
+    function onKey(e) {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      cancel();
+    }
+    function close() {
+      document.removeEventListener("keydown", onKey, true);
+      overlay.remove();
+    }
+    // Abbruch = alter Stand, und zwar auf JEDEM Weg (✕, Klick daneben,
+    // Escape). Vorher blieb beim Klick daneben die halbe Vorschau stehen,
+    // und ✕ liess das Theme auf "Eigenes" stehen, auch wenn vorher ein
+    // ganz anderes aktiv war.
+    function cancel() {
+      localStorage.setItem(CUSTOM_KEY, JSON.stringify(c));
+      localStorage.setItem(THEME_KEY, prevTheme);
+      document.querySelectorAll(".theme-option").forEach((b) => {
+        b.classList.toggle("active", b.dataset.theme === prevTheme);
+      });
+      applyFullTheme(prevTheme);
       close();
-    });
+    }
+    document.addEventListener("keydown", onKey, true);
+    modal.querySelector(".custom-theme-close").addEventListener("click", cancel);
     modal.querySelector(".ct-save").addEventListener("click", () => {
       localStorage.setItem(CUSTOM_KEY, JSON.stringify(collect()));
       activateCustom();
@@ -454,7 +479,7 @@
       fill(Object.assign({}, CUSTOM_DEFAULTS));
       activateCustom();
     });
-    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) cancel(); });
   }
 
   function activateCustom() {

@@ -143,6 +143,7 @@
 
   async function openSendModal(peer) {
     currentPeer = peer;
+    selectAll.checked = true; // alle Zeilen starten angehakt - Kopf passend dazu
     targetNameEl.textContent = t("An {device} senden", { device: peer.name });
     progressWrap.classList.add("hidden");
     sendBtn.disabled = false;
@@ -193,7 +194,11 @@
   });
 
   sendBtn.addEventListener("click", async () => {
-    if (!currentPeer) return;
+    // Festhalten: wer das Fenster während der Übertragung schließt, setzt
+    // currentPeer auf null - die Erfolgsmeldung danach warf dann einen
+    // Fehler und zeigte "Cannot read properties of null" statt "gesendet".
+    const peer = currentPeer;
+    if (!peer) return;
     const names = [...playlistListEl.querySelectorAll('input[type="checkbox"]:checked')].map((cb) => cb.dataset.name);
     if (!names.length) {
       showToast(t("Bitte mindestens eine Playlist auswählen."));
@@ -206,17 +211,17 @@
     progressLabel.textContent = t("Vorbereitung …");
 
     const taskId = `sync${Date.now()}`;
-    const unlisten = await listen(`sync-progress-${taskId}`, (e) => {
-      const { done, total } = e.payload;
-      const pct = total ? (done / total) * 100 : 0;
-      progressBar.style.width = `${pct}%`;
-      progressLabel.textContent = `${done} / ${total}`;
-    });
-
+    let unlisten = null;
     try {
+      unlisten = await listen(`sync-progress-${taskId}`, (e) => {
+        const { done, total } = e.payload;
+        const pct = total ? (done / total) * 100 : 0;
+        progressBar.style.width = `${pct}%`;
+        progressLabel.textContent = `${done} / ${total}`;
+      });
       const result = await invoke("sync_send_playlists", {
         taskId,
-        peerId: currentPeer.id,
+        peerId: peer.id,
         playlistNames: names,
       });
       if (result.failed && result.failed.length) {
@@ -225,16 +230,19 @@
         // way, this is the one piece of information that tells us why.
         showToast(t("{sent} gesendet, {failed} fehlgeschlagen: {reason}", { sent: result.sent, failed: result.failed.length, reason: result.failed[0] }));
       } else {
-        showToast(t("{count} Dateien an {peer} gesendet!", { count: result.sent, peer: currentPeer.name }));
+        showToast(t("{count} Dateien an {peer} gesendet!", { count: result.sent, peer: peer.name }));
       }
       sendBtn.textContent = t("Fertig ✓");
-      setTimeout(closeModal, 1200);
+      setTimeout(() => {
+        // Nur schließen, wenn inzwischen kein neues Senden-Fenster offen ist.
+        if (currentPeer === peer) closeModal();
+      }, 1200);
     } catch (err) {
       showToast(String(err));
       sendBtn.disabled = false;
       sendBtn.textContent = t("Senden");
     } finally {
-      unlisten();
+      if (unlisten) unlisten();
     }
   });
 

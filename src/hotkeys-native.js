@@ -25,12 +25,17 @@
         // in der App, obwohl er woanders liegt.
         if (!Array.isArray(belegt) || !belegt.length) return;
         const namen = belegt
-          .map((id) => (HOTKEY_ACTIONS.find((a) => a.id === id) || {}).label || id)
+          .map((id) => {
+            const label = (HOTKEY_ACTIONS.find((a) => a.id === id) || {}).label;
+            return label ? t(label) : id;
+          })
           .join(", ");
         if (typeof showToast === "function") {
           showToast(
-            `Schon von einem anderen Programm belegt, wirkt nur im Fenster: ${namen}. ` +
-              `Die Medientasten der Tastatur funktionieren unabhängig davon überall.`
+            t(
+              "Schon von einem anderen Programm belegt, wirkt nur im Fenster: {names}. Die Medientasten der Tastatur funktionieren unabhängig davon überall.",
+              { names: namen }
+            )
           );
         }
       })

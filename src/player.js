@@ -1526,7 +1526,10 @@ renameModalOk.addEventListener("click", () => {
 });
 renameInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") renameModalOk.click();
-  if (e.key === "Escape") hideRenameModal();
+  if (e.key === "Escape") {
+    e.preventDefault(); // nur dieses Fenster, nicht auch das darunter (globaler Escape-Handler)
+    hideRenameModal();
+  }
 });
 renameModalCancel.addEventListener("click", hideRenameModal);
 renameModalClose.addEventListener("click", hideRenameModal);
@@ -5325,7 +5328,10 @@ document.getElementById("eqSaveConfirmBtn").addEventListener("click", confirmEqS
 document.getElementById("eqSaveCancelBtn").addEventListener("click", closeEqSaveRow);
 eqPresetNameInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") confirmEqSave();
-  else if (e.key === "Escape") closeEqSaveRow();
+  else if (e.key === "Escape") {
+    e.preventDefault(); // nur die Namenszeile schliessen, nicht den ganzen Equalizer
+    closeEqSaveRow();
+  }
 });
 eqModal.addEventListener("click", (e) => {
   if (e.target === eqModal) closeEqModal();
@@ -7771,8 +7777,28 @@ pbLyrics.addEventListener("click", () => {
   else closeLyrics();
 });
 lyricsCloseBtn.addEventListener("click", closeLyrics);
+/* Escape schliesst die OBERSTE offene Ebene - Fenster (Einstellungen,
+   Equalizer, Bestätigen ...), dann Video, Visualizer, Songtext,
+   Warteschlange. Vorher ging das nur bei einzelnen Fenstern, der Rest liess
+   sich nur per ✕ oder Klick daneben schliessen. Eingabefelder, die Escape
+   selbst nutzen (Umbenennen, EQ-Modusname), rufen preventDefault auf und
+   werden hier übersprungen - sonst schlösse ein Escape zwei Ebenen. */
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !e.defaultPrevented && !lyricsOverlay.classList.contains("hidden")) closeLyrics();
+  if (e.key !== "Escape" || e.defaultPrevented || recordingActionId) return;
+  if (downloaderOverlay && !downloaderOverlay.classList.contains("hidden")) return; // eigener Handler
+  const isOpen = (el) => el && !el.classList.contains("hidden");
+  const modals = [...document.querySelectorAll(".modal-overlay:not(.hidden)")];
+  const topModal = modals[modals.length - 1];
+  if (topModal) {
+    const closeBtn = topModal.querySelector(".modal-close");
+    if (closeBtn) closeBtn.click();
+    else topModal.classList.add("hidden");
+  } else if (isOpen(videoOverlay)) closeVideoView();
+  else if (isOpen(visualizerOverlay)) closeVisualizer();
+  else if (isOpen(lyricsOverlay)) closeLyrics();
+  else if (isOpen(queuePanel)) closeQueuePanel();
+  else return;
+  e.preventDefault();
 });
 lyricsOverlay.addEventListener("click", (e) => {
   if (e.target === lyricsOverlay) closeLyrics();

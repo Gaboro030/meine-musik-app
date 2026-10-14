@@ -24,7 +24,7 @@
     try {
       const res = await fetch(`/api/library/playlist/${encodeURIComponent(name)}/${routeSuffix}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Export fehlgeschlagen.");
+      if (!res.ok) throw new Error(data.error || t("Export fehlgeschlagen."));
 
       const safeName = name.replace(/[\\/:*?"<>|]/g, "_");
       const path = await window.__TAURI__.dialog.save({
@@ -34,7 +34,7 @@
       if (!path) return; // Nutzer hat abgebrochen
 
       await window.__TAURI__.fs.writeTextFile(path, data.content);
-      if (typeof showToast === "function") showToast(`📤 „${name}" ${label}`);
+      if (typeof showToast === "function") showToast(t(label, { name }));
     } catch (err) {
       if (typeof showToast === "function") showToast(String(err && err.message ? err.message : err));
     } finally {
@@ -45,14 +45,14 @@
   const exportBtn = document.getElementById("exportPlaylistBtn");
   if (exportBtn) {
     exportBtn.addEventListener("click", () =>
-      exportPlaylistAs(exportBtn, "export-m3u", "m3u", "M3U-Playlist", "als M3U exportiert")
+      exportPlaylistAs(exportBtn, "export-m3u", "m3u", "M3U-Playlist", '📤 „{name}" als M3U exportiert')
     );
   }
 
   const exportCsvBtn = document.getElementById("exportPlaylistCsvBtn");
   if (exportCsvBtn) {
     exportCsvBtn.addEventListener("click", () =>
-      exportPlaylistAs(exportCsvBtn, "export-csv", "csv", "CSV-Playlist", "als CSV exportiert")
+      exportPlaylistAs(exportCsvBtn, "export-csv", "csv", "CSV-Playlist", '📤 „{name}" als CSV exportiert')
     );
   }
 })();

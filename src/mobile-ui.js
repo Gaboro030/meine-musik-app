@@ -248,6 +248,9 @@
       const dy = (e.changedTouches[0].clientY || 0) - (pullStartY || 0);
       if (dy > PULL_THRESHOLD && typeof refreshLibrary === "function") {
         pullIndicator.textContent = t("⟳ Wird aktualisiert …");
+        // Bewusstes Aktualisieren: auch die Entdecken-Reihen neu holen (die
+        // laufen beim normalen Neuladen nicht mehr jedes Mal mit).
+        if (typeof homeDiscoverLoaded !== "undefined") homeDiscoverLoaded = false;
         Promise.resolve(refreshLibrary()).finally(() => {
           pullIndicator.style.opacity = "0";
           pullIndicator.textContent = t("↓ Loslassen zum Aktualisieren");

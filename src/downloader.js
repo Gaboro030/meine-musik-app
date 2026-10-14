@@ -263,6 +263,9 @@ lyricsSearchForm.addEventListener("submit", async (e) => {
 /* ===== Track Rendering ===== */
 function renderTracks(entries) {
   trackList.innerHTML = "";
+  // Neue Liste startet komplett angehakt - der Kopf-Haken muss dazu passen,
+  // sonst zeigt er noch "keiner" vom letzten Abwählen.
+  selectAll.checked = true;
   for (const entry of entries) {
     const li = document.createElement("li");
     li.className = "track";

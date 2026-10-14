@@ -346,6 +346,9 @@
     return new RealEventSource(url, opts);
   };
 
+  // i18n.js hängt t() an window; ohne (oder auf Deutsch) bleibt der Text.
+  const tr = (text, vars) => (window.t ? window.t(text, vars) : text);
+
   document.addEventListener("DOMContentLoaded", () => {
     // QR code: party.rs runs an embedded LAN server; party_info returns the
     // guest URL plus a ready-made SVG QR code as data: URI. player.js
@@ -368,9 +371,7 @@
             qrDataUri = info.qr;
             qrImage.src = info.qr;
             if (qrHint) {
-              qrHint.textContent = window.t
-                ? window.t("Mit dem Handy scannen oder {url} öffnen – gleiches WLAN nötig.", { url: info.url })
-                : `Mit dem Handy scannen oder ${info.url} öffnen – gleiches WLAN nötig.`;
+              qrHint.textContent = tr("Mit dem Handy scannen oder {url} öffnen – gleiches WLAN nötig.", { url: info.url });
             }
           })
           .catch(() => {});
@@ -385,13 +386,13 @@
       // Guest-Link zum Antippen kopieren.
       if (qrHint) {
         qrHint.style.cursor = "pointer";
-        qrHint.title = "Klicken zum Kopieren";
+        qrHint.title = tr("Klicken zum Kopieren");
         qrHint.addEventListener("click", () => {
           const m = qrHint.textContent.match(/https?:\/\/\S+/);
           if (m && navigator.clipboard) {
             navigator.clipboard.writeText(m[0]).then(() => {
               const prev = qrHint.textContent;
-              qrHint.textContent = "✓ Link kopiert!";
+              qrHint.textContent = tr("✓ Link kopiert!");
               setTimeout(() => { qrHint.textContent = prev; }, 1200);
             }).catch(() => {});
           }
@@ -406,22 +407,22 @@
         netBtn.type = "button";
         netBtn.id = "internetLinkBtn";
         netBtn.className = "party-toggle-switch internet-link-btn";
-        netBtn.textContent = "🌍 Internet-Link erstellen";
+        netBtn.textContent = tr("🌍 Internet-Link erstellen");
         let internetOn = false;
         let busy = false;
         netBtn.addEventListener("click", async () => {
           if (busy) return;
           busy = true;
           netBtn.disabled = true;
-          netBtn.textContent = internetOn ? "Wird beendet …" : "Wird erstellt … (ca. 5 Sek.)";
+          netBtn.textContent = internetOn ? tr("Wird beendet …") : tr("Wird erstellt … (ca. 5 Sek.)");
           try {
             const res = await invoke("party_internet", { enable: !internetOn });
             internetOn = !!res.public_url;
-            netBtn.textContent = internetOn ? "🌍 Internet-Link beenden" : "🌍 Internet-Link erstellen";
+            netBtn.textContent = internetOn ? tr("🌍 Internet-Link beenden") : tr("🌍 Internet-Link erstellen");
             netBtn.classList.toggle("active", internetOn);
             refreshQr();
           } catch (err) {
-            netBtn.textContent = "🌍 Internet-Link erstellen";
+            netBtn.textContent = tr("🌍 Internet-Link erstellen");
             if (qrHint) qrHint.textContent = String(err);
           } finally {
             busy = false;
@@ -439,10 +440,16 @@
     // Full song name on hover (user-requested addition): every truncated
     // title/artist label gets its complete text as a native tooltip.
     // Delegated, so it also covers cards/rows rendered later.
+    // Selbst gesetzte Tooltips bei jedem Hovern nachziehen: Titel und
+    // Interpret in der Player-Leiste wechseln mit jedem Song, der Tooltip
+    // zeigte sonst für immer den ERSTEN Song der Sitzung.
     const TRUNCATED = ".card-title, .card-sub, .track-title, .track-artist, .pb-title, .pb-artist";
     document.addEventListener("mouseover", (e) => {
       const el = e.target instanceof Element ? e.target.closest(TRUNCATED) : null;
-      if (el && !el.title && el.textContent) el.title = el.textContent;
+      if (!el || !el.textContent) return;
+      if (el.title && !el.dataset.autoTitle) return; // fremder, absichtlicher Tooltip
+      el.title = el.textContent;
+      el.dataset.autoTitle = "1";
     });
   });
 })();

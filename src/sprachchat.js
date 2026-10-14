@@ -318,14 +318,20 @@
     }
   }
 
+  let mikroOeffnetGerade = false;
   async function mikroOeffnen() {
     if (!an || !mikroAn || !zweigZiel) {
       mikroSchliessen();
       return;
     }
-    if (mikroStrom) return; // laeuft schon
+    // Laeuft schon - oder wird gerade geoeffnet: zwei schnelle Aufrufe
+    // (Schalter + anwenden) oeffneten sonst zwei Stroeme, und der erste
+    // blieb fuer immer offen (Aufnahme-Symbol ging nie mehr weg).
+    if (mikroStrom || mikroOeffnetGerade) return;
+    mikroOeffnetGerade = true;
+    let strom;
     try {
-      mikroStrom = await navigator.mediaDevices.getUserMedia({
+      strom = await navigator.mediaDevices.getUserMedia({
         audio: {
           // Ohne feste Kennung nimmt der Browser das Standardmikrofon -
           // genau das, was "– Standardmikrofon –" verspricht.
@@ -343,12 +349,19 @@
         },
       });
     } catch (e) {
-      mikroStrom = null;
+      mikroOeffnetGerade = false;
       if (typeof showToast === "function") {
         showToast(uebersetzt("Mikrofon lässt sich nicht öffnen. Ist es angeschlossen und für Reson erlaubt?"));
       }
       return;
     }
+    mikroOeffnetGerade = false;
+    // Waehrend des Wartens abgeschaltet? Dann sofort wieder freigeben.
+    if (!an || !mikroAn || !zweigZiel) {
+      strom.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    mikroStrom = strom;
     mikroQuelle = audioCtx.createMediaStreamSource(mikroStrom);
     mikroQuelle.connect(mikroGain);
   }
