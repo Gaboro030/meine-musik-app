@@ -148,6 +148,7 @@ const pbVolumeWrap = document.getElementById("pbVolumeWrap");
 const pbVolumeBar = document.getElementById("pbVolumeBar");
 const pbVolumeHandle = document.getElementById("pbVolumeHandle");
 const pbVolIcon = document.getElementById("pbVolIcon");
+const pbVolumePercent = document.getElementById("pbVolumePercent");
 const pbProgressTrack = pbProgressWrap.querySelector(".pb-progress-track");
 const pbVolumeTrack = pbVolumeWrap.querySelector(".pb-volume-track");
 
@@ -3489,9 +3490,16 @@ function measureSliderTracks() {
    Wellenform-Canvas) werden angefasst. */
 let progressPendingPct = null;
 let progressRafId = 0;
+let lastAriaProgress = -1;
 function paintProgress(pct) {
   placeHandle(pbProgressHandle, progressTrackWidth, pct);
   drawWaveform();
+  // Nur bei Änderung schreiben - paintProgress läuft beim Ziehen pro Bild.
+  const aria = Math.round(pct * 100);
+  if (aria !== lastAriaProgress) {
+    lastAriaProgress = aria;
+    pbProgressWrap.setAttribute("aria-valuenow", String(aria));
+  }
 }
 function flushProgress() {
   progressRafId = 0;
@@ -3514,12 +3522,19 @@ function renderProgress(pct, immediate) {
   if (!progressRafId) progressRafId = requestAnimationFrame(flushProgress);
 }
 
+/* pct = Reglerstellung (0..1), nicht der Pegel - siehe "Lautstärke" bei
+   applyVolume(). Die Prozentzahl wird nur noch hier gesetzt; vorher schrieb
+   tauri-shim.js sie aus audioEl.volume, das jetzt dauerhaft auf 1 steht. */
 function renderVolume(pct) {
   lastVolumePct = pct;
   // scaleX statt width: gleiche Optik, aber ohne Layout pro Bild.
   pbVolumeBar.style.transform = `scaleX(${pct})`;
   placeHandle(pbVolumeHandle, volumeTrackWidth, pct);
   pbVolIcon.textContent = pct === 0 ? "🔇" : pct < 0.5 ? "🔉" : "🔊";
+  const percent = Math.round(pct * 100);
+  if (pbVolumePercent) pbVolumePercent.textContent = `${percent}%`;
+  pbVolumeWrap.setAttribute("aria-valuenow", String(percent));
+  pbVolumeWrap.setAttribute("aria-valuetext", `${percent}%`);
 }
 
 if (window.ResizeObserver) {
@@ -3676,25 +3691,117 @@ attachDragSlider({
   },
 });
 
-// Beide Elemente: nach einem Crossfade-Rollentausch soll die Lautstärke
-// nicht plötzlich auf einem alten Wert stehen.
-function applyVolume(pct) {
-  audioElA.volume = pct;
-  audioElB.volume = pct;
-  renderVolume(pct);
+/* Fortschritt per Tastatur, wenn die Leiste den Fokus hat: Pfeile ±5 s
+   (mit Umschalt ±15 s), Pos1/Ende = Anfang/Ende. Bewusst KEIN Mausrad: wer
+   mit der Maus über der Leiste die Seite scrollt, würde sonst spulen. */
+pbProgressWrap.addEventListener("keydown", (e) => {
+  const dur = audioEl.duration;
+  if (!isFinite(dur) || dur <= 0) return;
+  const step = e.shiftKey ? 15 : 5;
+  let t = audioEl.currentTime;
+  if (e.key === "ArrowRight" || e.key === "ArrowUp") t += step;
+  else if (e.key === "ArrowLeft" || e.key === "ArrowDown") t -= step;
+  else if (e.key === "Home") t = 0;
+  else if (e.key === "End") t = Math.max(0, dur - 1);
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+  audioEl.currentTime = Math.min(Math.max(t, 0), dur);
+  renderProgress(audioEl.currentTime / dur, true);
+  pbTimeCurrent.textContent = fmtTime(audioEl.currentTime);
+});
+
+/* ===== Lautstärke =====
+   Der Regler steht für eine STELLUNG 0..1, nicht direkt für den Pegel. Vorher
+   steckten zwei Fehler drin, zusammen genau "1 % ist so laut wie 10 %, 80 %
+   wie 100 %":
+
+   1. Die Lautstärke wirkte über audioEl.volume, also VOR dem
+      Normalisierungs-Kompressor (-24 dB, Ratio 12, automatische
+      Aufholverstärkung). Der hob leise Signale an und drückte laute
+      zusammen - er hat die eigene Lautstärke-Einstellung wieder
+      ausgeglichen. Jetzt sitzt sie als userVolumeGain ganz am Ende der
+      Kette, hinter Kompressor, Begrenzer und Analyser. Nebeneffekte, die
+      damit ebenfalls behoben sind: Visualizer und "Stille überspringen"
+      messen unabhängig von der Lautstärke (vorher hielt die
+      Stille-Erkennung bei leiser Einstellung echte Musik für Stille), und
+      die Musik im Sprachchat (zapft masterGain an) ist jetzt wirklich
+      unabhängig von der eigenen Lautstärke, wie die Einstellung verspricht.
+
+   2. Linear: 80 % waren nur -1,9 dB unter 100 %. Das Gehör arbeitet
+      logarithmisch. VOLUME_CURVE 1,67 folgt Stevens' Lautheitsgesetz
+      (empfundene Lautheit ~ Amplitude^0,6): jeder Prozentpunkt ist etwa
+      gleich viel lauter, 50 % klingt halb so laut wie 100 % (-10 dB),
+      80 % = -3,2 dB, 1 % = -66 dB (wirklich leise, aber nicht stumm). */
+const VOLUME_KEY = "playerVolume";
+const VOLUME_CURVE = 1.67;
+const VOLUME_DEFAULT = 0.8;
+let volumePos = VOLUME_DEFAULT;
+let volumeBeforeMute = VOLUME_DEFAULT;
+let userVolumeGain = null; // entsteht in initAudioGraph()
+let volumeSaveTimer = 0;
+
+const volumeToGain = (pos) => (pos <= 0 ? 0 : Math.pow(pos, VOLUME_CURVE));
+// Ganze Prozent: Anzeige und Wert stimmen immer überein, 0 % und 1 % sind exakt treffbar.
+const clampVolume = (pos) => Math.round(Math.min(1, Math.max(0, Number(pos) || 0)) * 100) / 100;
+
+function loadSavedVolume() {
+  const raw = parseFloat(localStorage.getItem(VOLUME_KEY));
+  return Number.isFinite(raw) ? clampVolume(raw) : VOLUME_DEFAULT;
 }
 
-let volumeBeforeDrag = 1;
+/* Pegel an die richtige Stelle schreiben. Mit Audio-Graph an den End-Gain
+   (die <audio>-Elemente stehen dann fest auf 1, sonst würde doppelt
+   gedämpft), ohne Graph - vor dem ersten Abspielen oder in einem Browser
+   ohne Web Audio - direkt an die Elemente. Immer an BEIDE Elemente: nach
+   einem Crossfade-Rollentausch soll nichts auf einem alten Wert stehen. */
+function pushVolumeGain() {
+  const g = volumeToGain(volumePos);
+  if (userVolumeGain && audioCtx) {
+    audioElA.volume = 1;
+    audioElB.volume = 1;
+    // Kurz geglättet: ein harter Sprung pro Zeigerpunkt knackt hörbar.
+    userVolumeGain.gain.setTargetAtTime(g, audioCtx.currentTime, 0.015);
+  } else {
+    audioElA.volume = g;
+    audioElB.volume = g;
+  }
+}
+
+/* save/remember sind beim Ziehen aus: gespeichert wird erst beim Loslassen,
+   und "Ton an" soll später den Wert vor dem Stummschalten zurückholen,
+   nicht irgendeinen Zwischenstand, über den der Finger gerade gewischt ist. */
+function applyVolume(pos, { save = true, remember = true } = {}) {
+  volumePos = clampVolume(pos);
+  if (remember && volumePos > 0) volumeBeforeMute = volumePos;
+  pushVolumeGain();
+  renderVolume(volumePos);
+  if (save) {
+    clearTimeout(volumeSaveTimer);
+    volumeSaveTimer = setTimeout(() => localStorage.setItem(VOLUME_KEY, String(volumePos)), 300);
+  }
+}
+
+function nudgeVolume(delta) {
+  applyVolume(volumePos + delta);
+}
+
+function toggleMute() {
+  if (volumePos > 0) applyVolume(0, { remember: false });
+  else applyVolume(volumeBeforeMute > 0 ? volumeBeforeMute : VOLUME_DEFAULT);
+}
+
+let volumeBeforeDrag = VOLUME_DEFAULT;
 attachDragSlider({
   wrap: pbVolumeWrap,
   track: pbVolumeTrack,
   onStart: () => {
     measureSliderTracks();
-    volumeBeforeDrag = audioEl.volume;
+    volumeBeforeDrag = volumePos;
   },
   // Lautstärke wirkt sofort, nicht erst beim Loslassen - alles andere
   // fühlte sich wie ein kaputter Regler an.
-  onPreview: applyVolume,
+  onPreview: (pct) => applyVolume(pct, { save: false, remember: false }),
   // Beim Loslassen trotzdem noch einmal: die letzte Bewegung wartet u.U.
   // noch auf ihr Bild und ginge sonst verloren - ein schnelles Ziehen bis
   // ganz nach links hätte dann nicht stummgeschaltet.
@@ -3705,15 +3812,52 @@ attachDragSlider({
   },
 });
 
-/* Anzeige folgt der tatsächlichen Lautstärke - egal wer sie setzt (der
-   Startwert weiter unten in dieser Datei, ein Tastenkürzel, der
-   Crossfade-Zwilling). Vorher stand im CSS fest "80%", während die
-   Prozentzahl daneben schon den echten Wert zeigte. */
-audioEl.addEventListener("volumechange", () => {
-  renderVolume(audioEl.volume);
+/* Feinsteuerung. Der Regler ist nur gut 100 px breit - per Ziehen ist 1 %
+   damit kaum zu treffen. Mausrad: 1 % pro Raste, mit Umschalt 5 %. Eine
+   Mausraste meldet ~100 px auf einmal (= genau ein Schritt), ein Touchpad
+   viele kleine Deltas - die werden gesammelt, sonst rast der Regler.
+   Umschalt+Rad liefert unter Windows deltaX statt deltaY. */
+let volumeWheelAcc = 0;
+function onVolumeWheel(e) {
+  e.preventDefault();
+  const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 400 : 1;
+  const d = (e.deltaY || e.deltaX) * unit;
+  let dir;
+  if (Math.abs(d) >= 50) {
+    dir = -Math.sign(d);
+    volumeWheelAcc = 0;
+  } else {
+    volumeWheelAcc += d;
+    if (Math.abs(volumeWheelAcc) < 50) return;
+    dir = -Math.sign(volumeWheelAcc);
+    volumeWheelAcc = 0;
+  }
+  nudgeVolume(dir * (e.shiftKey ? 0.05 : 0.01));
+}
+[pbVolumeWrap, pbVolIcon, pbVolumePercent].forEach((el) => {
+  if (el) el.addEventListener("wheel", onVolumeWheel, { passive: false });
 });
+
+// Tastatur, wenn der Regler den Fokus hat (Tab oder Klick).
+pbVolumeWrap.addEventListener("keydown", (e) => {
+  const step = e.shiftKey ? 0.05 : 0.01;
+  if (e.key === "ArrowUp" || e.key === "ArrowRight") nudgeVolume(step);
+  else if (e.key === "ArrowDown" || e.key === "ArrowLeft") nudgeVolume(-step);
+  else if (e.key === "PageUp") nudgeVolume(0.1);
+  else if (e.key === "PageDown") nudgeVolume(-0.1);
+  else if (e.key === "Home") applyVolume(0, { remember: false });
+  else if (e.key === "End") applyVolume(1);
+  else if (e.key === "m" || e.key === "M") toggleMute();
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+// Lautsprecher-Symbol = Stummschalten / Ton an (vorher ohne Funktion).
+pbVolIcon.addEventListener("click", toggleMute);
+
 measureSliderTracks();
-renderVolume(audioEl.volume);
+renderVolume(volumePos);
 
 /* ===== Drag & Drop: add a playlist / add tracks by dropping a folder ===== */
 
@@ -4236,12 +4380,20 @@ function initAudioGraph() {
   visualizerAnalyser.fftSize = 128;
   visualizerAnalyser.smoothingTimeConstant = 0.8;
 
+  // Eigene Lautstärke als ALLERLETZTES Glied - siehe "Lautstärke" bei
+  // applyVolume(). Hinter dem Analyser, damit Visualizer und
+  // Stille-Erkennung den Pegel unabhängig von der Lautstärke sehen.
+  userVolumeGain = audioCtx.createGain();
+  userVolumeGain.gain.value = volumeToGain(volumePos);
+
   sourceA.connect(rgA).connect(gainA).connect(eqInput);
   sourceB.connect(rgB).connect(gainB).connect(eqInput);
   eqOutput.connect(normalizerCompressor).connect(eqLimiter).connect(masterGain);
-  masterGain.connect(visualizerAnalyser).connect(audioCtx.destination);
+  masterGain.connect(visualizerAnalyser).connect(userVolumeGain).connect(audioCtx.destination);
   rebuildEqChain();
   audioGraphReady = true;
+  // Ab jetzt gilt der End-Gain: Elemente auf 1, sonst wäre doppelt gedämpft.
+  pushVolumeGain();
 }
 
 /* Hängt die Filterkette zwischen eqInput und eqOutput ein - oder, wenn der
@@ -5928,6 +6080,9 @@ const HOTKEY_ACTIONS = [
   { id: "playpause", label: "Wiedergabe / Pause", default: { ctrl: true, alt: true, shift: false, key: " " }, fn: () => togglePlayPause() },
   { id: "like", label: "Song merken", default: { ctrl: true, alt: true, shift: false, key: "l" }, fn: () => toggleLike() },
   { id: "glow", label: "Dynamic Glow an/aus", default: { ctrl: true, alt: true, shift: false, key: "g" }, fn: () => toggleGlow() },
+  { id: "volup", label: "Lauter", default: { ctrl: true, alt: true, shift: false, key: "arrowup" }, fn: () => nudgeVolume(0.05) },
+  { id: "voldown", label: "Leiser", default: { ctrl: true, alt: true, shift: false, key: "arrowdown" }, fn: () => nudgeVolume(-0.05) },
+  { id: "mute", label: "Stumm / Ton an", default: { ctrl: true, alt: true, shift: false, key: "m" }, fn: () => toggleMute() },
   { id: "shortcuts", label: "Tastenkürzel-Übersicht", default: { ctrl: false, alt: false, shift: false, key: "?" }, fn: () => openShortcutsCheatsheet() },
 ];
 
@@ -8326,7 +8481,8 @@ document.addEventListener("i18n-changed", () => {
 });
 
 /* ===== Init ===== */
-audioEl.volume = 0.8;
+// Letzte Lautstärke wiederherstellen - vorher stand sie bei jedem Start auf 80 %.
+applyVolume(loadSavedVolume(), { save: false });
 loadQueueOnce();
 loadLibrary();
 // Gemessene ReplayGain-Werte einmal einlesen, bevor der erste Titel läuft.

@@ -2253,13 +2253,26 @@ body.modal-scroll-lock { overflow: hidden; }
   justify-self: end;
 }
 .pb-vol-icon { font-size: 1rem; color: var(--sp-muted); }
+/* 120 statt 100 px: 1 % = 1,2 px statt 1 px - feine Werte sind per Ziehen
+   besser zu treffen (für ganz genaue: Mausrad/Pfeiltasten, siehe player.js). */
 .pb-volume-wrap {
-  width: 100px;
+  width: 120px;
   padding: 8px 0;
   cursor: pointer;
   position: relative;
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
+  border-radius: 6px;
+  outline: none;
+}
+/* Fokus nur bei Tastaturbedienung sichtbar, nicht nach jedem Mausklick. */
+.pb-volume-wrap:focus-visible .pb-volume-track {
+  box-shadow: 0 0 0 2px var(--sp-green);
+}
+.pb-volume-wrap:focus-visible .pb-volume-handle { opacity: 1; }
+.pb-progress-wrap { outline: none; }
+.pb-progress-wrap:focus-visible .pb-progress-track {
+  box-shadow: 0 0 0 2px var(--sp-green);
 }
 .pb-volume-track {
   position: relative;
@@ -2268,8 +2281,8 @@ body.modal-scroll-lock { overflow: hidden; }
   background: rgba(255,255,255,0.3);
 }
 /* Fuellstand ueber scaleX statt ueber width: gleiche Optik, aber ohne
-   Layout waehrend des Ziehens. Startwert passend zum audioEl.volume = 0.8
-   weiter unten in player.js; danach setzt renderVolume() den echten Wert. */
+   Layout waehrend des Ziehens. Startwert passend zur Vorgabe 80 % in
+   player.js; renderVolume() setzt beim Laden gleich den gespeicherten Wert. */
 .pb-volume-bar {
   position: absolute;
   inset: 0;

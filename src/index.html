@@ -979,7 +979,7 @@
       </div>
       <div class="pb-scrubber">
         <span id="pbTimeCurrent" class="pb-time">0:00</span>
-        <div class="pb-progress-wrap" id="pbProgressWrap">
+        <div class="pb-progress-wrap" id="pbProgressWrap" tabindex="0" role="slider" aria-label="Position im Song" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="pb-progress-track">
             <canvas id="pbWaveformCanvas" class="pb-waveform-canvas"></canvas>
             <div class="pb-progress-bar" id="pbProgressBar"></div>
@@ -1014,8 +1014,11 @@
            display:none, ein Popover darin wäre auf Android nie zu öffnen
            gewesen. Hier steht nur noch der Auslöser. -->
       <button id="eqToggleBtn" class="pb-vol-icon eq-toggle-btn" data-i18n-title="Equalizer" title="Equalizer">🎚️</button>
-      <span id="pbVolIcon" class="pb-vol-icon">🔊</span>
-      <div class="pb-volume-wrap" id="pbVolumeWrap">
+      <!-- Knopf statt span: Klick schaltet stumm / wieder an. eq-toggle-btn
+           nur wegen der gleichen Optik (Hover, Glow) wie der Equalizer daneben. -->
+      <button type="button" id="pbVolIcon" class="pb-vol-icon eq-toggle-btn" data-i18n-title="Stummschalten / Ton an (Strg+Alt+M)" title="Stummschalten / Ton an (Strg+Alt+M)">🔊</button>
+      <div class="pb-volume-wrap" id="pbVolumeWrap" tabindex="0" role="slider" aria-label="Lautstärke" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"
+           data-i18n-title="Lautstärke - Mausrad: 1 %, mit Umschalt: 5 %" title="Lautstärke - Mausrad: 1 %, mit Umschalt: 5 %">
         <div class="pb-volume-track">
           <div class="pb-volume-bar" id="pbVolumeBar"></div>
           <div class="pb-volume-handle" id="pbVolumeHandle"></div>

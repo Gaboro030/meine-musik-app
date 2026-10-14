@@ -432,17 +432,9 @@
       }
     }
 
-    // Live volume percentage (user-requested addition on top of the 1:1
-    // port): audioEl fires "volumechange" whenever player.js sets .volume.
-    const audioEl = document.getElementById("audioEl");
-    const volPercent = document.getElementById("pbVolumePercent");
-    if (audioEl && volPercent) {
-      const update = () => {
-        volPercent.textContent = `${Math.round(audioEl.volume * 100)}%`;
-      };
-      audioEl.addEventListener("volumechange", update);
-      update();
-    }
+    // Die Lautstärke-Prozentzahl setzt jetzt renderVolume() in player.js:
+    // sie zeigt die Reglerstellung, nicht audioEl.volume (das steht mit
+    // Audio-Graph fest auf 1, der Pegel sitzt am Ende der Kette).
 
     // Full song name on hover (user-requested addition): every truncated
     // title/artist label gets its complete text as a native tooltip.
