@@ -226,13 +226,150 @@ pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
     // id3 only reads tags, not audio structure - mp3-duration walks the
     // actual MP3 frames for the real playing time (what mutagen's
     // audio.info.length did in the Flask backend).
-    meta.duration = mp3_duration::from_path(path).ok().map(|d| d.as_secs_f64());
+    // m4a/mp4 (Android-Downloads, Videos) haben keine MP3-Frames - dort
+    // suchte mp3_duration vergeblich die ganze Datei ab und lieferte nichts.
+    // Die Laenge steht im 'mvhd'-Kopf des Containers.
+    let is_mp3 = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("mp3"))
+        .unwrap_or(false);
+    meta.duration = if is_mp3 {
+        mp3_duration::from_path(path).ok().map(|d| d.as_secs_f64())
+    } else {
+        mp4_duration(path)
+    };
     meta.added = std::fs::metadata(path)
         .and_then(|m| m.modified())
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
+    meta
+}
+
+/// Spieldauer einer MP4/M4A-Datei aus ihrem 'moov/mvhd'-Kopf (Zeitbasis +
+/// Dauer). Liest nur ein paar Box-Koepfe, nie die Mediendaten - auch bei
+/// einem Video mit 'moov' am Dateiende sind das nur ein paar Sprünge.
+fn mp4_duration(path: &Path) -> Option<f64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    let (moov_start, moov_end) = mp4_find_box(&mut f, 0, len, b"moov")?;
+    let (mvhd_start, _) = mp4_find_box(&mut f, moov_start, moov_end, b"mvhd")?;
+    f.seek(SeekFrom::Start(mvhd_start)).ok()?;
+    let mut version = [0u8; 4]; // Version (1 Byte) + Flags (3 Byte)
+    f.read_exact(&mut version).ok()?;
+    let (timescale, duration) = if version[0] == 1 {
+        // Erstellt (8), Geaendert (8), Zeitbasis (4), Dauer (8)
+        let mut b = [0u8; 28];
+        f.read_exact(&mut b).ok()?;
+        (
+            u32::from_be_bytes([b[16], b[17], b[18], b[19]]) as f64,
+            u64::from_be_bytes([b[20], b[21], b[22], b[23], b[24], b[25], b[26], b[27]]) as f64,
+        )
+    } else {
+        // Erstellt (4), Geaendert (4), Zeitbasis (4), Dauer (4)
+        let mut b = [0u8; 16];
+        f.read_exact(&mut b).ok()?;
+        (
+            u32::from_be_bytes([b[8], b[9], b[10], b[11]]) as f64,
+            u32::from_be_bytes([b[12], b[13], b[14], b[15]]) as f64,
+        )
+    };
+    if timescale <= 0.0 || duration <= 0.0 {
+        return None;
+    }
+    Some(duration / timescale)
+}
+
+/// Sucht zwischen `start` und `end` die erste Box vom Typ `kind` und
+/// liefert (Anfang der Nutzdaten, Ende der Box).
+fn mp4_find_box(f: &mut std::fs::File, start: u64, end: u64, kind: &[u8; 4]) -> Option<(u64, u64)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut pos = start;
+    while pos + 8 <= end {
+        f.seek(SeekFrom::Start(pos)).ok()?;
+        let mut hdr = [0u8; 8];
+        f.read_exact(&mut hdr).ok()?;
+        let mut size = u32::from_be_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]) as u64;
+        let mut header = 8u64;
+        if size == 1 {
+            // 64-Bit-Groesse direkt hinter dem Kopf (grosse Videos)
+            let mut big = [0u8; 8];
+            f.read_exact(&mut big).ok()?;
+            size = u64::from_be_bytes(big);
+            header = 16;
+        } else if size == 0 {
+            size = end - pos; // "bis zum Ende"
+        }
+        if size < header {
+            return None; // kaputte Datei - lieber keine Dauer als Endlosschleife
+        }
+        if &hdr[4..8] == kind {
+            return Some((pos + header, pos + size));
+        }
+        pos += size;
+    }
+    None
+}
+
+/// Gelesene Metadaten pro Datei, gültig solange sich weder die Datei noch
+/// einer ihrer Sidecars (Cover, Interpret, Album) geändert hat.
+///
+/// Ohne diesen Speicher las JEDER list_playlists-Aufruf jede Datei der
+/// Bibliothek neu: ID3-Tags, Cover-Cache samt Base64, und mp3_duration läuft
+/// dafür über sämtliche MP3-Frames (bei .m4a/.mp4 sucht es sogar die ganze
+/// Datei vergeblich nach MP3-Frames ab). Die App lädt die Bibliothek nach
+/// jedem Download, Löschen, Cover-Fund und Sync neu, Entdecken/Empfehlungen
+/// und Duplikat-Suche scannen sie zusätzlich - bei ein paar hundert Titeln
+/// also jedes Mal Gigabytes von der Platte, während LIBRARY_LOCK alles
+/// andere blockiert hielt.
+static META_CACHE: Mutex<Option<std::collections::HashMap<PathBuf, (u64, TrackMeta)>>> = Mutex::new(None);
+const META_CACHE_MAX: usize = 50_000;
+
+/// Fingerabdruck aus Größe + Änderungszeit der Datei und ihrer Sidecars -
+/// ein paar stat()-Aufrufe statt die Datei zu lesen.
+fn meta_fingerprint(path: &Path) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let m = std::fs::metadata(path).ok()?;
+    m.len().hash(&mut h);
+    m.modified().ok().hash(&mut h);
+    for ext in ["jpg", "artist.txt", "album.txt", "cover_cache.jpg"] {
+        match std::fs::metadata(path.with_extension(ext)) {
+            Ok(s) => {
+                s.len().hash(&mut h);
+                s.modified().ok().hash(&mut h);
+            }
+            Err(_) => 0u8.hash(&mut h),
+        }
+    }
+    Some(h.finish())
+}
+
+pub(crate) fn read_track_meta_cached(path: &Path) -> TrackMeta {
+    if let Some(fp) = meta_fingerprint(path) {
+        if let Ok(cache) = META_CACHE.lock() {
+            if let Some((cached_fp, meta)) = cache.as_ref().and_then(|c| c.get(path)) {
+                if *cached_fp == fp {
+                    return meta.clone();
+                }
+            }
+        }
+    }
+    let meta = read_track_meta(path);
+    // Fingerabdruck ERST JETZT: read_track_meta legt beim ersten Lesen den
+    // cover_cache.jpg an - davor genommen, wäre der Eintrag sofort veraltet.
+    if let Some(fp) = meta_fingerprint(path) {
+        if let Ok(mut cache) = META_CACHE.lock() {
+            let map = cache.get_or_insert_with(std::collections::HashMap::new);
+            if map.len() >= META_CACHE_MAX {
+                map.clear(); // Notbremse gegen Altlasten gelöschter Dateien
+            }
+            map.insert(path.to_path_buf(), (fp, meta.clone()));
+        }
+    }
     meta
 }
 
@@ -259,7 +396,7 @@ fn scan_playlist_dir(dir: &Path, name: &str) -> Option<PlaylistOut> {
                 .unwrap_or(false)
         })
         .map(|p| {
-            let mut meta = read_track_meta(&p);
+            let mut meta = read_track_meta_cached(&p);
             meta.stream_url = stream_url_for(name, &meta.file);
             meta
         })
@@ -1253,6 +1390,58 @@ mod tests {
         assert!(ok);
         let tag = id3::Tag::read_from_path(&track).unwrap();
         assert_eq!(tag.album(), Some("Test Album"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Minimaler M4A-Aufbau: ftyp, dann moov mit mvhd (Version 0,
+    /// Zeitbasis 1000, Dauer 5000 = 5 s) - davor noch ein grosses mdat,
+    /// wie bei echten Dateien, das uebersprungen werden muss.
+    #[test]
+    fn mp4_duration_reads_mvhd() {
+        let root = temp_root();
+        let track = root.join("song.m4a");
+        let mut bytes = Vec::new();
+        let boxed = |kind: &[u8; 4], body: &[u8]| {
+            let mut b = ((body.len() + 8) as u32).to_be_bytes().to_vec();
+            b.extend_from_slice(kind);
+            b.extend_from_slice(body);
+            b
+        };
+        bytes.extend(boxed(b"ftyp", b"M4A \0\0\0\0"));
+        bytes.extend(boxed(b"mdat", &vec![0u8; 4096]));
+        let mut mvhd = vec![0u8; 4]; // Version 0 + Flags
+        mvhd.extend_from_slice(&[0u8; 8]); // Erstellt + Geaendert
+        mvhd.extend_from_slice(&1000u32.to_be_bytes());
+        mvhd.extend_from_slice(&5000u32.to_be_bytes());
+        mvhd.extend_from_slice(&[0u8; 80]); // Rest des Kopfes
+        let moov = boxed(b"moov", &boxed(b"mvhd", &mvhd));
+        bytes.extend(moov);
+        std::fs::write(&track, &bytes).unwrap();
+
+        assert_eq!(mp4_duration(&track), Some(5.0));
+        assert_eq!(read_track_meta(&track).duration, Some(5.0));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn mp4_duration_rejects_garbage() {
+        let root = temp_root();
+        let track = root.join("kaputt.m4a");
+        std::fs::write(&track, b"\0\0\0\x02xxxxkein mp4").unwrap();
+        assert_eq!(mp4_duration(&track), None);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Cache greift, solange nichts geaendert wurde - und merkt es, sobald
+    /// ein Sidecar (hier das Album) dazukommt.
+    #[test]
+    fn meta_cache_invalidates_on_sidecar_change() {
+        let root = temp_root();
+        let track = root.join("song.m4a");
+        std::fs::write(&track, b"fake-audio").unwrap();
+        assert_eq!(read_track_meta_cached(&track).album, "");
+        std::fs::write(track.with_extension("album.txt"), "Neu").unwrap();
+        assert_eq!(read_track_meta_cached(&track).album, "Neu");
         std::fs::remove_dir_all(&root).ok();
     }
 
