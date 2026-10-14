@@ -334,6 +334,9 @@ async function buildCollage(covers) {
 /* Setzt das Cover einer Playlist auf ein <img>. Sofort das bisherige
    Einzel-Cover, danach - falls möglich - die Collage. */
 function applyPlaylistCover(img, pl) {
+  // Ein wiederverwendetes <img> (playlistCover in der Kopfzeile) darf keine
+  // spät fertig werdende Collage seiner VORHERIGEN Playlist mehr bekommen.
+  delete img.dataset.collageFor;
   const manual = manualPlaylistCover(pl.name);
   if (manual) {
     img.src = manual;
@@ -353,10 +356,13 @@ function applyPlaylistCover(img, pl) {
     return;
   }
   img.src = pl.cover || PLACEHOLDER_COVER;
+  // VOR der Pending-Prüfung markieren: Sidebar und Bibliothekskachel fragen
+  // fast gleichzeitig an - das zweite Bild bekam die Marke sonst nie und
+  // blieb bis zum nächsten Neuaufbau beim Einzel-Cover stehen.
+  img.dataset.collageFor = pl.name;
 
   // Mehrere <img> derselben Playlist (Sidebar + Home-Kachel) dürfen den
-  // Aufbau nicht mehrfach anstoßen. Wer zu spät kommt, bekommt das
-  // Ergebnis beim nächsten Render aus dem Cache.
+  // Aufbau nicht mehrfach anstoßen - sie bekommen das Ergebnis über die Marke.
   const pendingKey = `${pl.name}\u0000${key}`;
   if (collagePending.has(pendingKey)) return;
   collagePending.add(pendingKey);
@@ -372,7 +378,6 @@ function applyPlaylistCover(img, pl) {
       });
     })
     .catch(() => collagePending.delete(pendingKey));
-  img.dataset.collageFor = pl.name;
 }
 
 /* CSS.escape gibt es in jeder WebView, die diese App sonst auch trägt -
@@ -415,10 +420,21 @@ document.addEventListener(
 
 /* ===== State ===== */
 let library = [];
+// currentPlaylist = die ANGEZEIGTE Playlist (Tabelle, Kopfzeile, Löschen ...).
+// playingPlaylist = die, aus der gerade GESPIELT wird - Weiter/Zurück/
+// Shuffle/Vorschau laufen nur hierüber. Früher war beides dieselbe
+// Variable: wer während der Musik nur in eine andere Playlist hineinsah,
+// bekam beim nächsten "Weiter" einen Song aus DIESER Playlist (mit dem
+// Index des alten Songs).
 let currentPlaylist = null;
-let currentTrackIndex = -1;
-let isShuffle = false;
-let repeatMode = "off"; // off -> all -> one -> off
+let playingPlaylist = null;
+let currentTrackIndex = -1; // Index in playingPlaylist.tracks
+const SHUFFLE_KEY = "playerShuffle";
+const REPEAT_KEY = "playerRepeat";
+let isShuffle = localStorage.getItem(SHUFFLE_KEY) === "1";
+let repeatMode = ["off", "all", "one"].includes(localStorage.getItem(REPEAT_KEY))
+  ? localStorage.getItem(REPEAT_KEY)
+  : "off"; // off -> all -> one -> off
 let shuffleOrder = [];
 let lastShuffleOrder = []; // so a reshuffle never lands on the exact same order twice in a row
 let recentlyPlayed = []; // track indices heard lately, oldest first - keeps freshly (re)shuffled order from immediately repeating them
@@ -472,6 +488,10 @@ function loadPlayHistory() {
     return [];
   }
 }
+/* Bewusst OHNE Cover: das ist eine data:-URL von zig KB. 300 Einträge
+   davon sprengten den localStorage (~5 MB) - danach scheiterte JEDES
+   Speichern der App, auch Lautstärke, Equalizer und Einstellungen. Das
+   Cover kommt beim Anzeigen aus der Bibliothek (renderHistory). */
 function bumpPlayHistory() {
   if (!nowPlayingMeta) return;
   const hist = loadPlayHistory();
@@ -480,10 +500,21 @@ function bumpPlayHistory() {
     file: nowPlayingMeta.file,
     title: nowPlayingMeta.title,
     artist: nowPlayingMeta.artist,
-    cover: nowPlayingMeta.cover,
     playedAt: Date.now(),
   });
-  localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(hist.slice(0, PLAY_HISTORY_MAX)));
+  try {
+    localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(hist.slice(0, PLAY_HISTORY_MAX)));
+  } catch (_) { /* Speicher voll - Verlauf ist verzichtbar */ }
+}
+// Altbestand einmalig entschlacken (Einträge aus Versionen mit Cover).
+{
+  const hist = loadPlayHistory();
+  if (hist.some((e) => e && e.cover)) {
+    hist.forEach((e) => { if (e) delete e.cover; });
+    try {
+      localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(hist));
+    } catch (_) { /* nichts zu retten */ }
+  }
 }
 function clearPlayHistory() {
   localStorage.removeItem(PLAY_HISTORY_KEY);
@@ -513,7 +544,9 @@ audioEl.addEventListener("timeupdate", () => {
     const delta = audioEl.currentTime - lastListenTick;
     if (delta > 0 && delta < 2) {
       const total = Number(localStorage.getItem(LISTEN_TIME_KEY)) || 0;
-      localStorage.setItem(LISTEN_TIME_KEY, String(total + delta));
+      try {
+        localStorage.setItem(LISTEN_TIME_KEY, String(total + delta));
+      } catch (_) { /* Speicher voll - Statistik ist verzichtbar */ }
     }
   }
   lastListenTick = audioEl.currentTime;
@@ -580,12 +613,56 @@ async function refreshLibrary() {
     const data = await res.json();
     library = data.playlists || [];
   } catch (_) {
+    // Ein kurzer Aussetzer darf die schon geladene Bibliothek nicht leeren
+    // (Wiedergabe-Kontext, Ansicht und Warteschlangen-Vorschau hingen dran).
+    if (library.length) return;
     library = [];
   }
+  resyncAfterLibraryRefresh();
   renderSidebar();
   if (library.length) {
-    renderHome();
+    // Entdecken/Künstler-Reihen nur beim ersten Mal laden: die fragen YouTube
+    // an und würfelten nach JEDEM Löschen, Download oder Cover-Fund die
+    // Startseite neu durch. Dafür gibt es den eigenen Neu-laden-Knopf.
+    renderHome({ discover: !homeDiscoverLoaded });
     renderLibraryGrid();
+  }
+}
+
+/* Nach jedem Neuladen sind alle Playlist-Objekte neu. Angezeigte und
+   spielende Playlist über den Namen wiederfinden, den laufenden Titel über
+   die Datei - Löschen oder Hinzufügen verschiebt sonst die Indices, und
+   "Weiter" spränge an die falsche Stelle. */
+function resyncAfterLibraryRefresh() {
+  const byName = (pl) => (pl ? library.find((p) => p.name === pl.name) || null : null);
+  if (playingPlaylist) {
+    const oldLength = playingPlaylist.tracks.length;
+    playingPlaylist = byName(playingPlaylist);
+    if (playingPlaylist && currentTrackIndex >= 0 && nowPlayingMeta && nowPlayingMeta.playlist === playingPlaylist.name) {
+      currentTrackIndex = playingPlaylist.tracks.findIndex((tr) => tr.file === nowPlayingMeta.file);
+    }
+    if (queueResumeIndex >= (playingPlaylist ? playingPlaylist.tracks.length : 0)) queueResumeIndex = -1;
+    if (playingPlaylist && isShuffle && playingPlaylist.tracks.length !== oldLength) buildShuffleOrder();
+    if (!playingPlaylist) {
+      currentTrackIndex = -1;
+      shuffleOrder = [];
+    }
+  }
+  if (currentPlaylist) {
+    const viewed = byName(currentPlaylist);
+    currentPlaylist = viewed;
+    if (currentView === "playlist") {
+      if (!viewed) {
+        showView("library"); // Playlist ist weg (letzter Titel gelöscht)
+      } else {
+        // An Ort und Stelle neu zeichnen - Suche, Sortierung und
+        // Scrollposition bleiben stehen (früher setzte jedes Löschen die
+        // Suche zurück, weil die Playlist komplett neu geöffnet wurde).
+        playlistTrackCount.textContent = t("{count} Titel", { count: viewed.tracks.length });
+        applyPlaylistCover(playlistCover, viewed);
+        renderTrackTable();
+      }
+    }
   }
 }
 
@@ -691,7 +768,8 @@ function greetingForNow() {
   return t("Gute Nacht");
 }
 
-function renderHome() {
+let homeDiscoverLoaded = false;
+function renderHome({ discover = true } = {}) {
   homeGreeting.textContent = greetingForNow();
 
   const allTracks = [];
@@ -743,8 +821,11 @@ function renderHome() {
 
   renderDailyMix();
   renderMoodSection();
-  loadDiscover();
-  loadDiscoverArtistRows();
+  if (discover) {
+    homeDiscoverLoaded = true;
+    loadDiscover();
+    loadDiscoverArtistRows();
+  }
 }
 
 /* ===== Daily Mix (Home) =====
@@ -928,7 +1009,8 @@ function renderHistory() {
     thumb.className = "history-row-thumb";
     thumb.loading = "lazy";
     thumb.decoding = "async";
-    thumb.src = coverFor(entry);
+    const found = findLibraryIndicesByKey(entry.playlist, entry.file);
+    thumb.src = coverFor(found ? library[found.plIdx].tracks[found.trackIdx] : entry);
     thumb.alt = "";
     const text = document.createElement("div");
     text.className = "history-row-text";
@@ -1271,7 +1353,9 @@ function renderLibraryGrid() {
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       selectPlaylist(idx);
-      if (pl.tracks.length) playTrack(0);
+      // Erster ANGEZEIGTER Titel (Sortierung zählt), wie "Alle abspielen".
+      const order = playbackOrderIndices(currentPlaylist);
+      if (order.length) playFromView(order[0]);
     });
     coverWrap.append(img, playBtn);
 
@@ -1297,16 +1381,28 @@ function playTrackIn(plIdx, trackIdx) {
     togglePlayPause();
     return;
   }
-  currentPlaylist = library[plIdx];
-  playlistList.querySelectorAll(".playlist-item").forEach((el, i) => {
-    el.classList.toggle("active", i === plIdx);
-  });
+  if (!target) return;
+  // Nur den Wiedergabe-Kontext wechseln - die gerade ANGESEHENE Playlist
+  // (currentPlaylist) bleibt, wo sie ist.
+  playInPlaylist(library[plIdx], trackIdx);
+}
+
+/* Startet einen Titel aus einer bestimmten Playlist und macht sie zur
+   spielenden. Wechselt die Playlist, gehören Shuffle-Reihenfolge und
+   "zuletzt gehört" noch zur alten - beides neu aufbauen (mit dem gerade
+   gestarteten Titel vorn), sonst springt Weiter/Zurück an alte Positionen. */
+function playInPlaylist(pl, trackIdx) {
+  if (!pl || !pl.tracks[trackIdx]) return;
+  const switched = playingPlaylist !== pl;
+  playingPlaylist = pl;
+  if (switched) recentlyPlayed = [];
   playTrack(trackIdx);
-  // Shuffle order still describes the previous playlist's indices at this
-  // point - rebuild it against the new context (with the just-started
-  // track up front) so next/prev can't jump to stale positions or replay
-  // songs twice.
-  if (isShuffle) buildShuffleOrder();
+  if (isShuffle && (switched || !shuffleOrder.length)) buildShuffleOrder();
+}
+
+// Klick in der angezeigten Tabelle / "Alle abspielen".
+function playFromView(trackIdx) {
+  playInPlaylist(currentPlaylist, trackIdx);
 }
 
 /* ===== Sidebar ===== */
@@ -1366,13 +1462,9 @@ function selectPlaylist(idx) {
   // ("ich will Playlists immer nach Titel sehen") und bleibt bewusst erhalten.
   playlistSearchQuery = "";
   playlistSearchInput.value = "";
-  // Keep the shuffle *setting* across playlist switches, but regenerate
-  // the order for the new playlist - the old order's indices belong to a
-  // different track list and would freeze/duplicate the queue. Same for
-  // recentlyPlayed: those indices belong to the OLD playlist's track
-  // list too and would otherwise steer the new shuffle by coincidence.
-  recentlyPlayed = [];
-  if (isShuffle) buildShuffleOrder();
+  // Shuffle-Reihenfolge und "zuletzt gehört" gehören zur SPIELENDEN
+  // Playlist und bleiben beim bloßen Ansehen unangetastet - neu gebaut
+  // wird erst, wenn hier tatsächlich etwas gestartet wird (playInPlaylist).
   renderTrackTable();
   loadRecommendations();
   // Alle Songtexte dieser Playlist sofort im Hintergrund vorladen - beim
@@ -1443,18 +1535,67 @@ renameModal.addEventListener("click", (e) => {
 });
 
 /* ===== Playlist Delete / Rename ===== */
+/* Alles, was lokal unter "<Playlist>::<Datei>" gespeichert ist (Wiedergaben,
+   Verlauf, Weiterhören-Positionen), auf den neuen Namen umziehen - sonst
+   waren nach dem Umbenennen Statistik und Daily Mix dieser Playlist leer.
+   Dazu den Wiedergabe-Kontext: ohne das fand resyncAfterLibraryRefresh die
+   spielende Playlist unter dem alten Namen nicht mehr und "Weiter" ging ins
+   Leere. */
+function migratePlaylistName(oldName, newName) {
+  if (!newName || oldName === newName) return;
+  const prefix = `${oldName}::`;
+  [PLAY_COUNTS_KEY, RESUME_KEY].forEach((key) => {
+    try {
+      const map = JSON.parse(localStorage.getItem(key) || "{}");
+      let changed = false;
+      Object.keys(map).forEach((k) => {
+        if (!k.startsWith(prefix)) return;
+        const moved = `${newName}::${k.slice(prefix.length)}`;
+        // Wiedergaben zusammenzählen, eine Weiterhören-Position übernehmen.
+        map[moved] = key === PLAY_COUNTS_KEY ? (map[moved] || 0) + map[k] : map[k];
+        delete map[k];
+        changed = true;
+      });
+      if (changed) localStorage.setItem(key, JSON.stringify(map));
+    } catch (_) { /* kaputter Eintrag - dann eben nicht umziehen */ }
+  });
+  const hist = loadPlayHistory();
+  if (hist.some((e) => e && e.playlist === oldName)) {
+    hist.forEach((e) => { if (e && e.playlist === oldName) e.playlist = newName; });
+    try {
+      localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(hist));
+    } catch (_) { /* Speicher voll */ }
+  }
+  const likedMoved = [...likedTracks].filter((k) => k.startsWith(prefix));
+  if (likedMoved.length) {
+    likedMoved.forEach((k) => {
+      likedTracks.delete(k);
+      likedTracks.add(`${newName}::${k.slice(prefix.length)}`);
+    });
+    try {
+      localStorage.setItem(LIKED_KEY, JSON.stringify([...likedTracks]));
+    } catch (_) { /* Speicher voll */ }
+  }
+  if (playingPlaylist && playingPlaylist.name === oldName) playingPlaylist = { ...playingPlaylist, name: newName };
+  if (currentPlaylist && currentPlaylist.name === oldName) currentPlaylist = { ...currentPlaylist, name: newName };
+  if (nowPlayingMeta && nowPlayingMeta.playlist === oldName) nowPlayingMeta.playlist = newName;
+  userQueue.forEach((e) => { if (e.playlist === oldName) e.playlist = newName; });
+}
+
 deletePlaylistBtn.addEventListener("click", () => {
   if (!currentPlaylist) return;
   showConfirmModal(
     t("Playlist löschen?"),
     t('„{name}" mit {count} Titeln wird unwiderruflich gelöscht.', { name: currentPlaylist.name, count: currentPlaylist.tracks.length }),
     async () => {
+      const name = currentPlaylist.name;
       try {
-        const res = await fetch(`/api/library/playlist/${encodeURIComponent(currentPlaylist.name)}`, {
+        const res = await fetch(`/api/library/playlist/${encodeURIComponent(name)}`, {
           method: "DELETE",
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || t("Löschen fehlgeschlagen."));
+        if (nowPlayingMeta) stopIfNowPlaying(name, nowPlayingMeta.file);
         showToast(t("🗑 Playlist gelöscht"));
         await refreshLibrary();
         showView("library");
@@ -1478,6 +1619,7 @@ renamePlaylistBtn.addEventListener("click", () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || t("Umbenennen fehlgeschlagen."));
       showToast(t("✏️ Playlist umbenannt"));
+      migratePlaylistName(oldName, data.name);
       await refreshLibrary();
       const idx = library.findIndex((p) => p.name === data.name);
       if (idx !== -1) selectPlaylist(idx);
@@ -1488,6 +1630,24 @@ renamePlaylistBtn.addEventListener("click", () => {
 });
 
 /* ===== Track Removal ===== */
+/* Läuft genau dieser Titel gerade? Dann anhalten und die Leiste räumen -
+   sonst zeigt der Player weiter auf eine Datei, die im Papierkorb liegt. */
+function stopIfNowPlaying(playlistName, file) {
+  if (!nowPlayingMeta || nowPlayingMeta.playlist !== playlistName || nowPlayingMeta.file !== file) return;
+  cancelCrossfadePrep();
+  audioEl.pause();
+  audioEl.removeAttribute("src");
+  currentTrackIndex = -1;
+  nowPlayingMeta = null;
+  hidePlayerBar();
+  updatePlayButton(false);
+  pbTitle.textContent = t("Kein Titel ausgewählt");
+  pbArtist.textContent = "—";
+  updateVideoButtonVisibility();
+  closeVideoViewIfOpenForTrackChange();
+  if (!lyricsOverlay.classList.contains("hidden")) closeLyrics();
+}
+
 async function deleteTrack(index) {
   if (!currentPlaylist || !currentPlaylist.tracks[index]) return;
   const track = currentPlaylist.tracks[index];
@@ -1504,27 +1664,11 @@ async function deleteTrack(index) {
     } else {
       showToast(t('🗑 „{title}" entfernt', { title: track.title }));
     }
-    if (index === currentTrackIndex) {
-      audioEl.pause();
-      audioEl.removeAttribute("src");
-      currentTrackIndex = -1;
-      nowPlayingMeta = null;
-      hidePlayerBar();
-      updatePlayButton(false);
-      pbTitle.textContent = t("Kein Titel ausgewählt");
-      pbArtist.textContent = "—";
-      updateVideoButtonVisibility();
-      closeVideoViewIfOpenForTrackChange();
-    } else if (index < currentTrackIndex) {
-      currentTrackIndex -= 1; // still-playing track shifted down by one
-    }
+    stopIfNowPlaying(playlistName, track.file);
+    // Neu zeichnen und den Index des weiterlaufenden Titels nachziehen
+    // erledigt refreshLibrary (resyncAfterLibraryRefresh) - auch wenn der
+    // gelöschte Titel aus einer ANDEREN als der spielenden Playlist kam.
     await refreshLibrary();
-    const idx = library.findIndex((p) => p.name === playlistName);
-    if (idx !== -1) {
-      selectPlaylist(idx);
-    } else {
-      showView("library"); // that was the last track - the playlist folder is gone
-    }
   } catch (err) {
     showToast(err.message || t("Löschen fehlgeschlagen."));
   }
@@ -1658,7 +1802,7 @@ function selectTrackRange(fromIndex, toIndex) {
    ueberschrieben, die gar nicht in der Liste standen. */
 function displayedTrackFiles() {
   if (!currentPlaylist) return [];
-  return playbackOrderIndices()
+  return playbackOrderIndices(currentPlaylist)
     .map((i) => currentPlaylist.tracks[i])
     .filter(Boolean)
     .map((tr) => tr.file);
@@ -1806,7 +1950,7 @@ function buildTrackRow(track, i, displayNum) {
     tr.dataset.index = i;
     // Beim Bauen gleich richtig markieren: die Zeile des laufenden Titels
     // kann beim Scrollen jederzeit neu entstehen.
-    if (i === currentTrackIndex) tr.classList.add("playing");
+    if (i === currentTrackIndex && currentPlaylist === playingPlaylist) tr.classList.add("playing");
 
     const tdIndex = document.createElement("td");
     tdIndex.className = "col-index";
@@ -1920,10 +2064,10 @@ function buildTrackRow(track, i, displayNum) {
       }
       // Klick auf den bereits laufenden Track: pausieren bzw. fortsetzen
       // statt von vorne zu starten.
-      if (i === currentTrackIndex && nowPlayingMeta && nowPlayingMeta.stream_url === track.stream_url) {
+      if (nowPlayingMeta && nowPlayingMeta.stream_url === track.stream_url) {
         togglePlayPause();
       } else {
-        playTrack(i);
+        playFromView(i);
       }
     });
     return tr;
@@ -2105,10 +2249,13 @@ playlistSortDirBtn.addEventListener("click", () => {
    neu gebaute Zeile waere fuer immer als "spielt gerade" markiert
    geblieben. Im Dokument stehen ohnehin nur rund 50 Zeilen. */
 function highlightPlayingRow() {
+  // Läuft gerade eine andere Playlist als die angezeigte, ist hier nichts
+  // zu markieren - sonst leuchtete der Titel mit demselben Index.
+  const index = currentPlaylist === playingPlaylist ? currentTrackIndex : -1;
   trackTableBody.querySelectorAll(".track-row.playing").forEach((row) => {
-    if (Number(row.dataset.index) !== currentTrackIndex) row.classList.remove("playing");
+    if (Number(row.dataset.index) !== index) row.classList.remove("playing");
   });
-  if (currentTrackIndex < 0) return;
+  if (index < 0) return;
   const row = trackTableBody.querySelector(`.track-row[data-index="${currentTrackIndex}"]`);
   // Fehlt die Zeile, ist sie gerade ausserhalb des Sichtfensters -
   // buildTrackRow setzt die Klasse dann selbst, sobald sie entsteht.
@@ -2117,6 +2264,10 @@ function highlightPlayingRow() {
 
 /* ===== Playback ===== */
 function buildShuffleOrder(keepCurrentFirst = true) {
+  if (!playingPlaylist) {
+    shuffleOrder = [];
+    return;
+  }
   let order;
   let attempts = 0;
   // Real Fisher-Yates is already unbiased, but for small playlists it can
@@ -2124,7 +2275,7 @@ function buildShuffleOrder(keepCurrentFirst = true) {
   // a reshuffle reads as "nothing happened". Regenerate until it differs
   // from the last shuffle - capped so this can never loop forever.
   do {
-    order = currentPlaylist.tracks.map((_, i) => i);
+    order = playingPlaylist.tracks.map((_, i) => i);
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [order[i], order[j]] = [order[j], order[i]];
@@ -2180,7 +2331,7 @@ function trackRecentlyPlayed(index) {
   if (index < 0) return;
   recentlyPlayed = recentlyPlayed.filter((i) => i !== index);
   recentlyPlayed.push(index);
-  const cap = currentPlaylist ? Math.max(1, Math.min(10, currentPlaylist.tracks.length - 2)) : 10;
+  const cap = playingPlaylist ? Math.max(1, Math.min(10, playingPlaylist.tracks.length - 2)) : 10;
   if (recentlyPlayed.length > cap) recentlyPlayed = recentlyPlayed.slice(-cap);
 }
 
@@ -2223,11 +2374,14 @@ function hidePlayerBar() {
   playerBarAnchor.classList.remove("player-offscreen");
 }
 
+/* Spielt Titel `index` der SPIELENDEN Playlist. Wer aus einer anderen
+   Playlist starten will, geht über playInPlaylist()/playFromView(). */
 function playTrack(index, opts = {}) {
-  if (!currentPlaylist || !currentPlaylist.tracks[index]) return;
+  if (!playingPlaylist) playingPlaylist = currentPlaylist;
+  if (!playingPlaylist || !playingPlaylist.tracks[index]) return;
   currentTrackIndex = index;
   trackRecentlyPlayed(index);
-  const track = currentPlaylist.tracks[index];
+  const track = playingPlaylist.tracks[index];
 
   showPlayerBar();
   initAudioGraph();
@@ -2251,7 +2405,7 @@ function playTrack(index, opts = {}) {
     // Metadaten da sind - currentTime vor loadedmetadata zu setzen wird von
     // manchen Browsern schlicht ignoriert.
     if ((track.duration || 0) > RESUME_THRESHOLD_SECONDS) {
-      const resumeAt = getResumePosition(currentPlaylist.name, track.file);
+      const resumeAt = getResumePosition(playingPlaylist.name, track.file);
       if (resumeAt > 10) {
         audioEl.addEventListener(
           "loadedmetadata",
@@ -2267,16 +2421,13 @@ function playTrack(index, opts = {}) {
   pbCover.src = coverFor(track);
   pbTitle.textContent = track.title;
   pbArtist.textContent = track.artist || t("Unbekannter Interpret");
-  isLiked = false;
-  pbLike.classList.remove("active");
-  pbLike.textContent = "♡";
 
   highlightPlayingRow();
   updatePlayButton(true);
   updateMediaSessionMetadata(track);
   updateAmbientGlow(track.cover);
   nowPlayingMeta = {
-    playlist: currentPlaylist.name,
+    playlist: playingPlaylist.name,
     file: track.file,
     title: track.title,
     artist: track.artist,
@@ -2287,6 +2438,7 @@ function playTrack(index, opts = {}) {
     // Songtextsuche, WELCHE Fassung eines Songs genommen wird.
     duration: track.duration,
   };
+  renderLikeState();
 
   prefetchLyrics(track);
   prefetchLyrics(peekNextTrack());
@@ -2329,9 +2481,6 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
   pbCover.src = entry.cover || PLACEHOLDER_COVER;
   pbTitle.textContent = entry.title;
   pbArtist.textContent = entry.artist || t("Unbekannter Interpret");
-  isLiked = false;
-  pbLike.classList.remove("active");
-  pbLike.textContent = "♡";
 
   currentTrackIndex = -1;
   highlightPlayingRow();
@@ -2347,6 +2496,7 @@ function playQueuedEntry(entry, source = "guest", opts = {}) {
     stream_url: entry.stream_url,
     duration: entry.duration,
   };
+  renderLikeState();
 
   if (source === "guest") {
     fetch(`/api/queue/${entry.id}`, { method: "DELETE" }).catch(() => {});
@@ -2368,15 +2518,17 @@ function updatePlayButton(playing) {
   // ICONS-Abschnitt) schaltet anhand dieses Attributs zwischen Play-
   // Dreieck und Pause-Balken um.
   pbPlay.dataset.state = playing ? "pause" : "play";
-  pbPlay.title = playing ? "Pause" : "Abspielen";
+  pbPlay.title = playing ? t("Pause") : t("Abspielen");
 }
 
 function togglePlayPause() {
   // currentTrackIndex stays -1 while a guest-queued track is playing (it
   // isn't part of currentPlaylist), so only treat -1 as "nothing loaded
   // yet" when audioEl genuinely has no src.
-  if (currentTrackIndex === -1 && !audioEl.src) {
-    if (currentPlaylist && currentPlaylist.tracks.length) playTrack(0);
+  if (currentTrackIndex === -1 && !audioEl.getAttribute("src")) {
+    // Nichts geladen: die angezeigte Playlist ab ihrem ersten Titel starten.
+    const order = currentPlaylist ? playbackOrderIndices(currentPlaylist) : [];
+    if (order.length) playFromView(order[0]);
     return;
   }
   initAudioGraph();
@@ -2393,12 +2545,12 @@ function togglePlayPause() {
    Vorher lief "weiter" immer über `index + 1` im Original-Array - hat man
    die Playlist nach Titel oder Dauer sortiert, war das sichtbar der falsche
    Song: die Sortierung wirkte nur optisch. */
-function playbackOrderIndices() {
-  const total = currentPlaylist ? currentPlaylist.tracks.length : 0;
+function playbackOrderIndices(pl = playingPlaylist) {
+  const total = pl ? pl.tracks.length : 0;
   if (!total) return [];
   // Nur verwenden, wenn die angezeigte Reihenfolge auch WIRKLICH zu dieser
   // Playlist gehört - sonst die rohe Reihenfolge wie bisher.
-  if (trackDisplayForPlaylist === currentPlaylist && trackDisplayIndices.length) {
+  if (trackDisplayForPlaylist === pl && trackDisplayIndices.length) {
     return trackDisplayIndices;
   }
   return Array.from({ length: total }, (_, i) => i);
@@ -2410,7 +2562,7 @@ function playbackOrderIndices() {
 function neighbourTrackIndex(fromIndex, step) {
   const order = playbackOrderIndices();
   if (!order.length) return -1;
-  const total = currentPlaylist.tracks.length;
+  const total = playingPlaylist.tracks.length;
   const pos = order.indexOf(fromIndex);
   if (pos === -1) {
     // Der laufende Titel ist gerade weggefiltert (Suchfeld) - dann zählt
@@ -2438,7 +2590,7 @@ function nextTrack() {
     playQueuedEntry(entry);
     return;
   }
-  if (!currentPlaylist || !currentPlaylist.tracks.length) return;
+  if (!playingPlaylist || !playingPlaylist.tracks.length) return;
   // Queue ist leer und der letzte Song kam aus der Queue (Index -1):
   // an der gemerkten Playlist-Position weitermachen statt bei 0.
   let fromIndex = currentTrackIndex;
@@ -2446,7 +2598,10 @@ function nextTrack() {
     fromIndex = queueResumeIndex;
     queueResumeIndex = -1;
   }
-  if (isShuffle) {
+  // Shuffle war beim Start schon an (gespeichert), aber noch keine
+  // Reihenfolge da - sonst ergäbe "x % 0" NaN und es käme gar nichts.
+  if (isShuffle && !shuffleOrder.length) buildShuffleOrder();
+  if (isShuffle && shuffleOrder.length) {
     const pos = shuffleOrder.indexOf(fromIndex);
     const nextPos = (pos + 1) % shuffleOrder.length;
     if (nextPos === 0 && repeatMode !== "all" && pos !== -1) {
@@ -2465,13 +2620,26 @@ function nextTrack() {
 }
 
 function prevTrack() {
-  if (!currentPlaylist || !currentPlaylist.tracks.length) return;
   // Restart the current track if we're more than 3s in (Spotify-like behaviour).
-  if (audioEl.currentTime > 3) {
-    audioEl.currentTime = 0;
+  if (audioEl.currentTime > 3 || !playingPlaylist || !playingPlaylist.tracks.length) {
+    if (audioEl.getAttribute("src")) audioEl.currentTime = 0;
     return;
   }
-  if (isShuffle) {
+  // Läuft ein Titel aus der Warteschlange (Index -1), geht "Zurück" zu dem
+  // Playlist-Titel, von dem aus in die Warteschlange abgezweigt wurde.
+  // Vorher wurde mit -1 weitergerechnet und es kam der VORLETZTE Titel.
+  if (currentTrackIndex === -1) {
+    if (queueResumeIndex >= 0) {
+      const back = queueResumeIndex;
+      queueResumeIndex = -1;
+      playTrack(back);
+    } else {
+      audioEl.currentTime = 0;
+    }
+    return;
+  }
+  if (isShuffle && !shuffleOrder.length) buildShuffleOrder();
+  if (isShuffle && shuffleOrder.length) {
     const pos = shuffleOrder.indexOf(currentTrackIndex);
     const prevPos = (pos - 1 + shuffleOrder.length) % shuffleOrder.length;
     playTrack(shuffleOrder[prevPos]);
@@ -2486,9 +2654,28 @@ playAllBtn.addEventListener("click", () => {
   if (!currentPlaylist || !currentPlaylist.tracks.length) return;
   // Der ERSTE ANGEZEIGTE Titel, nicht stur Index 0: bei sortierter oder
   // gefilterter Liste ist das sonst ein Song, der gar nicht oben steht.
-  const order = playbackOrderIndices();
-  if (order.length) playTrack(order[0]);
+  const order = playbackOrderIndices(currentPlaylist);
+  if (order.length) playFromView(order[0]);
 });
+
+function setShuffleState(on) {
+  isShuffle = on;
+  pbShuffle.classList.toggle("active", on);
+  shuffleAllBtn.classList.toggle("active", on);
+  try {
+    localStorage.setItem(SHUFFLE_KEY, on ? "1" : "0");
+  } catch (_) { /* Speicher voll */ }
+}
+
+/* Zufällig ab einem echten Zufallstitel in DIESER Playlist starten. */
+function startShuffledPlayback(pl) {
+  if (!pl || !pl.tracks.length) return;
+  setShuffleState(true);
+  if (playingPlaylist !== pl) recentlyPlayed = [];
+  playingPlaylist = pl;
+  buildShuffleOrder(false);
+  playTrack(shuffleOrder[0]);
+}
 
 /* The big shuffle button in the playlist view is a "Zufallswiedergabe
    STARTEN" button: turning it on always kicks off playback immediately
@@ -2499,16 +2686,12 @@ playAllBtn.addEventListener("click", () => {
 shuffleAllBtn.addEventListener("click", () => {
   if (suppressShuffleClick) return;
   if (!currentPlaylist || !currentPlaylist.tracks.length) return;
-  if (!isShuffle) {
-    isShuffle = true;
-    pbShuffle.classList.add("active");
-    shuffleAllBtn.classList.add("active");
-    buildShuffleOrder(false);
-    playTrack(shuffleOrder[0]);
+  // Shuffle ist an, läuft aber gerade eine ANDERE Playlist: dann soll der
+  // Knopf hier zufällig starten, nicht den Modus abschalten.
+  if (!isShuffle || playingPlaylist !== currentPlaylist) {
+    startShuffledPlayback(currentPlaylist);
   } else {
-    isShuffle = false;
-    pbShuffle.classList.remove("active");
-    shuffleAllBtn.classList.remove("active");
+    setShuffleState(false);
   }
 });
 
@@ -2518,22 +2701,19 @@ pbPrev.addEventListener("click", prevTrack);
 
 function toggleShuffle() {
   if (suppressShuffleClick) return;
-  isShuffle = !isShuffle;
-  pbShuffle.classList.toggle("active", isShuffle);
-  shuffleAllBtn.classList.toggle("active", isShuffle);
-  if (isShuffle && currentPlaylist) buildShuffleOrder();
+  setShuffleState(!isShuffle);
+  if (isShuffle) buildShuffleOrder();
+  renderQueuePanel(); // "Weiter:"-Vorschau hängt an der Reihenfolge
 }
 pbShuffle.addEventListener("click", toggleShuffle);
 
 /* Shuffle+: right-click re-rolls the shuffle order AND starts playing the
-   fresh mix right away - one gesture, instant new random playback. */
+   fresh mix right away - one gesture, instant new random playback.
+   Leiste = die spielende Playlist, großer Knopf = die angezeigte. */
 function reshuffleNow(btn) {
-  if (!currentPlaylist || !currentPlaylist.tracks.length) return;
-  isShuffle = true;
-  pbShuffle.classList.add("active");
-  shuffleAllBtn.classList.add("active");
-  buildShuffleOrder(false);
-  playTrack(shuffleOrder[0]);
+  const pl = btn === pbShuffle ? playingPlaylist || currentPlaylist : currentPlaylist;
+  if (!pl || !pl.tracks.length) return;
+  startShuffledPlayback(pl);
   showToast(t("🔀 Neu gemischt!"));
   if (btn) {
     btn.classList.remove("shuffle-pulse");
@@ -2649,19 +2829,54 @@ async function undoDelete(trashId) {
   }
 }
 
-pbRepeat.addEventListener("click", () => {
-  repeatMode = repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
+function renderRepeatState() {
   pbRepeat.classList.toggle("active", repeatMode !== "off");
   // Kein Emoji-Text mehr (siehe pbShuffle/pbPlay) - das flache Mask-Icon
   // in styles.css (SHUFFLE / REPEAT ICONS) schaltet anhand dieses
   // Attributs zwischen Loop- und Loop+1-Icon um.
   pbRepeat.dataset.mode = repeatMode;
+}
+pbRepeat.addEventListener("click", () => {
+  repeatMode = repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
+  try {
+    localStorage.setItem(REPEAT_KEY, repeatMode);
+  } catch (_) { /* Speicher voll */ }
+  renderRepeatState();
+  renderQueuePanel(); // ob nach dem letzten Titel noch etwas kommt, hängt daran
 });
+// Gespeicherten Zustand gleich anzeigen (Shuffle/Wiederholen überleben jetzt
+// einen Neustart wie in jeder anderen Musik-App).
+renderRepeatState();
+pbShuffle.classList.toggle("active", isShuffle);
+shuffleAllBtn.classList.toggle("active", isShuffle);
 
-function toggleLike() {
-  isLiked = !isLiked;
+/* Herz = "Song merken". War bisher reine Optik und beim nächsten
+   Titelwechsel wieder weg - jetzt pro Titel gespeichert. */
+const LIKED_KEY = "likedTracks";
+let likedTracks = new Set();
+try {
+  const raw = JSON.parse(localStorage.getItem(LIKED_KEY) || "[]");
+  if (Array.isArray(raw)) likedTracks = new Set(raw);
+} catch (_) { /* kaputter Eintrag - leer starten */ }
+
+function likeKey() {
+  return nowPlayingMeta ? `${nowPlayingMeta.playlist || ""}::${nowPlayingMeta.file || nowPlayingMeta.stream_url || ""}` : "";
+}
+function renderLikeState() {
+  isLiked = likedTracks.has(likeKey());
   pbLike.classList.toggle("active", isLiked);
   pbLike.textContent = isLiked ? "♥" : "♡";
+  pbLike.setAttribute("aria-pressed", String(isLiked));
+}
+function toggleLike() {
+  const key = likeKey();
+  if (!key) return;
+  if (likedTracks.has(key)) likedTracks.delete(key);
+  else likedTracks.add(key);
+  try {
+    localStorage.setItem(LIKED_KEY, JSON.stringify([...likedTracks]));
+  } catch (_) { /* Speicher voll */ }
+  renderLikeState();
 }
 pbLike.addEventListener("click", toggleLike);
 
@@ -2918,7 +3133,7 @@ queuePanelClose.addEventListener("click", closeQueuePanel);
    Queues dran. Spiegelt exakt die nextTrack()-Logik (inkl. Resume-Index
    und Shuffle-Reihenfolge), verändert aber nichts. */
 function upcomingPlaylistTracks(maxCount) {
-  if (!currentPlaylist || !currentPlaylist.tracks.length) return [];
+  if (!playingPlaylist || !playingPlaylist.tracks.length) return [];
   let fromIndex = currentTrackIndex;
   if (fromIndex === -1 && queueResumeIndex >= 0) fromIndex = queueResumeIndex;
   const out = [];
@@ -2927,16 +3142,16 @@ function upcomingPlaylistTracks(maxCount) {
     for (let step = 1; step <= shuffleOrder.length - 1 && out.length < maxCount; step++) {
       const p = pos + step;
       if (p >= shuffleOrder.length && repeatMode !== "all") break;
-      const t = currentPlaylist.tracks[shuffleOrder[p % shuffleOrder.length]];
+      const t = playingPlaylist.tracks[shuffleOrder[p % shuffleOrder.length]];
       if (t) out.push(t);
     }
     return out;
   }
   let idx = fromIndex;
-  for (let step = 1; step <= currentPlaylist.tracks.length - 1 && out.length < maxCount; step++) {
+  for (let step = 1; step <= playingPlaylist.tracks.length - 1 && out.length < maxCount; step++) {
     idx = neighbourTrackIndex(idx, 1);
     if (idx === -1) break;
-    const t = currentPlaylist.tracks[idx];
+    const t = playingPlaylist.tracks[idx];
     if (t) out.push(t);
   }
   return out;
@@ -2977,7 +3192,7 @@ function updateNextUpPreview() {
   let title = "";
   let artist = "";
   if (next && next.kind === "playlist") {
-    const t = currentPlaylist && currentPlaylist.tracks[next.index];
+    const t = playingPlaylist && playingPlaylist.tracks[next.index];
     if (t) {
       title = t.title;
       artist = t.artist;
@@ -2991,7 +3206,7 @@ function updateNextUpPreview() {
     pbNextUp.classList.add("hidden");
     return;
   }
-  pbNextUp.textContent = `Weiter: ${title}${artist ? " – " + artist : ""}`;
+  pbNextUp.textContent = t("Weiter: {title}", { title: `${title}${artist ? " – " + artist : ""}` });
   pbNextUp.classList.remove("hidden");
 }
 
@@ -3149,7 +3364,7 @@ function renderQueuePanel() {
   const upcoming = upcomingPlaylistTracks(8);
   if (upcoming.length) {
     queuePanelBody.appendChild(
-      queueSectionHeading(t("Danach: {playlist}", { playlist: currentPlaylist ? currentPlaylist.name : "" }))
+      queueSectionHeading(t("Danach: {playlist}", { playlist: playingPlaylist ? playingPlaylist.name : "" }))
     );
     upcoming.forEach((t) => {
       const row = queueRowBase({ title: t.title, artist: t.artist, cover: coverFor(t) });
@@ -3181,6 +3396,9 @@ function renderQueuePanel() {
    Netzwerk, nur Disk-IO). Peak-Werte pro Bucket statt RMS, damit auch
    kurze, laute Schlaege sichtbar bleiben statt im Mittelwert unterzugehen. */
 const WAVEFORM_BUCKETS = 100;
+// ~25 min MP3 bei 128 kbps bzw. ~10 min bei 320 kbps - normale Songs liegen
+// weit darunter.
+const WAVEFORM_MAX_BYTES = 24 * 1024 * 1024;
 const WAVEFORM_PLACEHOLDER_PEAKS = new Float32Array(WAVEFORM_BUCKETS).fill(0.14);
 let waveformPeaks = null; // Float32Array[0..1] pro Bucket, oder null solange nicht geladen/fehlgeschlagen
 let waveformToken = 0;
@@ -3383,10 +3601,21 @@ async function analyzeCurrentTrackAudio(streamUrl) {
   waveformPeaks = null;
   currentTrackBeatInfo = beatInfoCache.has(streamUrl) ? beatInfoCache.get(streamUrl) : null;
   drawWaveform();
+  const abort = typeof AbortController === "function" ? new AbortController() : null;
   try {
-    const resp = await fetch(streamUrl);
+    const resp = await fetch(streamUrl, abort ? { signal: abort.signal } : undefined);
     if (!resp.ok || token !== waveformToken) return;
+    // Lange Mixes und Videos NICHT komplett dekodieren: eine Stunde Audio
+    // sind dekodiert über 600 MB Rohdaten - auf dem Handy reisst das die
+    // ganze WebView mit (App stürzt ab), auf dem PC friert sie kurz ein.
+    // Dann bleibt es bei der flachen Platzhalter-Wellenform.
+    const size = Number(resp.headers.get("content-length")) || 0;
+    if (size > WAVEFORM_MAX_BYTES) {
+      if (abort) abort.abort();
+      return;
+    }
     const buf = await resp.arrayBuffer();
+    if (buf.byteLength > WAVEFORM_MAX_BYTES) return;
     if (token !== waveformToken) return;
     const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     if (!OfflineCtx) return;
@@ -3757,6 +3986,9 @@ function loadSavedVolume() {
    einem Crossfade-Rollentausch soll nichts auf einem alten Wert stehen. */
 function pushVolumeGain() {
   const g = volumeToGain(volumePos);
+  // Die Video-Ansicht spielt an Web Audio vorbei über ein eigenes Element -
+  // ohne das lief sie immer mit 100 %, egal wo der Regler stand.
+  videoPlayerEl.volume = g;
   if (userVolumeGain && audioCtx) {
     audioElA.volume = 1;
     audioElB.volume = 1;
@@ -3937,7 +4169,7 @@ async function uploadFiles(playlistName, files, onDone) {
   try {
     const res = await fetch("/api/library/upload", { method: "POST", body: formData });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Hochladen fehlgeschlagen.");
+    if (!res.ok) throw new Error(data.error || t("Hochladen fehlgeschlagen."));
     const skippedNote = data.skipped ? t(", {count} übersprungen", { count: data.skipped }) : "";
     showUploadToast(
       t('✅ {count} Titel zu „{name}" hinzugefügt{skipped}', {
@@ -3949,7 +4181,7 @@ async function uploadFiles(playlistName, files, onDone) {
     await refreshLibrary();
     if (onDone) onDone(data.playlist);
   } catch (err) {
-    showUploadToast(`❌ ${err.message || "Hochladen fehlgeschlagen."}`);
+    showUploadToast(`❌ ${err.message || t("Hochladen fehlgeschlagen.")}`);
   } finally {
     setTimeout(() => uploadToast.classList.add("hidden"), 3000);
   }
@@ -5253,7 +5485,7 @@ function resetFadeForNewTrack() {
 function peekNextEntry() {
   if (userQueue.length) return { kind: "user", entry: userQueue[0], streamUrl: userQueue[0].stream_url };
   if (liveQueue.length) return { kind: "guest", entry: liveQueue[0], streamUrl: liveQueue[0].stream_url };
-  if (!currentPlaylist || !currentPlaylist.tracks.length) return null;
+  if (!playingPlaylist || !playingPlaylist.tracks.length) return null;
   let fromIndex = currentTrackIndex;
   if (fromIndex === -1 && queueResumeIndex >= 0) fromIndex = queueResumeIndex;
   let idx;
@@ -5266,7 +5498,7 @@ function peekNextEntry() {
     idx = neighbourTrackIndex(fromIndex, 1);
     if (idx === -1) return null;
   }
-  const t = currentPlaylist.tracks[idx];
+  const t = playingPlaylist.tracks[idx];
   return t ? { kind: "playlist", index: idx, streamUrl: t.stream_url } : null;
 }
 
@@ -5619,7 +5851,9 @@ function drawVisualizerFrame() {
     const barCount = data.length;
     const gap = 4;
     const barWidth = w / barCount - gap;
-    const accent = getComputedStyle(document.documentElement).getPropertyValue("--sp-green").trim() || "#1db954";
+    // Gemerkte Themenfarbe statt getComputedStyle in jedem Bild (60x/s
+    // eine Stilberechnung); wird beim Themenwechsel verworfen.
+    const accent = eqCurvePalette().accent;
     for (let i = 0; i < barCount; i++) {
       const pct = data[i] / 255;
       const barHeight = Math.max(3, pct * h * 0.85);
@@ -6128,12 +6362,14 @@ function hotkeysEqual(a, b) {
 
 function matchesHotkey(e, combo) {
   const key = e.key === " " ? " " : e.key.toLowerCase();
-  return (
-    e.ctrlKey === !!combo.ctrl &&
-    e.altKey === !!combo.alt &&
-    e.shiftKey === !!combo.shift &&
-    key === combo.key
-  );
+  // Zeichen wie "?" gibt es nur MIT Umschalt - das Zeichen selbst sagt
+  // schon alles. Mit strenger Umschalt-Prüfung feuerte das voreingestellte
+  // "?" (Tastenkürzel-Übersicht) auf keiner Tastatur je.
+  const shiftOk = isShiftedSymbol(combo.key) || e.shiftKey === !!combo.shift;
+  return e.ctrlKey === !!combo.ctrl && e.altKey === !!combo.alt && shiftOk && key === combo.key;
+}
+function isShiftedSymbol(key) {
+  return typeof key === "string" && key.length === 1 && /[^\p{L}\p{N}\s]/u.test(key) && key !== "-" && key !== "+";
 }
 
 let recordingActionId = null;
@@ -6224,7 +6460,7 @@ document.addEventListener("keydown", (e) => {
     (a) => a.id !== recordingActionId && hotkeysEqual(hotkeyBindings[a.id], combo)
   );
   if (clash) {
-    showToast(t('⚠️ Kombination schon vergeben für „{label}"', { label: clash.label }));
+    showToast(t('⚠️ Kombination schon vergeben für „{label}"', { label: t(clash.label) }));
     recordingActionId = null;
     renderHotkeyList();
     return;
@@ -6367,7 +6603,7 @@ if ("serviceWorker" in navigator) {
    entering search just hides those sections and shows searchView, leaving
    `currentView` untouched so clearing the query can restore it exactly. */
 function setSearchActive(active) {
-  [emptyState, homeView, libraryView, playlistView, trashView, duplicatesView, statsView].forEach((el) => {
+  [emptyState, homeView, libraryView, playlistView, trashView, duplicatesView, statsView, healthView, historyView].forEach((el) => {
     if (active) el.classList.add("hidden");
   });
   searchView.classList.toggle("hidden", !active);
@@ -6620,7 +6856,7 @@ function performSearch() {
   searchOnlineSection.classList.remove("hidden");
   const loading = document.createElement("div");
   loading.className = "card-sub";
-  loading.textContent = "🌐 Suche online …";
+  loading.textContent = t("🌐 Suche online …");
   searchOnlineGrid.appendChild(loading);
   updateSearchNothingState();
   clearTimeout(onlineSearchTimer);
@@ -6658,7 +6894,10 @@ async function downloadPlaylistOffline() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${safeClientFilename(track.title)}.mp3`;
+      // Echte Endung der Datei - ein mp4-Video als ".mp3" gespeichert öffnet
+      // danach kein Player mehr richtig.
+      const ext = (/\.[a-z0-9]{2,4}$/i.exec(track.file || "") || [".mp3"])[0].toLowerCase();
+      a.download = `${safeClientFilename(track.title)}${ext}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -6736,8 +6975,8 @@ async function fetchLyricsData(playlist, file, title, artist, duration, force = 
 }
 
 function prefetchLyrics(track) {
-  if (!track || !track.title || !currentPlaylist) return;
-  fetchLyricsData(currentPlaylist.name, track.file, track.title, track.artist, track.duration).catch(() => {});
+  if (!track || !track.title || !playingPlaylist) return;
+  fetchLyricsData(playingPlaylist.name, track.file, track.title, track.artist, track.duration).catch(() => {});
 }
 
 /* Playlist-weiter Hintergrund-Prefetch: sobald eine Playlist geöffnet (oder
@@ -6806,16 +7045,16 @@ function prefetchMissingCovers(pl) {
    prefetch lyrics for. Guest-queue entries aren't playlist tracks with
    stable metadata to prefetch against, so those are skipped. */
 function peekNextTrack() {
-  if (userQueue.length || liveQueue.length || !currentPlaylist || !currentPlaylist.tracks.length) return null;
+  if (userQueue.length || liveQueue.length || !playingPlaylist || !playingPlaylist.tracks.length) return null;
   if (isShuffle && shuffleOrder.length) {
     const pos = shuffleOrder.indexOf(currentTrackIndex);
     const nextPos = (pos + 1) % shuffleOrder.length;
     if (nextPos === 0 && repeatMode !== "all") return null;
-    return currentPlaylist.tracks[shuffleOrder[nextPos]] || null;
+    return playingPlaylist.tracks[shuffleOrder[nextPos]] || null;
   }
   const next = neighbourTrackIndex(currentTrackIndex, 1);
   if (next === -1) return null;
-  return currentPlaylist.tracks[next] || null;
+  return playingPlaylist.tracks[next] || null;
 }
 
 // Re-check once a track is most of the way through - covers shuffle/repeat
@@ -7627,7 +7866,7 @@ function renderParticipants(list) {
     dot.className = "qr-participant-dot";
     const name = document.createElement("span");
     name.className = "qr-participant-name";
-    name.textContent = p.name || "Gast";
+    name.textContent = p.name || t("Gast");
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className = "qr-participant-remove";
@@ -7658,7 +7897,7 @@ const partySkipStatus = document.getElementById("partySkipStatus");
 function renderSkipVotes({ count, needed }) {
   if (!partySkipStatus) return;
   partySkipStatus.classList.toggle("hidden", !count);
-  if (count) partySkipStatus.textContent = `🙋 Skip-Wunsch: ${count}/${needed}`;
+  if (count) partySkipStatus.textContent = t("🙋 Skip-Wunsch: {count}/{needed}", { count, needed });
 }
 
 let partyModeActive = false;
@@ -8044,18 +8283,7 @@ function renderDuplicates(groups) {
           // gegen nowPlayingMeta pruefen, statt wie in deleteTrack() gegen
           // den Index. Sonst zeigt der Player weiter auf eine gerade
           // verschobene Datei.
-          if (nowPlayingMeta && nowPlayingMeta.playlist === track.playlist && nowPlayingMeta.file === track.file) {
-            audioEl.pause();
-            audioEl.removeAttribute("src");
-            currentTrackIndex = -1;
-            nowPlayingMeta = null;
-            hidePlayerBar();
-            updatePlayButton(false);
-            pbTitle.textContent = t("Kein Titel ausgewählt");
-            pbArtist.textContent = "—";
-            updateVideoButtonVisibility();
-            closeVideoViewIfOpenForTrackChange();
-          }
+          stopIfNowPlaying(track.playlist, track.file);
           await refreshLibrary();
           await loadDuplicates();
         } catch (err) {
