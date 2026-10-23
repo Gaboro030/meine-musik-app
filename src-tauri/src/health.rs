@@ -822,7 +822,7 @@ fn restore_backup_over_track(
         return Err("Sicherung nicht mehr vorhanden.".into());
     }
     let full = track_full_path(state, playlist, filename)?;
-    std::fs::rename(&backup, &full).map_err(|e| e.to_string())?;
+    crate::trash::move_file(&backup, &full)?; // Papierkorb kann auf anderem Dateisystem liegen (Android)
     invalidate_derived_data(state, playlist, filename, &full);
     let mut entries = crate::trash::load_index(&state.trash_index_file);
     entries.retain(|e| e.id != trash_id);

@@ -14,6 +14,22 @@ pub struct TrashEntry {
 
 static TRASH_LOCK: Mutex<()> = Mutex::new(());
 
+/// Verschieben, notfalls kopieren + loeschen. Auf Android liegen Musik
+/// (gemeinsamer Speicher) und Papierkorb (App-Daten) auf verschiedenen
+/// Dateisystemen - rename scheitert dort mit "cross-device link", und
+/// Loeschen/Wiederherstellen ging gar nicht.
+pub(crate) fn move_file(src: &Path, dest: &Path) -> Result<(), String> {
+    if std::fs::rename(src, dest).is_ok() {
+        return Ok(());
+    }
+    std::fs::copy(src, dest).map_err(|e| e.to_string())?;
+    if let Err(e) = std::fs::remove_file(src) {
+        let _ = std::fs::remove_file(dest); // lieber nichts tun als die Datei doppelt
+        return Err(e.to_string());
+    }
+    Ok(())
+}
+
 pub(crate) fn load_index(file: &Path) -> Vec<TrashEntry> {
     std::fs::read_to_string(file)
         .ok()
@@ -43,7 +59,7 @@ pub fn move_to_trash(
     std::fs::create_dir_all(&state.trash_dir).map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let dest = state.trash_dir.join(format!("{id}.mp3"));
-    std::fs::rename(src_path, &dest).map_err(|e| e.to_string())?;
+    move_file(src_path, &dest)?;
     // Verwaisten Cover-Cache-Sidecar mit aufraeumen - sonst wuerde ein
     // spaeter neu hinzugefuegter Track mit demselben Dateinamen (gleiche
     // Playlist) faelschlich das alte, alte Cover serviert bekommen
@@ -95,14 +111,20 @@ pub fn restore_trash(state: tauri::State<AppState>, trash_id: String) -> Result<
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| entry.filename.clone());
+    // Echte Endung behalten - eine m4a/mp4 hiess bei Namensgleichheit sonst
+    // ploetzlich ".mp3" und spielte nicht mehr.
+    let ext = Path::new(&entry.filename)
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_else(|| "mp3".to_string());
     let mut dest = playlist_dir.join(&entry.filename);
     let mut n = 2;
     while dest.exists() {
-        dest = playlist_dir.join(format!("{stem} ({n}).mp3"));
+        dest = playlist_dir.join(format!("{stem} ({n}).{ext}"));
         n += 1;
     }
 
-    std::fs::rename(&src, &dest).map_err(|e| e.to_string())?;
+    move_file(&src, &dest)?;
     entries.remove(idx);
     save_index(&state.trash_index_file, &entries);
     Ok(())
@@ -124,4 +146,21 @@ pub fn delete_trash_forever(state: tauri::State<AppState>, trash_id: String) -> 
     entries.remove(idx);
     save_index(&state.trash_index_file, &entries);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn move_file_moves_and_leaves_no_source() {
+        let dir = std::env::temp_dir().join(format!("mm_trash_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("a.m4a"), dir.join("b.m4a"));
+        std::fs::write(&a, b"x").unwrap();
+        move_file(&a, &b).unwrap();
+        assert!(!a.exists());
+        assert_eq!(std::fs::read(&b).unwrap(), b"x");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
