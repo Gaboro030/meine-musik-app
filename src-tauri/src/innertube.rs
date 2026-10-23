@@ -733,6 +733,10 @@ pub async fn download_progress(
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let stem = crate::commands::safe_filename(title);
     let path = dir.join(format!("{stem}.{}", pick.ext));
+    // Erst unter ".part" laden: die Bibliothek kennt die Endung nicht, ein
+    // halb geladener Song taucht also nicht schon als kaputter Titel auf -
+    // und ein Abbruch hinterlaesst keinen.
+    let part = dir.join(format!("{stem}.{}.part", pick.ext));
 
     let mut media_req = client.get(&pick.url);
     if !pick.ua.is_empty() {
@@ -746,18 +750,25 @@ pub async fn download_progress(
         return Err(format!("Download fehlgeschlagen: {}", resp.status()));
     }
     let total = resp.content_length();
-    let mut file = tokio::fs::File::create(&path).await.map_err(|e| e.to_string())?;
+    let mut file = tokio::fs::File::create(&part).await.map_err(|e| e.to_string())?;
     let mut stream = resp.bytes_stream();
     let event = format!("dl-progress-{task_id}");
     let mut done: u64 = 0;
     let mut last_pct: i64 = -1;
     let start = std::time::Instant::now();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| {
-            let _ = std::fs::remove_file(&path);
-            format!("Verbindung abgebrochen: {e}")
-        })?;
-        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+    let fail = |msg: String| {
+        let _ = std::fs::remove_file(&part);
+        msg
+    };
+    loop {
+        // Ohne Zeitlimit hing ein Download bei einer stehengebliebenen
+        // Verbindung fuer immer bei "x %".
+        let next = tokio::time::timeout(std::time::Duration::from_secs(30), stream.next())
+            .await
+            .map_err(|_| fail("Verbindung haengt - Download abgebrochen.".to_string()))?;
+        let Some(chunk) = next else { break };
+        let chunk = chunk.map_err(|e| fail(format!("Verbindung abgebrochen: {e}")))?;
+        file.write_all(&chunk).await.map_err(|e| fail(e.to_string()))?;
         done += chunk.len() as u64;
         if let Some(total) = total {
             let pct = (done as f64 / total as f64 * 100.0) as i64;
@@ -784,7 +795,16 @@ pub async fn download_progress(
             }
         }
     }
-    file.flush().await.map_err(|e| e.to_string())?;
+    file.flush().await.map_err(|e| fail(e.to_string()))?;
+    drop(file);
+    if let Some(total) = total {
+        if done < total {
+            return Err(fail("Download unvollstaendig - bitte erneut versuchen.".to_string()));
+        }
+    }
+    // Gleicher Titel schon da (erneuter Sammel-Download): ersetzen wie bisher.
+    let _ = std::fs::remove_file(&path);
+    std::fs::rename(&part, &path).map_err(|e| fail(e.to_string()))?;
 
     // m4a has no ID3/MP4 tag written (no ffmpeg on Android to embed one) -
     // same problem as the cover art below, same fix: a sidecar file next to
