@@ -558,6 +558,9 @@ fn top_artists(tracks: &[crate::commands::TrackMeta], max: usize) -> Vec<String>
     pairs.into_iter().take(max).map(|(a, _)| a.clone()).collect()
 }
 
+/// Alle Suchen GLEICHZEITIG - jede ist ein eigener yt-dlp-Start von ein
+/// paar Sekunden, nacheinander summierte sich das beim Start der App auf
+/// zehn Sekunden und mehr, bis "Entdecken" ueberhaupt etwas zeigte.
 async fn gather(
     app: &tauri::AppHandle,
     queries: &[String],
@@ -565,23 +568,32 @@ async fn gather(
     exclude_ids: &HashSet<String>,
     count: usize,
 ) -> Vec<OnlineTrack> {
+    let results = futures_util::future::join_all(queries.iter().map(|q| yt_search(app, q, 15))).await;
+    pick(results.into_iter().filter_map(Result::ok).flatten(), have_titles, exclude_ids, count)
+}
+
+/// Aus Suchtreffern die brauchbaren Vorschlaege: keine Dubletten, keine
+/// schlechten Fassungen, nichts, was schon in der Bibliothek liegt.
+fn pick(
+    results: impl IntoIterator<Item = OnlineTrack>,
+    have_titles: &HashSet<String>,
+    exclude_ids: &HashSet<String>,
+    count: usize,
+) -> Vec<OnlineTrack> {
     let mut seen = exclude_ids.clone();
     let mut candidates = Vec::new();
-    for q in queries {
-        let Ok(results) = yt_search(app, q, 15).await else { continue };
-        for r in results {
-            if seen.contains(&r.video_id) {
-                continue;
-            }
-            if is_bad_variant(&format!("{} {}", r.title, r.artist)) {
-                continue;
-            }
-            if have_titles.contains(&normalize_title(&r.title)) {
-                continue;
-            }
-            seen.insert(r.video_id.clone());
-            candidates.push(r);
+    for r in results {
+        if seen.contains(&r.video_id) {
+            continue;
         }
+        if is_bad_variant(&format!("{} {}", r.title, r.artist)) {
+            continue;
+        }
+        if have_titles.contains(&normalize_title(&r.title)) {
+            continue;
+        }
+        seen.insert(r.video_id.clone());
+        candidates.push(r);
     }
     candidates.shuffle(&mut rand::thread_rng());
     candidates.truncate(count);
@@ -672,8 +684,12 @@ pub async fn discover_rows(
 
     let mut used: HashSet<String> = exclude_ids.into_iter().collect();
     let mut rows = Vec::new();
-    for artist in artists {
-        let picks = gather(&app, &[artist.clone()], &have_titles, &used, 10).await;
+    // Suchen parallel, das Aussortieren danach der Reihe nach - eine Reihe
+    // soll keinen Song zeigen, den schon eine vorige zeigt.
+    let per_artist =
+        futures_util::future::join_all(artists.iter().map(|a| yt_search(&app, a, 15))).await;
+    for (artist, res) in artists.into_iter().zip(per_artist) {
+        let picks = pick(res.unwrap_or_default(), &have_titles, &used, 10);
         for p in &picks {
             used.insert(p.video_id.clone());
         }
