@@ -692,7 +692,9 @@ async function loadLibrary() {
         } catch (_) { /* einzelner Fehlschlag stoppt den Rest nicht */ }
       }
     };
-    for (let i = 0; i < 2; i++) worker();
+    // Einer reicht: jeder Abruf stellt bis zu drei Anfragen gleichzeitig, und
+    // lrclib antwortet bei zu vielen mit "ServerOverloaded".
+    worker();
   }
 }
 
@@ -6972,7 +6974,10 @@ async function fetchLyricsData(playlist, file, title, artist, duration, force = 
     // klappen darf (lrclib kurz nicht erreichbar, Titel noch ohne saubere
     // Schreibweise) - dieser Speicher hier hat genau das ausgehebelt und
     // den Song für die ganze Sitzung auf "kein Songtext" festgenagelt.
-    if (!data || !data.found) lyricsMemCache.delete(key);
+    // Ohne Zeitstempel ebenso nicht: das kann ein Ersatztext aus einem Moment
+    // sein, in dem lrclib ueberlastet war - beim naechsten Oeffnen neu fragen
+    // (Songs, die wirklich keine Zeiten haben, liefert dann der Datei-Cache).
+    if (!data || !data.found || !data.synced) lyricsMemCache.delete(key);
     return data;
   } catch (err) {
     lyricsMemCache.delete(key); // Fehlschläge nicht einfrieren - nächster Versuch darf neu laden
@@ -6988,7 +6993,7 @@ function prefetchLyrics(track) {
 /* Playlist-weiter Hintergrund-Prefetch: sobald eine Playlist geöffnet (oder
    die Bibliothek geladen) wird, werden ALLE Songtexte vorgeladen - erst in
    den Rust-Datei-Cache (einmalig übers Netz, danach nie wieder), dann in
-   die Memory-Map oben. 3 Worker parallel, damit weder lrclib gehämmert
+   die Memory-Map oben. 2 Worker parallel, damit weder lrclib gehämmert
    noch der Main-Thread blockiert wird. Ein neuer Aufruf bricht den alten
    Durchlauf über das Token ab (Playlist-Wechsel). */
 let playlistPrefetchToken = 0;
@@ -7005,7 +7010,7 @@ function prefetchPlaylistLyrics(pl) {
       } catch (_) { /* einzelner Fehlschlag stoppt den Rest nicht */ }
     }
   };
-  for (let i = 0; i < 3; i++) worker();
+  for (let i = 0; i < 2; i++) worker();
 }
 
 /* Automatisches Cover-Nachladen: Tracks ohne eigenes Cover (weder ID3-Bild

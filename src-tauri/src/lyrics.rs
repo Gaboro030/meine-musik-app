@@ -26,6 +26,11 @@ pub struct LyricsResult {
     /// sie automatisch veraltet.
     #[serde(default)]
     pub schema: u32,
+    /// Nur Ersatztext (kein Zeitstempel), weil lrclib gerade nicht
+    /// antwortete - darf NICHT auf die Platte, sonst bleibt der Song fuer
+    /// immer ohne Karaoke, obwohl lrclib die Zeiten eigentlich hat.
+    #[serde(skip)]
+    pub provisional: bool,
 }
 
 /// Hochzaehlen, wenn sich an der Auswahl etwas aendert, das bereits
@@ -39,7 +44,18 @@ pub struct LyricsResult {
 /// 2 -> 3: "Interpret - Titel" wird aufgeloest. Bei YouTube-Rips steht der
 /// echte Interpret im Titel und im Interpretenfeld der Kanalname - damit
 /// ging vorher jede Suche ins Leere.
-pub const LYRICS_SCHEMA: u32 = 3;
+///
+/// 3 -> 4: War lrclib ueberlastet (503 "ServerOverloaded"), gewann der
+/// Ersatztext von lyrics.ovh - ohne Zeitstempel, mit Genius-Zeilen wie
+/// "[Kanye West]" - und wurde dauerhaft gespeichert. Solche Eintraege
+/// (alter Stand, ohne Zeitstempel) werden einmal neu geholt; welche MIT
+/// Zeitstempeln bleiben gueltig (siehe cache_still_valid).
+pub const LYRICS_SCHEMA: u32 = 4;
+
+/// Darf ein gespeicherter Songtext so bleiben?
+fn cache_still_valid(cached: &LyricsResult) -> bool {
+    cached.schema >= LYRICS_SCHEMA || (cached.schema + 1 == LYRICS_SCHEMA && cached.synced.is_some())
+}
 
 const LRCLIB_GET: &str = "https://lrclib.net/api/get";
 const LRCLIB_SEARCH: &str = "https://lrclib.net/api/search";
@@ -298,12 +314,32 @@ struct LrcHit {
     artist_name: String,
 }
 
+/// lrclib antwortet unter Last mit 503 "ServerOverloaded" (oder 429) - das
+/// heisst nicht "gibt es nicht", also kurz warten und nochmal fragen.
+/// Err = lrclib war nicht erreichbar, Ok(None) = erreichbar, kein Treffer.
+async fn lrclib_send(
+    request: impl Fn() -> reqwest::RequestBuilder,
+) -> Result<Option<reqwest::Response>, ()> {
+    for wait_ms in [0u64, 1500, 4000] {
+        if wait_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
+        }
+        match request().send().await {
+            Ok(r) if r.status().is_success() => return Ok(Some(r)),
+            Ok(r) if r.status().is_server_error() || r.status().as_u16() == 429 => continue,
+            Ok(_) => return Ok(None), // 404 & Co.: wirklich kein Treffer
+            Err(_) => continue,
+        }
+    }
+    Err(())
+}
+
 async fn lrclib_get(
     client: &reqwest::Client,
     title: &str,
     artist: &str,
     duration: Option<f64>,
-) -> Option<LrcHit> {
+) -> Result<Option<LrcHit>, ()> {
     let clean_title = clean_query_text(title);
     let clean_artist = clean_query_text(artist);
     let mut params = vec![
@@ -313,22 +349,23 @@ async fn lrclib_get(
     if let Some(d) = duration {
         params.push(("duration".to_string(), (d as i64).to_string()));
     }
-    let resp = client.get(LRCLIB_GET).query(&params).send().await.ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
-    let data: serde_json::Value = resp.json().await.ok()?;
+    let Some(resp) = lrclib_send(|| client.get(LRCLIB_GET).query(&params)).await? else {
+        return Ok(None);
+    };
+    let Ok(data) = resp.json::<serde_json::Value>().await else {
+        return Ok(None);
+    };
     let synced = str_field(&data, "syncedLyrics");
     let plain = str_field(&data, "plainLyrics");
     if synced.is_none() && plain.is_none() {
-        return None;
+        return Ok(None);
     }
-    Some(LrcHit {
+    Ok(Some(LrcHit {
         synced,
         plain,
         track_name: str_field(&data, "trackName").unwrap_or_default(),
         artist_name: str_field(&data, "artistName").unwrap_or_default(),
-    })
+    }))
 }
 
 /// Volltextsuche statt Exakt-Match - prueft mehrere Kandidaten (nicht mehr
@@ -358,12 +395,13 @@ async fn lrclib_search(
     title: &str,
     artist: &str,
     duration: Option<f64>,
-) -> Option<LrcHit> {
-    let resp = client.get(LRCLIB_SEARCH).query(&[("q", q)]).send().await.ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
-    let items: Vec<serde_json::Value> = resp.json().await.ok()?;
+) -> Result<Option<LrcHit>, ()> {
+    let Some(resp) = lrclib_send(|| client.get(LRCLIB_SEARCH).query(&[("q", &q)])).await? else {
+        return Ok(None);
+    };
+    let Ok(items) = resp.json::<Vec<serde_json::Value>>().await else {
+        return Ok(None);
+    };
     let mut best: Option<(f64, bool, LrcHit)> = None;
     for item in items.iter().take(20) {
         let track_name = str_field(item, "trackName").unwrap_or_default();
@@ -403,7 +441,7 @@ async fn lrclib_search(
             }
         }
     }
-    best.map(|(_, _, hit)| hit)
+    Ok(best.map(|(_, _, hit)| hit))
 }
 
 /// Macht aus einem LRC-Text ("[01:23.45] Zeile") einfachen Text. Gebraucht
@@ -471,13 +509,15 @@ pub async fn fetch_lyrics(
     // die erste Quelle schon einen Treffer liefert, spart dafuer im
     // Normalfall spuerbar Zeit bis die Lyrics im Overlay stehen.
     let search_q = format!("{} {}", clean_query_text(&artist), clean_query_text(&title));
-    let (get_hit, search_hit, ovh_hit) = tokio::join!(
+    let (get_res, search_res, ovh_hit) = tokio::join!(
         lrclib_get(&client, &title, &artist, duration),
         lrclib_search(&client, search_q, &title, &artist, duration),
         lyrics_ovh(&client, &title, &artist),
     );
+    let mut lrclib_down = get_res.is_err() || search_res.is_err();
+    let search_hit = search_res.ok().flatten();
 
-    let get_hit = get_hit.filter(|h| candidate_ok(&title, &artist, &h.track_name, &h.artist_name));
+    let get_hit = get_res.ok().flatten().filter(|h| candidate_ok(&title, &artist, &h.track_name, &h.artist_name));
     // Ein Treffer OHNE Zeitstempel aus der Exakt-Abfrage soll einen Treffer
     // MIT Zeitstempeln aus der Suche nicht verdraengen - sonst verliert der
     // Karaoke-Modus seine Grundlage, obwohl die passenden Zeiten da waeren.
@@ -508,9 +548,13 @@ pub async fn fetch_lyrics(
     // sie nur auf, wenn wir sonst "keine Lyrics gefunden" zeigen wuerden.
     if synced.is_none() && plain.is_none() {
         let title_only_q = clean_query_text(&title);
-        if let Some(h) = lrclib_search(&client, title_only_q, &title, "", duration).await {
-            synced = h.synced;
-            plain = h.plain;
+        match lrclib_search(&client, title_only_q, &title, "", duration).await {
+            Ok(Some(h)) => {
+                synced = h.synced;
+                plain = h.plain;
+            }
+            Ok(None) => {}
+            Err(()) => lrclib_down = true,
         }
     }
 
@@ -521,8 +565,10 @@ pub async fn fetch_lyrics(
     // laufen und sind schlimmer als gar keine.
     if synced.is_none() && plain.is_none() && duration.is_some() {
         let title_only_q = clean_query_text(&title);
-        if let Some(h) = lrclib_search(&client, title_only_q, &title, "", None).await {
-            plain = h.plain.or_else(|| h.synced.as_deref().map(strip_lrc_timestamps));
+        match lrclib_search(&client, title_only_q, &title, "", None).await {
+            Ok(Some(h)) => plain = h.plain.or_else(|| h.synced.as_deref().map(strip_lrc_timestamps)),
+            Ok(None) => {}
+            Err(()) => lrclib_down = true,
         }
     }
 
@@ -531,6 +577,7 @@ pub async fn fetch_lyrics(
             title,
             artist,
             lyrics: plain.unwrap_or_default(),
+            provisional: synced.is_none() && lrclib_down,
             synced,
             found: true,
             schema: LYRICS_SCHEMA,
@@ -543,6 +590,7 @@ pub async fn fetch_lyrics(
             synced: None,
             found: false,
             schema: LYRICS_SCHEMA,
+            provisional: false,
         })
     }
 }
@@ -595,7 +643,7 @@ pub async fn get_lyrics_cached(
                     // Verbesserungen daran keinerlei Wirkung auf Songs, die
                     // schon einmal geladen wurden - und genau die sind ja
                     // die, bei denen etwas schiefging.
-                    if cached.schema >= LYRICS_SCHEMA {
+                    if cache_still_valid(&cached) {
                         return Ok(cached);
                     }
                 }
@@ -603,7 +651,7 @@ pub async fn get_lyrics_cached(
         }
     }
     let result = fetch_lyrics(title, artist, duration).await?;
-    if result.found {
+    if result.found && !result.provisional {
         if let Some(path) = &sidecar {
             if let Ok(json) = serde_json::to_string(&result) {
                 let _ = std::fs::write(path, json);
@@ -636,6 +684,25 @@ mod tests {
         ))
         .unwrap();
         assert!(neu.schema >= LYRICS_SCHEMA);
+    }
+
+    /// Ersatztext ohne Zeitstempel aus dem alten Stand wird neu geholt,
+    /// alte Eintraege MIT Zeitstempeln bleiben, aktuelle sowieso.
+    #[test]
+    fn ersatztext_ohne_zeitstempel_wird_neu_geholt() {
+        let mk = |schema: u32, synced: Option<&str>| LyricsResult {
+            title: "A".into(),
+            artist: "B".into(),
+            lyrics: "x".into(),
+            synced: synced.map(str::to_string),
+            found: true,
+            schema,
+            provisional: false,
+        };
+        assert!(!cache_still_valid(&mk(LYRICS_SCHEMA - 1, None)));
+        assert!(cache_still_valid(&mk(LYRICS_SCHEMA - 1, Some("[00:01.00] x"))));
+        assert!(!cache_still_valid(&mk(LYRICS_SCHEMA - 2, Some("[00:01.00] x"))));
+        assert!(cache_still_valid(&mk(LYRICS_SCHEMA, None)));
     }
 
     #[test]
