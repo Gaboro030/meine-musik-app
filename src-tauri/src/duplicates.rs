@@ -40,7 +40,7 @@ fn normalize(text: &str) -> String {
 /// zwei verschiedene Playlists heruntergeladen wurde. Nur Gruppen mit mehr
 /// als einem Treffer werden zurueckgegeben.
 #[tauri::command]
-pub fn find_duplicates(state: tauri::State<AppState>) -> Result<Vec<DuplicateGroup>, String> {
+pub async fn find_duplicates(state: tauri::State<'_, AppState>) -> Result<Vec<DuplicateGroup>, String> {
     let playlists = crate::commands::list_playlists_inner(&state.music_root);
     let mut groups: HashMap<String, Vec<DuplicateTrack>> = HashMap::new();
     for pl in &playlists {

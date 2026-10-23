@@ -95,7 +95,7 @@ fn health_check_inner(state: &AppState) -> HealthReport {
 }
 
 #[tauri::command]
-pub fn health_check(state: tauri::State<AppState>) -> Result<HealthReport, String> {
+pub async fn health_check(state: tauri::State<'_, AppState>) -> Result<HealthReport, String> {
     Ok(health_check_inner(&state))
 }
 
@@ -111,7 +111,7 @@ pub struct HealthCleanupResult {
 /// vorherigen health_check()-Aufruf zu verlassen - zwischen Anzeigen und
 /// Klick auf "Bereinigen" koennte sich sonst etwas geaendert haben.
 #[tauri::command]
-pub fn health_check_cleanup(state: tauri::State<AppState>) -> Result<HealthCleanupResult, String> {
+pub async fn health_check_cleanup(state: tauri::State<'_, AppState>) -> Result<HealthCleanupResult, String> {
     let report = health_check_inner(&state);
 
     let mut removed_sidecars = 0usize;

@@ -434,7 +434,7 @@ pub(crate) fn list_playlists_inner(root: &Path) -> Vec<PlaylistOut> {
 }
 
 #[tauri::command]
-pub fn list_playlists(state: tauri::State<AppState>) -> Result<Vec<PlaylistOut>, String> {
+pub async fn list_playlists(state: tauri::State<'_, AppState>) -> Result<Vec<PlaylistOut>, String> {
     let _lock = LIBRARY_LOCK.lock().unwrap();
     Ok(list_playlists_inner(&state.music_root))
 }
@@ -472,7 +472,7 @@ pub fn rename_playlist(
 }
 
 #[tauri::command]
-pub fn delete_playlist(state: tauri::State<AppState>, name: String) -> Result<(), String> {
+pub async fn delete_playlist(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
     let _lock = LIBRARY_LOCK.lock().unwrap();
     let dir = safe_join(&state.music_root, &name)?;
     if !dir.is_dir() {
@@ -522,8 +522,8 @@ pub struct BulkUpdateResult {
 /// Sidecar-Dateien wie beim Android-Downloader (artist.txt/<name>.jpg,
 /// siehe read_track_meta) - jetzt zusaetzlich album.txt fuers Album.
 #[tauri::command]
-pub fn bulk_update_tracks(
-    state: tauri::State<AppState>,
+pub async fn bulk_update_tracks(
+    state: tauri::State<'_, AppState>,
     playlist_name: String,
     filenames: Vec<String>,
     album: Option<String>,
@@ -608,8 +608,8 @@ pub(crate) fn apply_sidecar_tags(path: &Path, album: Option<&str>, cover_data: O
 ///   separate commands here since Tauri commands are simple RPCs, easier
 ///   to reason about than one command branching on optional fields.
 #[tauri::command]
-pub fn add_track_to_playlist(
-    state: tauri::State<AppState>,
+pub async fn add_track_to_playlist(
+    state: tauri::State<'_, AppState>,
     source_playlist: String,
     filename: String,
     target_playlist: String,
@@ -653,8 +653,8 @@ pub fn add_track_to_playlist(
 /// the "add local MP3s" flow, since there's no separate Downloader page in
 /// this rewrite yet.
 #[tauri::command]
-pub fn upload_track(
-    state: tauri::State<AppState>,
+pub async fn upload_track(
+    state: tauri::State<'_, AppState>,
     playlist_name: String,
     filename: String,
     data: Vec<u8>,
@@ -1103,6 +1103,8 @@ pub async fn download_track_progress(
 // Registered as the "stream://" custom protocol in main.rs. Handles
 // `Range: bytes=start-end` for scrubbing and returns 206 Partial Content,
 // same contract the old Flask send_file(..., conditional=True) had.
+const STREAM_CHUNK: u64 = 2 * 1024 * 1024;
+
 pub async fn stream_file(
     root: &Path,
     rel_path: &str,
@@ -1128,8 +1130,13 @@ pub async fn stream_file(
 
     let mime = mime_guess::from_path(&path).first_or_octet_stream();
 
+    // Ein <audio>-Element fragt "bytes=0-" (bzw. "bytes=N-" beim Spulen) an,
+    // also "alles ab hier". Das wurde komplett in den Speicher gelesen, bevor
+    // der erste Ton kam - bei jedem Start und jedem Sprung, bei einem Video
+    // hunderte MB (auf dem Handy der sichere Absturz). Range-Antworten
+    // duerfen kuerzer sein als erbeten; der Player holt sich den Rest selbst.
     let (start, end) = match range_header.as_deref().and_then(parse_range) {
-        Some((s, e)) => (s, e.min(len.saturating_sub(1))),
+        Some((s, e)) => (s, e.min(len.saturating_sub(1)).min(s.saturating_add(STREAM_CHUNK - 1))),
         None => (0, len.saturating_sub(1)),
     };
     if start >= len || start > end {
@@ -1227,7 +1234,7 @@ pub fn get_app_version() -> String {
 /// Export bringt nur bei der M3U-Referenz auf andere Player echten
 /// Mehrwert.
 #[tauri::command]
-pub fn export_playlist_m3u(state: tauri::State<AppState>, playlist_name: String) -> Result<String, String> {
+pub async fn export_playlist_m3u(state: tauri::State<'_, AppState>, playlist_name: String) -> Result<String, String> {
     let dir = safe_join(&state.music_root, &safe_filename(&playlist_name))?;
     let pl = scan_playlist_dir(&dir, &playlist_name).ok_or("Playlist leer oder nicht gefunden.")?;
     let mut out = String::from("#EXTM3U\n");
@@ -1255,7 +1262,7 @@ fn csv_escape(field: &str) -> String {
 /// ist bewusst nicht gebaut - beide bräuchten eine eigene registrierte/
 /// genehmigte OAuth-App, die dieses Projekt nicht hat.
 #[tauri::command]
-pub fn export_playlist_csv(state: tauri::State<AppState>, playlist_name: String) -> Result<String, String> {
+pub async fn export_playlist_csv(state: tauri::State<'_, AppState>, playlist_name: String) -> Result<String, String> {
     let dir = safe_join(&state.music_root, &safe_filename(&playlist_name))?;
     let pl = scan_playlist_dir(&dir, &playlist_name).ok_or("Playlist leer oder nicht gefunden.")?;
     let mut out = String::from("Title,Artist,Album\n");
@@ -1420,6 +1427,35 @@ mod tests {
 
         assert_eq!(mp4_duration(&track), Some(5.0));
         assert_eq!(read_track_meta(&track).duration, Some(5.0));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Offener Bereich wird gestueckelt, kleiner Bereich bleibt exakt,
+    /// ohne Range kommt die ganze Datei.
+    #[tokio::test]
+    async fn stream_file_caps_open_ranges() {
+        let root = temp_root();
+        std::fs::create_dir_all(root.join("P")).unwrap();
+        let size = STREAM_CHUNK as usize + 1000;
+        std::fs::write(root.join("P/a.mp3"), vec![7u8; size]).unwrap();
+
+        let r = stream_file(&root, "P/a.mp3", Some("bytes=0-".into())).await;
+        assert_eq!(r.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(r.body().len(), STREAM_CHUNK as usize);
+        assert_eq!(
+            r.headers()[header::CONTENT_RANGE],
+            format!("bytes 0-{}/{size}", STREAM_CHUNK - 1).as_str()
+        );
+
+        let r = stream_file(&root, "P/a.mp3", Some(format!("bytes={}-", STREAM_CHUNK))).await;
+        assert_eq!(r.body().len(), 1000);
+
+        let r = stream_file(&root, "P/a.mp3", Some("bytes=10-19".into())).await;
+        assert_eq!(r.body().len(), 10);
+
+        let r = stream_file(&root, "P/a.mp3", None).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.body().len(), size);
         std::fs::remove_dir_all(&root).ok();
     }
 
