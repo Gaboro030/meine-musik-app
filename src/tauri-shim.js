@@ -386,6 +386,7 @@
       // Guest-Link zum Antippen kopieren.
       if (qrHint) {
         qrHint.style.cursor = "pointer";
+        qrHint.dataset.i18nTitle = "Klicken zum Kopieren"; // folgt dem Sprachwechsel
         qrHint.title = tr("Klicken zum Kopieren");
         qrHint.addEventListener("click", () => {
           const m = qrHint.textContent.match(/https?:\/\/\S+/);

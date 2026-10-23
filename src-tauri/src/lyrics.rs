@@ -82,9 +82,14 @@ fn clean_query_text(text: &str) -> String {
         Regex::new(r"(?i)\((?:official\s*)?(?:music\s*)?video\)|\((?:official\s*)?audio\)|\blyrics?\b|\blyric\s*video\b|\bvisualizer\b|\bofficial\s*video\b|\bhd\b|\b4k\b|\bremaster(?:ed)?\b").unwrap()
     });
     let brackets = BRACKETS.get_or_init(|| Regex::new(r"[\[\(].*?[\]\)]").unwrap());
+    // "Heard 'Em Say ft. Adam Levine": lrclib fuehrt Gastkuenstler fast nie
+    // im Titel - mit ihnen scheiterte der Exakt-Treffer.
+    static FEAT: OnceLock<Regex> = OnceLock::new();
+    let feat = FEAT.get_or_init(|| Regex::new(r"(?i)\s(?:ft|feat|featuring)\.?\s[^\[\(]*").unwrap());
     let step1 = noise.replace_all(text, " ");
     let step2 = brackets.replace_all(&step1, " ");
-    step2.split_whitespace().collect::<Vec<_>>().join(" ")
+    let step3 = feat.replace_all(&step2, " ");
+    step3.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Lowercase + alles auf Wort-Tokens reduziert - fuer den Aehnlichkeits-
@@ -824,6 +829,13 @@ mod tests {
             clean_query_text("Never Gonna Give You Up (Official Video) [HD]"),
             "Never Gonna Give You Up"
         );
+    }
+
+    #[test]
+    fn clean_query_text_strips_featured_artists() {
+        assert_eq!(clean_query_text("Heard 'Em Say ft. Adam Levine"), "Heard 'Em Say");
+        assert_eq!(clean_query_text("Promiscuous feat. Timbaland (Official Video)"), "Promiscuous");
+        assert_eq!(clean_query_text("Left Foot"), "Left Foot"); // "ft" mitten im Wort bleibt
     }
 
     #[test]

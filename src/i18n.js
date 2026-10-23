@@ -437,6 +437,7 @@
     "Schon von einem anderen Programm belegt, wirkt nur im Fenster: {names}. Die Medientasten der Tastatur funktionieren unabhängig davon überall.":
       "Already taken by another program, only works inside the window: {names}. The keyboard's media keys keep working everywhere.",
     "Klicken zum Kopieren": "Click to copy",
+    "Mehr von {artist}": "More from {artist}",
     // ----- Freunde (friends.js) -----
     "Ablehnen": "Decline",
     "Anfragen": "Requests",

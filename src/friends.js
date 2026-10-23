@@ -220,7 +220,9 @@
       return; // nicht für uns oder manipuliert - stillschweigend verwerfen
     }
     const sender = msg && msg.from && parseCode(msg.from.code);
-    if (!sender) return;
+    // Eigene Nachricht (z.B. von einer zweiten Installation mit kopiertem
+    // Profil) - sonst stuende man als eigene Freundschaftsanfrage da.
+    if (!sender || sender.topic === identity().topic) return;
     // Der Name in der Nachricht ist aktueller als der im (evtl. alten) Code.
     sender.name = String(msg.from.name || sender.name).trim().slice(0, 40) || sender.name;
     const known = friends().some((f) => f.topic === sender.topic);

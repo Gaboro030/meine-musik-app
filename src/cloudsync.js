@@ -103,5 +103,6 @@
     });
   });
 
+  document.addEventListener("i18n-changed", anzeigen);
   statusHolen();
 })();

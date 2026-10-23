@@ -660,6 +660,9 @@ pub async fn recommend_for_playlist(
 #[derive(Serialize, Clone)]
 pub struct DiscoverRow {
     pub title: String,
+    /// Fuer die Uebersetzung im Frontend ("Mehr von {artist}") - title
+    /// bleibt als deutscher Rueckfall stehen.
+    pub artist: String,
     pub recommendations: Vec<OnlineTrack>,
 }
 
@@ -696,6 +699,7 @@ pub async fn discover_rows(
         if !picks.is_empty() {
             rows.push(DiscoverRow {
                 title: format!("Mehr von {artist}"),
+                artist: artist.clone(),
                 recommendations: picks,
             });
         }

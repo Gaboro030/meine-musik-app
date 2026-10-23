@@ -1181,7 +1181,7 @@ async function loadDiscover(excludeIds) {
 function buildDiscoverCard(rec) {
   const card = document.createElement("div");
   card.className = "card";
-  card.title = `${rec.title}${rec.artist ? " – " + rec.artist : ""}\nAuf YouTube ansehen`;
+  card.title = `${rec.title}${rec.artist ? " – " + rec.artist : ""}\n${t("Auf YouTube ansehen")}`;
 
   const coverWrap = document.createElement("div");
   coverWrap.className = "card-cover-wrap";
@@ -1264,7 +1264,7 @@ function renderDiscoverArtistRows(rows) {
     section.className = "home-section";
     const h2 = document.createElement("h2");
     h2.className = "home-section-title";
-    h2.textContent = row.title;
+    h2.textContent = row.artist ? t("Mehr von {artist}", { artist: row.artist }) : row.title;
     const grid = document.createElement("div");
     grid.className = "card-grid recs-grid";
     row.recommendations.forEach((rec) => grid.appendChild(buildDiscoverCard(rec)));
@@ -6597,12 +6597,6 @@ function attachAddButton(coverWrap, trackData, className = "card-add-btn") {
   return btn;
 }
 
-/* ===== PWA: Service Worker Registration ===== */
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
-  });
-}
 
 /* ===== Global Search =====
    Runs entirely against the already-loaded `library` array - no round trip
