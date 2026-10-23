@@ -266,9 +266,22 @@ async fn extract_spotify(app: &tauri::AppHandle, url: &str) -> Result<PlaylistEx
         }
     }
 
+    // Vier Suchen gleichzeitig statt eine nach der anderen - bei hundert
+    // Titeln war das sonst minutenlanges Warten. `buffered` haelt dabei die
+    // Reihenfolge der Playlist ein.
+    use futures_util::StreamExt;
+    let lookups: Vec<_> = spotify_tracks
+        .iter()
+        .map(|t| best_audio_match(app, &t.title, &t.artist, t.duration))
+        .collect();
+    let matches: Vec<_> = futures_util::stream::iter(lookups)
+        .buffered(4)
+        .collect()
+        .await;
+
     let mut entries = Vec::new();
     let mut unmatched = 0usize;
-    for t in &spotify_tracks {
+    for (t, best) in spotify_tracks.iter().zip(matches) {
         // Prefer "- Topic" / plain-audio uploads over "Official Video" rips
         // (matches the studio master more closely, same as Spotify) - pools
         // a plain search with a second "Topic"-boosted one instead of a
@@ -279,7 +292,6 @@ async fn extract_spotify(app: &tauri::AppHandle, url: &str) -> Result<PlaylistEx
         // (Extended Mix, Snippet, Stundenschleife und schlicht ein anderer
         // Song fallen darueber sofort raus). Sie lag hier die ganze Zeit
         // vor und wurde nie benutzt.
-        let best = best_audio_match(app, &t.title, &t.artist, t.duration).await;
         match best {
             Some(r) => entries.push(PlaylistTrack {
                 id: r.video_id.clone(),
