@@ -18,7 +18,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -27,9 +30,11 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
+import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -43,6 +48,17 @@ class PlaybackService : Service() {
     private var lastCover: Bitmap? = null
     private var lastPosition = 0L
     private var lastDuration = 0L
+
+    /**
+     * Kopfhoerer abgezogen / Bluetooth getrennt: Android meldet das als
+     * "AUDIO_BECOMING_NOISY". Ohne Reaktion lief die Musik einfach ueber den
+     * Handy-Lautsprecher weiter - jede Musik-App pausiert in dem Moment.
+     */
+    private val kopfhoererWeg = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) melden("pause")
+        }
+    }
 
     companion object {
         const val CHANNEL_ID = "meine_musik_playback"
@@ -82,6 +98,13 @@ class PlaybackService : Service() {
             }
         })
         mediaSession.isActive = true
+        // NOT_EXPORTED reicht: System-Broadcasts kommen trotzdem an.
+        ContextCompat.registerReceiver(
+            this,
+            kopfhoererWeg,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
 
         val mgr = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -271,6 +294,11 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(kopfhoererWeg)
+        } catch (e: IllegalArgumentException) {
+            // war nie registriert
+        }
         mediaSession.release()
         super.onDestroy()
     }

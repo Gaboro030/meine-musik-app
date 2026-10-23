@@ -56,9 +56,14 @@
   // richtige Kanal fuer Plugin-eigene Events.
   addPluginListener("now-playing", "media-control", (payload) => {
     switch (payload && payload.action) {
+      // Getrennt statt blind umschalten: kommt "pause" (Kopfhoerer
+      // abgezogen) bei schon pausierter Musik an, haette Umschalten sie
+      // ausgerechnet dann ueber den Lautsprecher gestartet.
       case "play":
+        if (audioEl.paused) togglePlayPause();
+        break;
       case "pause":
-        togglePlayPause();
+        if (!audioEl.paused) togglePlayPause();
         break;
       case "next":
         nextTrack();
