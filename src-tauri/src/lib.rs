@@ -58,6 +58,16 @@ pub fn run() {
         );
     }
 
+    // In-App-Updates (Desktop): sucht/laedt/installiert signierte Releases
+    // von GitHub, process startet die App danach neu. Android hat eigenen
+    // Weg (nowplaying::android_update), das Plugin gibt es dort nicht.
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
     // Spotify/YT-Music-Style Wiedergabe-Notification - Android-only, siehe
     // nowplaying.rs. Startet den PlaybackService-Foreground-Service, der
     // die Android-WebView sonst beim Minimieren stummschaltende
@@ -214,6 +224,7 @@ pub fn run() {
             hotkeys::set_global_hotkeys,
             nowplaying::update_now_playing,
             nowplaying::clear_now_playing,
+            nowplaying::android_update,
             discord::discord_update,
             discord::discord_clear,
             appicon::set_app_icon,

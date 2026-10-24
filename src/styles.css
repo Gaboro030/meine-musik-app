@@ -1347,8 +1347,8 @@ body.has-dynamic-colors .playlist-hero {
   background: #fff;
   transition: transform 0.2s ease;
 }
-.toggle-switch.active { background: var(--sp-green); }
-.toggle-switch.active::after { transform: translateX(20px); }
+.toggle-switch.active, .toggle-switch[data-update-auto][aria-checked="true"] { background: var(--sp-green); }
+.toggle-switch.active::after, .toggle-switch[data-update-auto][aria-checked="true"]::after { transform: translateX(20px); }
 
 .lang-switch {
   display: flex;

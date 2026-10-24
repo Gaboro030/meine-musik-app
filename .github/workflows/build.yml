@@ -5,9 +5,14 @@ name: Build native apps
 # actual answer to "cross-compile Tauri for Windows/Linux/Android from one
 # machine" - you don't; you use one CI runner per target OS instead, which
 # is exactly what GitHub Actions' matrix gives for free).
+#
+# Ein Tag "v*" (z.B. v0.2.0) baut dasselbe und veroeffentlicht es danach
+# zusaetzlich als GitHub-Release (Job "release" ganz unten) - von dort holt
+# sich die App ihre Updates.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch: {}
 
 jobs:
@@ -81,7 +86,13 @@ jobs:
       - name: Run Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
+      # createUpdaterArtifacts (tauri.conf.json) signiert die Installer fuer
+      # das In-App-Update. Der private Schluessel liegt nur in den
+      # GitHub-Geheimnissen, nie im Projekt.
       - name: Build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run build
 
       - name: Upload artifacts
@@ -201,3 +212,35 @@ jobs:
           name: dist-app-android
           path: dist-app/android-*
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, android]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      # Nur was Nutzer wirklich brauchen: Windows-Installer, Linux-AppImage
+      # + .deb, Android-APK. Die .sig-Dateien braucht der Updater.
+      - name: Release anlegen
+        run: |
+          set -euo pipefail
+          cd release
+          ls -la
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"             --title "Reson ${GITHUB_REF_NAME#v}" --generate-notes             windows-*-setup.exe windows-*-setup.exe.sig             ubuntu-*.AppImage ubuntu-*.AppImage.sig ubuntu-*.deb             android-Reson.apk
+
+      - name: latest.json fuer das In-App-Update
+        run: |
+          set -euo pipefail
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body -q .body > notes.md
+          node scripts/make-latest-json.mjs release "$GITHUB_REF_NAME" notes.md
+          gh release upload "$GITHUB_REF_NAME" release/latest.json --repo "$GITHUB_REPOSITORY"

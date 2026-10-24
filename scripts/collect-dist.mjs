@@ -16,8 +16,8 @@ mkdirSync(distApp, { recursive: true });
 // step's per-OS "dist-app/windows-*" / "dist-app/ubuntu-*" path filter.
 // Deriving it from process.platform makes each runner tag its own output
 // correctly without the workflow having to pass anything in. "ubuntu" (not
-// generic "linux") because the bundle only produces a .deb now - a real
-// Ubuntu/Debian package, not a distro-agnostic AppImage anymore.
+// generic "linux") for historical reasons; the bundle produces a .deb plus
+// an AppImage (the AppImage is what the in-app updater replaces).
 const platformPrefix = { win32: "windows", linux: "ubuntu", darwin: "macos" }[process.platform] || "desktop";
 const mode = process.argv[2] === "android" ? "android" : platformPrefix;
 
@@ -48,6 +48,8 @@ if (mode === "android") {
     ".deb",
     ".appimage",
     ".rpm",
+    // Signaturen fuer das In-App-Update (createUpdaterArtifacts).
+    ".sig",
   ]);
 }
 

@@ -662,6 +662,28 @@
     "{sent} gesendet, {failed} fehlgeschlagen: {reason}": "{sent} sent, {failed} failed: {reason}",
     "{count} Dateien an {peer} gesendet!": "{count} files sent to {peer}!",
     "Fertig ✓": "Done ✓",
+    // ----- In-App-Update (updater.js / update-dialog.js) -----
+    "Updates": "Updates",
+    "Nach Updates suchen": "Check for updates",
+    "Automatisch suchen": "Check automatically",
+    "Im Hintergrund auf GitHub nach neuen Versionen schauen.": "Look for new versions on GitHub in the background.",
+    "Update verfügbar": "Update available",
+    "Version {version} steht bereit. Du nutzt gerade {current}.": "Version {version} is ready to install. You’re on {current}.",
+    "Das ist neu": "What’s new",
+    "Installieren": "Install",
+    "Dieses Update überspringen": "Skip this update",
+    "Update wird heruntergeladen …": "Downloading update …",
+    "Version {version}": "Version {version}",
+    "Update wird installiert …": "Installing update …",
+    "Die App startet gleich neu.": "The app will restart in a moment.",
+    "Download abgeschlossen": "Download complete",
+    "Bestätige die Installation im nächsten Fenster.": "Confirm the installation in the next window.",
+    "Update fehlgeschlagen": "Update failed",
+    "Prüfe deine Verbindung und versuche es erneut.": "Check your connection and try again.",
+    "Erneut versuchen": "Try again",
+    "Suche läuft …": "Checking …",
+    "Du bist auf dem neuesten Stand (Version {current}).": "You’re up to date (version {current}).",
+    "Die Suche nach Updates ist fehlgeschlagen.": "Checking for updates failed.",
   };
 
   let currentLang = localStorage.getItem(LANG_KEY) === "en" ? "en" : "de";

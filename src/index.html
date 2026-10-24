@@ -10,6 +10,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <title>Player – Reson</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="update-dialog.css" />
   <script src="theme-boot.js"></script>
   <script src="icons.js"></script>
 </head>
@@ -757,6 +758,20 @@
               <div class="settings-row-desc" id="appVersionText">—</div>
             </div>
           </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Updates">Updates</div>
+              <div class="settings-row-desc" data-update-status aria-live="polite"></div>
+            </div>
+            <button type="button" class="btn-secondary" data-update-check data-icon="refresh"><span data-i18n="Nach Updates suchen">Nach Updates suchen</span></button>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label" data-i18n="Automatisch suchen">Automatisch suchen</div>
+              <div class="settings-row-desc" data-i18n="Im Hintergrund auf GitHub nach neuen Versionen schauen.">Im Hintergrund auf GitHub nach neuen Versionen schauen.</div>
+            </div>
+            <button type="button" class="toggle-switch" role="switch" aria-checked="true" data-update-auto data-i18n-title="Automatisch suchen" title="Automatisch suchen"></button>
+          </div>
         </div>
       </div>
     </div>
@@ -1094,6 +1109,8 @@
   <script src="backup.js"></script>
   <script src="friends.js"></script>
   <script src="mobile-ui.js"></script>
+  <script src="update-dialog.js"></script>
+  <script src="updater.js"></script>
   <script type="module" src="potoken-init.js"></script>
 </body>
 </html>

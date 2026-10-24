@@ -40,6 +40,11 @@ pub mod android {
     #[derive(Serialize, Clone)]
     pub struct Empty {}
 
+    #[derive(Serialize, Clone)]
+    pub struct UpdatePayload {
+        pub url: String,
+    }
+
     pub fn init() -> TauriPlugin<Wry> {
         Builder::new("now-playing")
             .setup(|app, api| {
@@ -144,4 +149,51 @@ pub async fn clear_now_playing(app: tauri::AppHandle) -> Result<(), String> {
         let _ = app;
     }
     Ok(())
+}
+
+/// Nur Dateien aus dem eigenen Release duerfen als Update geladen werden -
+/// sonst koennte jeder, der die Seite manipuliert, ein beliebiges APK zur
+/// Installation anbieten.
+pub(crate) const UPDATE_URL_PREFIX: &str = "https://github.com/Gaboro030/meine-musik-app/releases/download/";
+
+/// In-App-Update auf Android (das Updater-Plugin von Tauri kann nur Desktop):
+/// Kotlin prueft die Installations-Erlaubnis, laedt das APK aus dem eigenen
+/// GitHub-Release in den App-Cache und reicht es an Androids eigenen
+/// Installationsdialog weiter. Fortschritt kommt als Plugin-Ereignis
+/// "update-progress".
+#[tauri::command]
+pub async fn android_update(
+    app: tauri::AppHandle,
+    action: String,
+    url: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let url = url.unwrap_or_default();
+    if action == "download" && !url.starts_with(UPDATE_URL_PREFIX) {
+        return Err("Update-Adresse nicht erlaubt.".into());
+    }
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let method = match action.as_str() {
+            "canInstall" => "updateCanInstall",
+            "openSettings" => "updateOpenInstallSettings",
+            "download" => "updateDownload",
+            "install" => "updateInstall",
+            _ => return Err("Unbekannte Aktion.".into()),
+        };
+        let handle = app.state::<android::NowPlaying>().0.clone();
+        // Der Download dauert - nicht einen Arbeitsthread der Laufzeit blockieren.
+        tauri::async_runtime::spawn_blocking(move || {
+            handle
+                .run_mobile_plugin::<serde_json::Value>(method, android::UpdatePayload { url })
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, action, url);
+        Err("Nur auf Android.".into())
+    }
 }

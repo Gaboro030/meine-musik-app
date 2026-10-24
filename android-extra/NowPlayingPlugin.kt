@@ -8,13 +8,21 @@
 package com.reson.app
 
 import android.app.Activity
+import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -34,6 +42,11 @@ class NowPlayingArgs {
 }
 
 @InvokeArg
+class UpdateArgs {
+    var url: String = ""
+}
+
+@InvokeArg
 class NetzSperrenArgs {
     var an: Boolean = false
 }
@@ -44,8 +57,36 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
+    /* ===== In-App-Update =====
+       Das APK landet im App-Cache (keine Speicher-Berechtigung noetig, das
+       System raeumt dort notfalls selbst auf) und wird NIE aufbewahrt:
+       geloescht bei jedem Start, vor jedem neuen Download, bei Fehlern und
+       sobald die App nach dem Installationsdialog wieder vorn ist - egal,
+       ob installiert oder abgebrochen wurde. */
+    private val updateDir get() = File(activity.cacheDir, "updates")
+    @Volatile private var installHandedOff = false
+
+    private fun deleteInstallerFiles() {
+        updateDir.deleteRecursively()
+    }
+
     override fun load(webView: android.webkit.WebView) {
         super.load(webView)
+        deleteInstallerFiles()
+        activity.application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityResumed(a: Activity) {
+                if (a === activity && installHandedOff) {
+                    installHandedOff = false
+                    deleteInstallerFiles()
+                }
+            }
+            override fun onActivityCreated(a: Activity, b: Bundle?) {}
+            override fun onActivityStarted(a: Activity) {}
+            override fun onActivityPaused(a: Activity) {}
+            override fun onActivityStopped(a: Activity) {}
+            override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
+            override fun onActivityDestroyed(a: Activity) {}
+        })
         val filter = IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL)
         val r = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -135,6 +176,89 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
             wifiLock?.let { if (it.isHeld) it.release() }
             wifiLock = null
         }
+        invoke.resolve()
+    }
+
+    @Command
+    fun updateCanInstall(invoke: Invoke) {
+        val ok = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            activity.packageManager.canRequestPackageInstalls()
+        invoke.resolve(JSObject().put("ok", ok))
+    }
+
+    @Command
+    fun updateOpenInstallSettings(invoke: Invoke) {
+        activity.startActivity(
+            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        invoke.resolve()
+    }
+
+    /** Laedt das APK (Rust hat die Adresse schon gegen das eigene Release geprueft). */
+    @Command
+    fun updateDownload(invoke: Invoke) {
+        val args = invoke.parseArgs(UpdateArgs::class.java)
+        Thread {
+            deleteInstallerFiles()
+            updateDir.mkdirs()
+            val file = File(updateDir, "update.apk")
+            var conn: HttpURLConnection? = null
+            try {
+                // GitHub leitet auf seinen Datei-Server um (https -> https,
+                // dem folgt HttpURLConnection von selbst).
+                conn = (URL(args.url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 15_000
+                    readTimeout = 30_000
+                    setRequestProperty("User-Agent", "Reson-Updater")
+                }
+                val total = conn.contentLengthLong
+                conn.inputStream.use { input ->
+                    file.outputStream().use { out ->
+                        val buf = ByteArray(64 * 1024)
+                        var done = 0L
+                        var last = -1
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            done += n
+                            if (total > 0) {
+                                val p = (done * 100 / total).toInt()
+                                if (p != last) {
+                                    last = p
+                                    trigger("update-progress", JSObject().put("percent", p))
+                                }
+                            }
+                        }
+                        if (total > 0 && done < total) throw java.io.IOException("Download unvollstaendig")
+                    }
+                }
+                invoke.resolve()
+            } catch (e: Exception) {
+                deleteInstallerFiles()
+                invoke.reject(e.message ?: "Download fehlgeschlagen")
+            } finally {
+                conn?.disconnect()
+            }
+        }.start()
+    }
+
+    /** Uebergibt das geladene APK an Androids eigenen Installationsdialog. */
+    @Command
+    fun updateInstall(invoke: Invoke) {
+        val file = File(updateDir, "update.apk")
+        if (!file.isFile) {
+            invoke.reject("Kein Update geladen")
+            return
+        }
+        val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
+        activity.startActivity(
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        installHandedOff = true
         invoke.resolve()
     }
 }

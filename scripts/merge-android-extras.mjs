@@ -37,6 +37,10 @@ const permissions = [
   // setNetzSperren).
   '<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />',
   '<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />',
+  // In-App-Update: das geladene APK an Androids Installer geben
+  // (NowPlayingPlugin.kt, updateInstall). Android fragt trotzdem jedes Mal
+  // selbst nach - ohne diese Zeile darf die App gar nicht erst fragen.
+  '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />',
 ];
 for (const perm of permissions) {
   if (!manifest.includes(perm)) {
@@ -49,6 +53,22 @@ const serviceTag =
 if (!manifest.includes('android:name=".PlaybackService"')) {
   manifest = manifest.replace(/(<\/application>)/, `    ${serviceTag}\n$1`);
 }
+
+// FileProvider: Android 7+ erlaubt keine file://-Adressen an fremde Apps -
+// der Installer bekommt das APK ueber content:// aus dem App-Cache.
+const providerTag =
+  '<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" ' +
+  'android:exported="false" android:grantUriPermissions="true">' +
+  '<meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>';
+if (!manifest.includes("androidx.core.content.FileProvider")) {
+  manifest = manifest.replace(/(<\/application>)/, `    ${providerTag}\n$1`);
+}
+const xmlDir = join(androidRoot, "app", "src", "main", "res", "xml");
+mkdirSync(xmlDir, { recursive: true });
+writeFileSync(
+  join(xmlDir, "file_paths.xml"),
+  '<?xml version="1.0" encoding="utf-8"?>\n<paths><cache-path name="updates" path="updates/" /></paths>\n'
+);
 
 writeFileSync(manifestPath, manifest);
 console.log("-> patched AndroidManifest.xml");
