@@ -377,10 +377,7 @@
           .catch(() => {});
       };
       qrImage.src = qrDataUri;
-      qrImage.addEventListener("error", () => {
-        qrImage.src = qrDataUri;
-        refreshQr(); // LAN-IP kann sich ändern (WLAN-Wechsel) - frisch holen
-      });
+      window.refreshPartyQr = refreshQr; // player.js ruft das beim Oeffnen des Popovers
       refreshQr();
 
       // Guest-Link zum Antippen kopieren.
@@ -408,7 +405,7 @@
         netBtn.type = "button";
         netBtn.id = "internetLinkBtn";
         netBtn.className = "party-toggle-switch internet-link-btn";
-        netBtn.textContent = tr("🌍 Internet-Link erstellen");
+        netBtn.textContent = tr("Internet-Link erstellen");
         let internetOn = false;
         let busy = false;
         netBtn.addEventListener("click", async () => {
@@ -419,11 +416,11 @@
           try {
             const res = await invoke("party_internet", { enable: !internetOn });
             internetOn = !!res.public_url;
-            netBtn.textContent = internetOn ? tr("🌍 Internet-Link beenden") : tr("🌍 Internet-Link erstellen");
+            netBtn.textContent = internetOn ? tr("Internet-Link beenden") : tr("Internet-Link erstellen");
             netBtn.classList.toggle("active", internetOn);
             refreshQr();
           } catch (err) {
-            netBtn.textContent = tr("🌍 Internet-Link erstellen");
+            netBtn.textContent = tr("Internet-Link erstellen");
             if (qrHint) qrHint.textContent = String(err);
           } finally {
             busy = false;
@@ -435,7 +432,7 @@
         // und QR-Code sollen das sofort zeigen.
         document.addEventListener("party-internet-changed", () => {
           internetOn = true;
-          netBtn.textContent = tr("🌍 Internet-Link beenden");
+          netBtn.textContent = tr("Internet-Link beenden");
           netBtn.classList.add("active");
           refreshQr();
         });

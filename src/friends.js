@@ -32,6 +32,11 @@
   const TOPIC_RE = /^[-_A-Za-z0-9]{8,64}$/;
 
   const tr = (text, vars) => (window.t ? window.t(text, vars) : text);
+  // Knopf mit Icon + Text. Text kommt als Textknoten dazu, nie als HTML.
+  const iconLabel = (btn, iconName, text) => {
+    btn.innerHTML = window.icon ? window.icon(iconName) : "";
+    btn.append(document.createTextNode(" " + text));
+  };
   const toast = (msg) => {
     if (typeof showToast === "function") showToast(msg);
   };
@@ -163,7 +168,7 @@
     const core = window.__TAURI__ && window.__TAURI__.core;
     if (!core) return;
     btn.disabled = true;
-    btn.textContent = "⏳";
+    btn.innerHTML = window.icon ? window.icon("refresh", "ic-spin") : "…";
     try {
       // Party läuft noch nicht? Dann gleich starten - eine Einladung zu
       // einer Party, die es nicht gibt, wäre sinnlos.
@@ -175,12 +180,12 @@
       if (!url || !GUEST_URL_RE.test(url)) throw new Error(tr("Internet-Link konnte nicht erstellt werden."));
       document.dispatchEvent(new CustomEvent("party-internet-changed"));
       await sendTo(friend, { type: "invite", url });
-      toast(tr("🎉 {name} ist eingeladen!", { name: friend.name }));
+      toast(tr("{name} ist eingeladen!", { name: friend.name }));
     } catch (err) {
       toast(String((err && err.message) || err));
     } finally {
       btn.disabled = false;
-      btn.textContent = tr("🎉 Einladen");
+      iconLabel(btn, "sparkles", tr("Einladen"));
     }
   }
 
@@ -235,7 +240,7 @@
       }
       addPending(sender);
       render();
-      banner(tr("👋 {name} möchte dich als Freund hinzufügen.", { name: sender.name }), [
+      banner(tr("{name} möchte dich als Freund hinzufügen.", { name: sender.name }), [
         [tr("Annehmen"), () => acceptRequest(sender)],
         [tr("Ablehnen"), () => { dropPending(sender.topic); render(); }],
       ]);
@@ -249,7 +254,7 @@
       // eine Einladung darf nie eine beliebige Adresse öffnen.
       if (!known || !GUEST_URL_RE.test(msg.url || "")) return;
       if (!(Date.now() - Number(msg.ts) < INVITE_MAX_AGE_MS)) return;
-      banner(tr("🎉 {name} lädt dich zur Party ein!", { name: sender.name }), [
+      banner(tr("{name} lädt dich zur Party ein!", { name: sender.name }), [
         [tr("Beitreten"), () => joinParty(msg.url)],
         [tr("Später"), () => {}],
       ]);
@@ -360,7 +365,8 @@
     });
     section.appendChild(nameInput);
 
-    const copyBtn = el("button", "btn-secondary sync-remote-btn", tr("📋 Meinen Freundescode kopieren"));
+    const copyBtn = el("button", "btn-secondary sync-remote-btn");
+    iconLabel(copyBtn, "copy", tr("Meinen Freundescode kopieren"));
     copyBtn.type = "button";
     copyBtn.addEventListener("click", async () => {
       try {
@@ -395,12 +401,14 @@
       section.appendChild(el("div", "sync-remote-hint friends-sub", tr("Anfragen")));
       reqs.forEach((r) => {
         const row = el("div", "sync-peer-row");
-        row.appendChild(el("div", "sync-peer-item", `👋 ${r.name}`));
-        const ok = el("button", "sync-peer-unpair friends-accept", "✓");
+        row.appendChild(el("div", "sync-peer-item", r.name));
+        const ok = el("button", "sync-peer-unpair friends-accept");
+        ok.innerHTML = window.icon("checkmark");
         ok.type = "button";
         ok.title = tr("Annehmen");
         ok.addEventListener("click", () => acceptRequest(r));
-        const no = el("button", "sync-peer-unpair", "✕");
+        const no = el("button", "sync-peer-unpair");
+        no.innerHTML = window.icon("x");
         no.type = "button";
         no.title = tr("Ablehnen");
         no.addEventListener("click", () => {
@@ -420,10 +428,12 @@
     all.forEach((f) => {
       const row = el("div", "sync-peer-row");
       row.appendChild(el("div", "sync-peer-item", f.name));
-      const inv = el("button", "btn-secondary friends-invite-btn", tr("🎉 Einladen"));
+      const inv = el("button", "btn-secondary friends-invite-btn");
+      iconLabel(inv, "sparkles", tr("Einladen"));
       inv.type = "button";
       inv.addEventListener("click", () => inviteFriend(f, inv));
-      const del = el("button", "sync-peer-unpair", "✕");
+      const del = el("button", "sync-peer-unpair");
+      del.innerHTML = window.icon("x");
       del.type = "button";
       del.title = tr("Freund entfernen");
       del.addEventListener("click", () => removeFriend(f.topic));

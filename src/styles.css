@@ -4477,3 +4477,84 @@ th .ic { width: 15px; height: 15px; }
 .pb-like .ic, .pb-lyrics .ic, .pb-video .ic, .eq-toggle-btn .ic { width: 18px; height: 18px; }
 .pb-btn .ic { width: 18px; height: 18px; }
 .pb-like.active { color: var(--sp-green); }
+
+/* ========= BEWEGUNG (Reson 3.0) =========
+   Ein- UND Ausblenden ohne JS-Umbau: .hidden schaltet display:none, und
+   Chromium kann display mit "allow-discrete" ueberblenden - der Wechsel
+   auf none wartet, bis die Ausblendung fertig ist. @starting-style gibt
+   den Startwert beim Erscheinen vor. Bewegungen klein (6-16px, 0.96-0.99),
+   rein etwas laenger als raus. */
+.modal-overlay, .sidebar-tool-popover, .eq-popover, .queue-panel,
+.lyrics-overlay, .visualizer-overlay, .video-overlay, .downloader-overlay {
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out),
+    display var(--dur-base) allow-discrete;
+}
+.modal-overlay.hidden, .sidebar-tool-popover.hidden, .eq-popover.hidden, .queue-panel.hidden,
+.lyrics-overlay.hidden, .visualizer-overlay.hidden, .video-overlay.hidden, .downloader-overlay.hidden {
+  opacity: 0;
+  transition-duration: var(--dur-fast);
+}
+@starting-style {
+  .modal-overlay:not(.hidden), .sidebar-tool-popover:not(.hidden), .eq-popover:not(.hidden),
+  .queue-panel:not(.hidden), .lyrics-overlay:not(.hidden), .visualizer-overlay:not(.hidden),
+  .video-overlay:not(.hidden), .downloader-overlay:not(.hidden) {
+    opacity: 0;
+  }
+}
+
+/* Fenster: leicht vergroessern und anheben */
+.modal-overlay .modal { transition: transform var(--dur-slow) var(--ease-out); }
+.modal-overlay.hidden .modal { transform: translateY(8px) scale(0.97); transition-duration: var(--dur-fast); }
+@starting-style { .modal-overlay:not(.hidden) .modal { transform: translateY(8px) scale(0.97); } }
+
+/* Popover wachsen aus ihrem Ausloeser (Werkzeugleiste unten links,
+   Player-Werkzeuge unten rechts) */
+.sidebar-tool-popover { transform-origin: 18px calc(100% + 20px); }
+.sidebar-tool-popover.hidden { transform: translateY(6px) scale(0.96); }
+@starting-style { .sidebar-tool-popover:not(.hidden) { transform: translateY(6px) scale(0.96); } }
+.eq-popover { transform-origin: calc(100% - 20px) calc(100% + 16px); }
+.eq-popover.hidden { transform: translateY(6px) scale(0.96); }
+@starting-style { .eq-popover:not(.hidden) { transform: translateY(6px) scale(0.96); } }
+
+/* Warteschlange gleitet vom rechten Rand herein */
+.queue-panel.hidden { transform: translateX(16px); }
+@starting-style { .queue-panel:not(.hidden) { transform: translateX(16px); } }
+
+/* Menues, die per JS neu entstehen (Zu Playlist hinzufuegen, ⋯-Menue) */
+.add-to-playlist-menu { animation: menu-in var(--dur-base) var(--ease-out); transform-origin: top left; }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+
+/* Banner (Freunde) und Toasts */
+.friend-banner { animation: banner-in var(--dur-slow) var(--ease-out); }
+@keyframes banner-in { from { opacity: 0; transform: translateY(-10px) scale(0.98); } }
+
+/* Ansichtswechsel: tiefer hinein (Playlist oeffnen) kommt von rechts,
+   zurueck von links, alles andere blendet ruhig auf. Nur der Inhalt
+   bewegt sich, Seitenleiste und Kopfzeile bleiben stehen. */
+.view-section { animation: view-in var(--dur-slow) var(--ease-out) both; }
+:root[data-nav="forward"] .view-section { animation-name: view-in-end; }
+:root[data-nav="back"] .view-section { animation-name: view-in-start; }
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes view-in-end { from { opacity: 0; transform: translateX(24px) scale(0.99); } }
+@keyframes view-in-start { from { opacity: 0; transform: translateX(-24px) scale(0.99); } }
+
+/* Kartenraster: Eintraege kommen nacheinander (die ersten 12) */
+.card-grid > .card { animation: card-in var(--dur-slow) var(--ease-out) both; }
+.card-grid > .card:nth-child(2) { animation-delay: 30ms; }
+.card-grid > .card:nth-child(3) { animation-delay: 60ms; }
+.card-grid > .card:nth-child(4) { animation-delay: 90ms; }
+.card-grid > .card:nth-child(5) { animation-delay: 120ms; }
+.card-grid > .card:nth-child(6) { animation-delay: 150ms; }
+.card-grid > .card:nth-child(7) { animation-delay: 180ms; }
+.card-grid > .card:nth-child(8) { animation-delay: 210ms; }
+.card-grid > .card:nth-child(n+9) { animation-delay: 240ms; }
+@keyframes card-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* Play/Pause und Herz wechseln mit kleiner Drehung/Skalierung */
+#pbPlay::before { transition: transform var(--dur-base) var(--ease-out); }
+#pbPlay[data-state="pause"]::before { animation: icon-swap var(--dur-base) var(--ease-out); }
+#pbPlay[data-state="play"]::before { animation: icon-swap-b var(--dur-base) var(--ease-out); }
+@keyframes icon-swap { from { transform: scale(0.6) rotate(-30deg); opacity: 0.4; } }
+@keyframes icon-swap-b { from { transform: scale(0.6) rotate(30deg); opacity: 0.4; } }
+.pb-like .ic { animation: like-pop var(--dur-base) var(--ease-out); }
+@keyframes like-pop { from { transform: scale(0.7); } }

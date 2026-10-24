@@ -71,7 +71,8 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "sync-peer-item";
-      btn.textContent = `${p.paired ? "🔗" : "📱"} ${p.name}`;
+      btn.innerHTML = icon(p.paired ? "link" : "phone");
+      btn.append(document.createTextNode(" " + p.name));
       btn.addEventListener("click", () => {
         popover.classList.add("hidden");
         openSendModal(p);
@@ -81,7 +82,7 @@
         const off = document.createElement("button");
         off.type = "button";
         off.className = "sync-peer-unpair";
-        off.textContent = "✕";
+        off.innerHTML = icon("x");
         off.title = t("Verbindung trennen");
         off.addEventListener("click", async (e) => {
           e.stopPropagation();
@@ -287,7 +288,7 @@
         try {
           const names = await invoke("sync_paired_senders");
           invitePairedEl.textContent = names.length
-            ? t("✅ Verbunden: {names}", { names: names.join(", ") })
+            ? t("Verbunden: {names}", { names: names.join(", ") })
             : "";
         } catch (_) {}
       }, 2000);

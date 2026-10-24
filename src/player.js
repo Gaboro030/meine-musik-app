@@ -700,6 +700,12 @@ async function loadLibrary() {
 
 /* ===== View Switching ===== */
 function showView(view) {
+  // Richtung fuer die Einblend-Animation (styles.css, BEWEGUNG): in eine
+  // Playlist hinein kommt der Inhalt von rechts, zurueck von links.
+  document.documentElement.dataset.nav =
+    view === "playlist" && currentView !== "playlist" ? "forward"
+      : currentView === "playlist" && view !== "playlist" ? "back"
+        : "fade";
   // Trash/Duplikate/Statistik müssen auch bei leerer Bibliothek erreichbar
   // bleiben (Trash: alles könnte im Papierkorb liegen; Statistik/Duplikate:
   // sollen einfach "nichts da" anzeigen statt hinter dem Empty-State
@@ -2768,7 +2774,14 @@ let suppressShuffleClick = false;
 
 /* ===== Toast ===== */
 let toastTimer = null;
+// Meldungstexte beginnen oft mit einem Emoji ("🗑 Playlist gelöscht") - die
+// kommen je nach System bunt und unterschiedlich gross. Zentral hier weg
+// statt in jedem Uebersetzungsschluessel.
+const LEADING_EMOJI = /^(?:[\p{Extended_Pictographic}\u2190-\u21ff\u2300-\u23ff\u2600-\u27bf\u2b00-\u2bff]\ufe0f?\u200d?)+\s*/u;
+const plainMessage = (msg) => String(msg == null ? "" : msg).replace(LEADING_EMOJI, "");
+
 function showToast(message) {
+  message = plainMessage(message);
   let toast = document.getElementById("playerToast");
   if (!toast) {
     toast = document.createElement("div");
@@ -2791,6 +2804,7 @@ function showToast(message) {
    Papierkorb (dort weiterhin manuell wiederherstellbar). */
 let undoToastTimer = null;
 function showUndoToast(message, onUndo) {
+  message = plainMessage(message);
   let toast = document.getElementById("undoToast");
   if (!toast) {
     toast = document.createElement("div");
@@ -4162,7 +4176,7 @@ function folderNameFromDataTransfer(dataTransfer) {
 }
 
 function showUploadToast(msg) {
-  uploadToast.textContent = msg;
+  uploadToast.textContent = plainMessage(msg);
   uploadToast.classList.remove("hidden");
 }
 
@@ -7820,7 +7834,8 @@ lyricsSyncReadout.addEventListener("click", () => {
    One generic open/close manager instead of duplicating the eq-popover
    pattern three more times. */
 const sidebarPopovers = [
-  { btn: qrToggleBtn, popover: qrPopover, onOpen: () => { qrImage.src = `/api/qr?t=${Date.now()}`; } },
+  // QR beim Oeffnen frisch holen (LAN-IP kann wechseln) - tauri-shim.js stellt das bereit.
+  { btn: qrToggleBtn, popover: qrPopover, onOpen: () => { if (typeof window.refreshPartyQr === "function") window.refreshPartyQr(); } },
   { btn: partyPopoverToggleBtn, popover: partyPopover },
   { btn: themeToggleBtn, popover: themePopover },
 ];
