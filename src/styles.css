@@ -4456,7 +4456,8 @@ body { font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiase
 
 /* ========= ICONS (icons.js) ========= */
 .ic { width: 1.15em; height: 1.15em; flex-shrink: 0; display: inline-block; vertical-align: -0.2em; pointer-events: none; }
-[data-icon] { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+/* :where = Spezifitaet 0, damit Komponenten-Regeln (z.B. display:none am Handy) gewinnen */
+:where([data-icon]) { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .nav-item .nav-icon { width: 22px; height: 22px; font-size: 1.15rem; }
 .nav-item .nav-icon .ic { width: 20px; height: 20px; }
 .sidebar-tool-btn .ic { width: 19px; height: 19px; }
@@ -4558,3 +4559,14 @@ th .ic { width: 15px; height: 15px; }
 @keyframes icon-swap-b { from { transform: scale(0.6) rotate(30deg); opacity: 0.4; } }
 .pb-like .ic { animation: like-pop var(--dur-base) var(--ease-out); }
 @keyframes like-pop { from { transform: scale(0.7); } }
+
+/* Handy: Titel darf schrumpfen, Knoepfe ruecken zusammen - bei 390px lief
+   das letzte Symbol (Video/Warteschlange) sonst ueber den Rand. */
+@media (max-width: 900px) and (pointer: coarse) {
+  .player-bar-left { gap: 4px; min-width: 0; max-width: 100%; }
+  .player-bar-left .pb-info { flex: 1 1 auto; margin-right: 4px; }
+  .player-bar-left .pb-like, .player-bar-left .pb-lyrics, .player-bar-left .pb-video, .player-bar-left .pb-queue {
+    width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .player-bar-left .pb-video.hidden { display: none; }
+}
