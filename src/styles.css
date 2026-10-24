@@ -78,6 +78,15 @@
 .theme-reveal::view-transition-new(root) { z-index: 2; }
 .theme-swatch-reson { background: linear-gradient(135deg, #17171a 0 50%, #d9a866 50% 100%); }
 
+/* Linux (WebKitGTK): keine Weichzeichner hinter Ebenen. Jedes Overlay und
+   Popover hat ohnehin einen deckenden oder stark abdunkelnden Hintergrund -
+   der Blur war kaum zu sehen, hat aber bei jedem Scrollen und jeder
+   Animation das komplette Bild darunter neu weichgezeichnet. */
+.os-linux *, .os-linux *::before, .os-linux *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -379,13 +388,16 @@ button, .track-row, .nav-item, .card, .playlist-item {
    .app-shell regardless of DOM order - the blurred color blob only shows
    through the 8px gaps around sidebar/main-content. Color is set inline by
    player.js from the current track's cover; the transition here is what
-   makes that change fade smoothly instead of snapping. */
+   makes that change fade smoothly instead of snapping.
+   Kein filter: blur(140px) mehr: eine einfarbige Flaeche, die ueber den
+   Rand hinausragt, sieht weichgezeichnet genauso aus - der Filter kostete
+   aber bei jedem Neuzeichnen einen Vollbild-Blur, und auf Linux (WebKitGTK,
+   v.a. mit NVIDIA) hat genau das die ganze App ruckeln lassen. */
 .ambient-glow {
   position: fixed;
   inset: -10%;
   z-index: -1;
   background-color: #1db954;
-  filter: blur(140px);
   opacity: 0.28;
   transition: background-color 1.4s ease, opacity 0.6s ease;
   pointer-events: none;
@@ -1269,7 +1281,137 @@ body.has-dynamic-colors .playlist-hero {
 .add-to-playlist-new button:hover { background: var(--sp-green-hover); }
 
 /* ========= SETTINGS MODAL ========= */
-.settings-modal .modal { max-width: 460px; }
+/* Zweispaltig: Kategorien links, Optionen rechts (settings-ui.js). Auf
+   schmalen Fenstern/Handy werden die Kategorien zu einer Chip-Leiste
+   oben und das Fenster fuellt den Bildschirm. */
+.settings-modal .modal.settings-shell {
+  max-width: 880px;
+  height: min(720px, calc(100dvh - 80px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.settings-head { gap: 14px; padding: 14px 16px 14px 22px; }
+.settings-head h3 { flex: none; }
+.settings-search {
+  flex: 1; max-width: 320px; margin-left: auto; display: flex; align-items: center; gap: 8px;
+  height: 38px; padding: 0 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--sp-text) 5%, transparent); border: 1px solid var(--sp-border);
+  color: var(--sp-muted-2); transition: border-color var(--dur-base), box-shadow var(--dur-base);
+}
+.settings-search:focus-within { border-color: color-mix(in srgb, var(--sp-green) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sp-green) 14%, transparent); }
+.settings-search .ic { width: 16px; height: 16px; }
+.settings-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--sp-text); font: inherit; font-size: 0.88rem; }
+.settings-search input::placeholder { color: var(--sp-muted-2); }
+.settings-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+.settings-nav {
+  position: relative; display: flex; flex-direction: column; gap: 2px; padding: 12px 6px;
+  border-right: 1px solid var(--sp-border); overflow-y: auto;
+  transition: opacity var(--dur-base);
+}
+.settings-nav.is-dimmed { opacity: 0.45; }
+.settings-nav button {
+  position: relative; z-index: 1; display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%;
+  min-height: 42px; padding: 0 14px; border-radius: var(--radius-md); background: none;
+  color: var(--sp-muted); font: inherit; font-size: 0.9rem; font-weight: 500; text-align: left; white-space: nowrap;
+  transition: color var(--dur-base) var(--ease-out);
+}
+.settings-nav button .ic { width: 18px; height: 18px; flex: none; }
+.settings-nav button:hover { color: var(--sp-text); }
+.settings-nav button[aria-selected="true"] { color: var(--sp-text); font-weight: 600; }
+.settings-nav button[aria-selected="true"] .ic { color: var(--sp-green); }
+.settings-nav-ind {
+  position: absolute; left: 0; top: 0; width: 0; height: 0; border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--sp-text) 7%, transparent);
+  transition: transform var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out), height var(--dur-slow) var(--ease-out);
+  pointer-events: none;
+}
+.settings-panes { overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px 28px; }
+.settings-section { display: none; margin: 0; }
+.settings-section.is-active { display: block; animation: settingsIn var(--dur-slow) var(--ease-out); }
+@keyframes settingsIn { from { opacity: 0; transform: translateY(6px); } }
+.settings-panes .settings-section-title {
+  font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; text-transform: none; color: var(--sp-text);
+  margin: 0 0 16px;
+}
+/* Waehrend der Suche: alle Kategorien mit Treffern untereinander */
+.settings-panes.is-searching .settings-section { display: none; animation: none; }
+.settings-panes.is-searching .settings-section.search-hit { display: block; margin-bottom: 26px; }
+.settings-panes.is-searching .settings-section-title { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sp-muted); margin-bottom: 10px; }
+.settings-panes.is-searching .settings-sub { grid-template-rows: 1fr; }
+.settings-panes.is-searching .settings-sub-in { opacity: 1; }
+.search-hidden { display: none !important; }
+.settings-nomatch { text-align: center; color: var(--sp-muted); padding: 40px 0; }
+
+.settings-group {
+  border-radius: var(--radius-lg); border: 1px solid var(--sp-border);
+  background: color-mix(in srgb, var(--sp-text) 3%, transparent);
+  padding: 4px 18px; margin-bottom: 16px;
+}
+.settings-group-title {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--sp-muted); padding: 12px 0 2px;
+}
+/* Trennlinien zwischen sichtbaren Zeilen; eine eingeklappte Unterebene
+   traegt keine eigene Linie, sonst bliebe ein leerer Strich stehen. */
+.settings-group > .settings-row + .settings-row,
+.settings-group > .settings-sub + .settings-row,
+.settings-sub-in > .settings-row + .settings-row,
+.settings-sub-in > .settings-sub + .settings-row,
+.settings-sub-in > .settings-slider-row + .settings-row,
+.settings-sub-in > :first-child { border-top: 1px solid var(--sp-border); }
+.settings-group .settings-row { padding: 14px 0; }
+.settings-group .settings-row:has(.settings-row-label) { min-height: 60px; }
+.settings-row.is-empty { display: none; }
+.settings-group .settings-row > div:first-child { min-width: 0; }
+.settings-group .settings-row-label { font-weight: 500; }
+.settings-row-desc { line-height: 1.45; }
+.settings-row-desc.is-clamped {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer;
+}
+.settings-row-desc[role="button"] { cursor: pointer; }
+.settings-row-desc[role="button"]:hover { color: var(--sp-text); }
+.settings-group .settings-slider-row { padding: 0 0 14px; }
+.settings-group .hotkey-list { margin-top: 10px; }
+.settings-group #hotkeyList + .settings-row-desc { margin: 10px 0 12px !important; }
+/* Abhaengige Optionen: klappen mit dem Schalter darueber auf */
+.settings-sub { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-slow) var(--ease-out); }
+.settings-sub.is-open { grid-template-rows: 1fr; }
+.settings-sub-in { min-height: 0; overflow: hidden; opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
+.settings-sub.is-open > .settings-sub-in { opacity: 1; }
+.settings-sub .settings-sub { margin-left: 0; }
+.settings-group > .settings-sub > .settings-sub-in { border-left: 2px solid color-mix(in srgb, var(--sp-green) 35%, transparent); padding-left: 14px; }
+.settings-group > .settings-sub.is-open > .settings-sub-in { margin-bottom: 6px; }
+.os-android [data-desktop-only] { display: none !important; }
+
+@media (max-width: 760px) {
+  .settings-modal.modal-overlay { padding: 0; }
+  .settings-modal .modal.settings-shell { max-width: none; height: 100dvh; border-radius: 0; border: 0; }
+  .settings-head { flex-wrap: wrap; padding: calc(12px + env(safe-area-inset-top)) 12px 10px 18px; row-gap: 10px; }
+  .settings-head h3 { flex: 1; }
+  .settings-search { order: 3; flex: 1 1 100%; max-width: none; margin: 0 6px 0 0; height: 42px; }
+  .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .settings-nav {
+    flex-direction: row; gap: 6px; padding: 10px 12px; overflow-x: auto; overflow-y: hidden;
+    border-right: 0; border-bottom: 1px solid var(--sp-border); scrollbar-width: none;
+  }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .settings-nav button { width: auto; min-height: 38px; padding: 0 14px; gap: 8px; border-radius: 999px; font-size: 0.86rem; flex: none; }
+  .settings-nav button .ic { width: 16px; height: 16px; }
+  .settings-nav-ind { border-radius: 999px; background: color-mix(in srgb, var(--sp-green) 16%, transparent); }
+  .settings-nav button[aria-selected="true"] { color: var(--sp-green); }
+  .settings-panes { padding: 16px 14px calc(28px + env(safe-area-inset-bottom)); }
+  .settings-panes .settings-section-title { display: none; }
+  .settings-panes.is-searching .settings-section-title { display: block; }
+  .settings-group { padding: 2px 14px; }
+  .settings-group .settings-row { gap: 14px; }
+  /* Eingabefelder und Auswahllisten unter den Text statt daneben quetschen */
+  .settings-group .settings-row:has(> .settings-text-input, > select.settings-select) { flex-wrap: wrap; }
+  .settings-group .settings-row > .settings-text-input,
+  .settings-group .settings-row > select.settings-select { width: 100%; max-width: none; }
+  .settings-group .settings-row > .btn-secondary,
+  .settings-group .settings-row > button.settings-select { flex: none; width: auto; max-width: none; white-space: nowrap; margin-left: auto; }
+}
 .settings-section { margin-bottom: 22px; }
 .settings-section:last-child { margin-bottom: 0; }
 .settings-section-title {

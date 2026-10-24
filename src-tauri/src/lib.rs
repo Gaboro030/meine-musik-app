@@ -24,8 +24,28 @@ mod youtubesync;
 use std::fs;
 use tauri::Manager;
 
+/// WebKitGTK mit dem proprietaeren NVIDIA-Treiber: der DMABUF-Renderer
+/// (Standard seit WebKitGTK 2.42) laeuft dort extrem zaeh oder zeigt ein
+/// leeres Fenster, und Wayland-Explicit-Sync flackert. Beides abschalten,
+/// bevor GTK/WebKit starten - nur bei NVIDIA, damit Intel/AMD den
+/// schnelleren Weg behalten. Wer die Variable selbst setzt, gewinnt.
+#[cfg(target_os = "linux")]
+fn nvidia_webkit_workaround() {
+    if !std::path::Path::new("/proc/driver/nvidia/version").exists() {
+        return;
+    }
+    for (key, val) in [("WEBKIT_DISABLE_DMABUF_RENDERER", "1"), ("__NV_DISABLE_EXPLICIT_SYNC", "1")] {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, val);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    nvidia_webkit_workaround();
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -170,6 +190,7 @@ pub fn run() {
             commands::fetch_thumbnail,
             commands::download_track,
             commands::download_track_progress,
+            commands::cancel_downloads,
             commands::get_stream_url,
             commands::clear_lyrics_cache,
             cover::fetch_missing_cover,
