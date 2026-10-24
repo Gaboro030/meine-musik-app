@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Reson – Dein eigener Musik-Player</title>
+  <meta name="description" content="Reson ist ein Musik-Player für Windows, Linux und Android: Playlists von YouTube und Spotify laden, offline hören, mit Freunden synchron mithören. Kostenlos, ohne Konto, ohne Werbung." />
+  <meta name="theme-color" content="#0f0f11" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f5f4f1" media="(prefers-color-scheme: light)" />
+  <meta property="og:title" content="Reson – Dein eigener Musik-Player" />
+  <meta property="og:description" content="Playlists laden, offline hören, mit Freunden mithören. Windows · Linux · Android." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+  <script>
+    // Vor dem ersten Bild: Theme und Sprache setzen, sonst blitzt kurz das falsche Design auf.
+    (function () {
+      var pref = "system", lang = "system";
+      try { pref = localStorage.getItem("resonSiteTheme") || "system"; lang = localStorage.getItem("resonSiteLang") || "system"; } catch (e) {}
+      var dark = pref === "dark" || (pref === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+      var r = document.documentElement;
+      r.classList.add("js");
+      r.dataset.theme = dark ? "dark" : "light";
+      r.dataset.themePref = pref;
+      if (lang === "system") lang = (navigator.language || "en").slice(0, 2);
+      r.lang = ["de", "en", "tr"].indexOf(lang) >= 0 ? lang : "en";
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Icon-Satz wie in der App (src/icons.js): 24er-Raster, Linien, Textfarbe. -->
+  <svg width="0" height="0" class="sprite" aria-hidden="true">
+    <defs>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></symbol>
+      <symbol id="i-library" viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+      <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M2 14h4"/><path d="M10 8h4"/><path d="M18 16h4"/></symbol>
+      <symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-4.4-4.5-8.6-10-8.6z"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M7 16h10"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+      <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+      <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect fill="currentColor" stroke="none" x="6" y="4" width="4" height="16" rx="1"/><rect fill="currentColor" stroke="none" x="14" y="4" width="4" height="16" rx="1"/></symbol>
+      <symbol id="i-prev" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M19 20 9 12l10-8z"/><path d="M5 19V5"/></symbol>
+      <symbol id="i-next" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="m5 4 10 8-10 8z"/><path d="M19 5v14"/></symbol>
+      <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="m4 4 5 5"/></symbol>
+      <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"/></symbol>
+      <symbol id="i-windows" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></symbol>
+      <symbol id="i-linux" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m6 9 3 3-3 3"/><path d="M12 15h5"/></symbol>
+      <symbol id="i-android" viewBox="0 0 24 24"><path d="M4 18a8 8 0 0 1 16 0z"/><path d="m6.3 12.3-1.8-3M17.7 12.3l1.8-3"/><circle cx="9" cy="15" r="0.9" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="0.9" fill="currentColor" stroke="none"/></symbol>
+    </defs>
+  </svg>
+
+  <a class="skip" href="#main" data-i18n="skip">Zum Inhalt springen</a>
+
+  <header class="topbar" id="top">
+    <div class="topbar-inner">
+      <a class="brand" href="#top" aria-label="Reson">
+        <img src="icon.svg" alt="" width="30" height="30" />
+        <span>Reson</span>
+      </a>
+      <nav class="nav" aria-label="Hauptnavigation" data-i18n-aria="navLabel">
+        <a href="#funktionen" data-i18n="navFeatures">Funktionen</a>
+        <a href="#party" data-i18n="navParty">Party-Modus</a>
+        <a href="#themes" data-i18n="navThemes">Themes</a>
+        <a href="#faq" data-i18n="navFaq">Fragen</a>
+      </nav>
+      <div class="topbar-actions">
+        <div class="seg theme-seg desktop-only" role="radiogroup" aria-label="Darstellung" data-i18n-aria="themeLabel">
+          <span class="seg-indicator" aria-hidden="true"></span>
+          <button type="button" role="radio" data-theme-pref="system" aria-label="System" data-i18n-aria="themeSystem"><svg class="ic"><use href="#i-monitor"/></svg></button>
+          <button type="button" role="radio" data-theme-pref="light" aria-label="Hell" data-i18n-aria="themeLight"><svg class="ic"><use href="#i-sun"/></svg></button>
+          <button type="button" role="radio" data-theme-pref="dark" aria-label="Dunkel" data-i18n-aria="themeDark"><svg class="ic"><use href="#i-moon"/></svg></button>
+        </div>
+        <button type="button" class="lang-btn desktop-only" data-lang-open aria-haspopup="listbox" aria-expanded="false">
+          <svg class="ic"><use href="#i-globe"/></svg><span data-lang-current>DE</span>
+        </button>
+        <a class="btn btn-primary btn-sm" href="#download"><svg class="ic"><use href="#i-download"/></svg><span data-i18n="ctaShort">Laden</span></a>
+        <button type="button" class="icon-btn mobile-only" id="menuBtn" aria-label="Menü" data-i18n-aria="menu" aria-expanded="false" aria-controls="menuSheet">
+          <svg class="ic"><use href="#i-menu"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow reveal"><span class="dot" aria-hidden="true"></span><span data-release-line>Version 0.2.0</span></p>
+          <h1 class="reveal" data-i18n="heroTitle">Deine Musik.<br />Ohne Abo. Ohne Cloud.</h1>
+          <p class="lead reveal" data-i18n="heroLead">Reson lädt deine Playlists von YouTube und Spotify, spielt sie offline ab und lässt Freunde in Echtzeit mithören. Kein Konto, keine Werbung – die Dateien gehören dir.</p>
+          <div class="hero-cta reveal">
+            <a class="btn btn-primary btn-lg" data-primary-download href="#download">
+              <svg class="ic" data-primary-icon><use href="#i-download"/></svg>
+              <span data-primary-label data-i18n="ctaGeneric">Kostenlos laden</span>
+            </a>
+            <a class="btn btn-ghost btn-lg" href="#download" data-i18n="ctaOther">Alle Plattformen</a>
+          </div>
+          <p class="hero-meta reveal">
+            <span><svg class="ic"><use href="#i-windows"/></svg>Windows</span>
+            <span><svg class="ic"><use href="#i-linux"/></svg>Linux</span>
+            <span><svg class="ic"><use href="#i-android"/></svg>Android</span>
+          </p>
+        </div>
+
+        <!-- App-Nachbau: gleiche Flaechen, Radien und Farben wie die echte Oberflaeche. -->
+        <div class="hero-visual reveal" aria-hidden="true">
+          <div class="mock-window">
+            <div class="mock-bar"><i></i><i></i><i></i></div>
+            <div class="mock-body">
+              <aside class="mock-side">
+                <div class="mock-brand"><img src="icon.svg" alt="" width="18" height="18" />Reson</div>
+                <div class="mock-nav active"><svg class="ic"><use href="#i-home"/></svg><span data-i18n="mHome">Home</span></div>
+                <div class="mock-nav"><svg class="ic"><use href="#i-library"/></svg><span data-i18n="mLibrary">Bibliothek</span></div>
+                <div class="mock-nav"><svg class="ic"><use href="#i-history"/></svg><span data-i18n="mHistory">Verlauf</span></div>
+                <div class="mock-nav"><svg class="ic"><use href="#i-trash"/></svg><span data-i18n="mTrash">Papierkorb</span></div>
+                <div class="mock-label">Playlists</div>
+                <div class="mock-pl"><b class="c1"></b>Roadtrip 2026</div>
+                <div class="mock-pl"><b class="c2"></b>Nachtschicht</div>
+                <div class="mock-pl"><b class="c3"></b>Gym</div>
+              </aside>
+              <div class="mock-main">
+                <div class="mock-search"><svg class="ic"><use href="#i-search"/></svg><span data-i18n="mSearch">Songs, Playlists, Interpreten suchen …</span></div>
+                <div class="mock-head">
+                  <div class="mock-cover c1"></div>
+                  <div>
+                    <small>Playlist</small>
+                    <strong>Roadtrip 2026</strong>
+                    <span data-i18n="mSongs">24 Songs · 1 Std. 18 Min.</span>
+                  </div>
+                </div>
+                <ol class="mock-tracks">
+                  <li class="playing"><span class="eq"><i></i><i></i><i></i></span><div><b>Lichter der Stadt</b><small>Noah Velten</small></div><time>3:42</time></li>
+                  <li><span>2</span><div><b>Kilometer 9</b><small>Mara Lindqvist</small></div><time>4:05</time></li>
+                  <li><span>3</span><div><b>Sommer auf Repeat</b><small>Die Fernlichter</small></div><time>3:18</time></li>
+                  <li><span>4</span><div><b>Ostwind</b><small>Ayla Demir</small></div><time>2:57</time></li>
+                  <li><span>5</span><div><b>Weit weg</b><small>Jonas Hartl</small></div><time>3:36</time></li>
+                </ol>
+              </div>
+            </div>
+            <div class="mock-player">
+              <div class="mp-now"><div class="mock-cover sm c1"></div><div><b>Lichter der Stadt</b><small>Noah Velten</small></div><svg class="ic mp-heart"><use href="#i-heart"/></svg></div>
+              <div class="mp-ctrl">
+                <div class="mp-btns"><svg class="ic"><use href="#i-shuffle"/></svg><svg class="ic"><use href="#i-prev"/></svg><span class="mp-play"><svg class="ic"><use href="#i-pause"/></svg></span><svg class="ic"><use href="#i-next"/></svg><svg class="ic"><use href="#i-repeat"/></svg></div>
+                <div class="mp-progress"><time>1:24</time><span class="bar"><span class="fill"></span></span><time>3:42</time></div>
+              </div>
+              <div class="mp-vol"><svg class="ic"><use href="#i-sliders"/></svg><span class="bar"><span class="fill" style="width:70%"></span></span></div>
+            </div>
+          </div>
+
+          <div class="mock-phone">
+            <div class="ph-notch"></div>
+            <div class="ph-cover c1"><span class="eq big"><i></i><i></i><i></i><i></i></span></div>
+            <b>Lichter der Stadt</b>
+            <small>Noah Velten</small>
+            <span class="bar"><span class="fill"></span></span>
+            <div class="ph-btns"><svg class="ic"><use href="#i-prev"/></svg><span class="mp-play"><svg class="ic"><use href="#i-pause"/></svg></span><svg class="ic"><use href="#i-next"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="wrap proof reveal">
+        <li><strong>0 €</strong><span data-i18n="proofFree">kein Abo, keine Werbung</span></li>
+        <li><strong>320 kbps</strong><span data-i18n="proofQuality">MP3 oder Video bis 1080p</span></li>
+        <li><strong>19</strong><span data-i18n="proofThemes">Themes plus eigener Editor</span></li>
+        <li><strong>3</strong><span data-i18n="proofPlatforms">Plattformen, eine Bibliothek</span></li>
+      </ul>
+    </section>
+
+    <!-- ============ DOWNLOADER ============ -->
+    <section class="section" id="funktionen">
+      <div class="wrap split">
+        <div class="split-copy">
+          <p class="kicker reveal" data-i18n="dlKicker">Downloader</p>
+          <h2 class="reveal" data-i18n="dlTitle">Link rein. Playlist raus.</h2>
+          <p class="reveal" data-i18n="dlText">Kopiere den Link einer Playlist von Spotify, YouTube oder YouTube Music. Reson findet jeden Titel, lädt ihn in der Qualität deiner Wahl und legt ihn mit Cover in deine Bibliothek.</p>
+          <ul class="ticks reveal">
+            <li><svg class="ic"><use href="#i-check"/></svg><span data-i18n="dlT1">MP3 von 128 bis 320 kbps oder MP4 bis 1080p</span></li>
+            <li><svg class="ic"><use href="#i-check"/></svg><span data-i18n="dlT2">Live-Fortschritt mit Tempo und Restzeit</span></li>
+            <li><svg class="ic"><use href="#i-check"/></svg><span data-i18n="dlT3">Fällt eine Qualität aus, nimmt Reson automatisch die nächste</span></li>
+          </ul>
+        </div>
+        <div class="panel dl-demo reveal" aria-hidden="true">
+          <div class="dl-input">
+            <svg class="ic"><use href="#i-link"/></svg>
+            <span class="dl-url" data-typing>music.youtube.com/playlist?list=PL7rRoadtrip</span>
+            <span class="btn btn-primary btn-xs" data-i18n="dlGo">Laden</span>
+          </div>
+          <ul class="dl-list">
+            <li><div><b>Lichter der Stadt</b><small>MP3 · 320 kbps</small></div><span class="dl-state" data-p="100"></span><span class="bar"><span class="fill"></span></span></li>
+            <li><div><b>Kilometer 9</b><small>MP3 · 320 kbps</small></div><span class="dl-state" data-p="100"></span><span class="bar"><span class="fill"></span></span></li>
+            <li><div><b>Sommer auf Repeat</b><small>MP3 · 320 kbps</small></div><span class="dl-state" data-p="64"></span><span class="bar"><span class="fill"></span></span></li>
+            <li><div><b>Ostwind</b><small>MP3 · 320 kbps</small></div><span class="dl-state" data-p="18"></span><span class="bar"><span class="fill"></span></span></li>
+            <li><div><b>Weit weg</b><small>MP3 · 320 kbps</small></div><span class="dl-state" data-p="0"></span><span class="bar"><span class="fill"></span></span></li>
+          </ul>
+          <p class="dl-foot"><span data-dl-speed>4,8 MB/s</span><span data-i18n="dlEta">noch etwa 40 s</span></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PARTY ============ -->
+    <section class="section section-alt" id="party">
+      <div class="wrap split split-rev">
+        <div class="split-copy">
+          <p class="kicker reveal" data-i18n="partyKicker">Party-Modus</p>
+          <h2 class="reveal" data-i18n="partyTitle">Alle hören dasselbe. Im selben Moment.</h2>
+          <p class="reveal" data-i18n="partyText">Starte eine Party, deine Freunde scannen den QR-Code – fertig. Jedes Handy spielt synchron mit, und Gäste wünschen sich Songs direkt in deine Warteschlange.</p>
+          <ol class="steps reveal">
+            <li><span>1</span><div><b data-i18n="s1t">Party starten</b><small data-i18n="s1d">Ein Klick in der Seitenleiste.</small></div></li>
+            <li><span>2</span><div><b data-i18n="s2t">QR-Code scannen</b><small data-i18n="s2d">Mit der Handykamera, ohne App.</small></div></li>
+            <li><span>3</span><div><b data-i18n="s3t">Mithören und wünschen</b><small data-i18n="s3d">Songs landen in deiner Warteschlange.</small></div></li>
+          </ol>
+          <p class="note reveal"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="partyNet">Nicht im selben WLAN? Der Internet-Link funktioniert auch über mobile Daten – ohne Portfreigabe, ohne Konto.</span></p>
+        </div>
+        <div class="party-stage reveal" aria-hidden="true">
+          <div class="party-host panel">
+            <div class="qr" data-qr></div>
+            <b data-i18n="partyLive">Party läuft</b>
+            <small data-i18n="partyGuests">3 Gäste hören mit</small>
+          </div>
+          <div class="party-guests">
+            <div class="guest panel"><span class="avatar a1">LM</span><div><b>Lena</b><small class="sync"><i></i><span data-i18n="synced">synchron</span></small></div></div>
+            <div class="guest panel"><span class="avatar a2">KD</span><div><b>Kerem</b><small class="sync"><i></i><span data-i18n="synced">synchron</span></small></div></div>
+            <div class="guest panel"><span class="avatar a3">JS</span><div><b>Jule</b><small class="wish"><svg class="ic"><use href="#i-sparkles"/></svg><span data-i18n="wished">wünscht „Ostwind“</span></small></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FEATURE-LISTE ============ -->
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker reveal" data-i18n="moreKicker">Und dazu</p>
+          <h2 class="reveal" data-i18n="moreTitle">Alles, was ein Player können sollte.</h2>
+        </div>
+        <dl class="spec">
+          <div class="reveal"><dt><svg class="ic"><use href="#i-sliders"/></svg><span data-i18n="f1t">Klang</span></dt><dd data-i18n="f1d">Equalizer, Crossfade, Songtexte und ein Leuchten, das sich dem Cover anpasst.</dd></div>
+          <div class="reveal"><dt><svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="f2t">Geräte-Sync</span></dt><dd data-i18n="f2d">Playlists vom PC aufs Handy schieben und zurück – im WLAN automatisch, sonst per Code.</dd></div>
+          <div class="reveal"><dt><svg class="ic"><use href="#i-users"/></svg><span data-i18n="f3t">Freunde</span></dt><dd data-i18n="f3d">Freundescode austauschen und sich weltweit zu Partys einladen, Ende-zu-Ende verschlüsselt.</dd></div>
+          <div class="reveal"><dt><svg class="ic"><use href="#i-mic"/></svg><span data-i18n="f4t">Sprachchat</span></dt><dd data-i18n="f4d">Musik in Discord, WhatsApp oder ins Spiel schicken – deine Stimme bleibt hörbar.</dd></div>
+          <div class="reveal"><dt><svg class="ic"><use href="#i-trash"/></svg><span data-i18n="f5t">Papierkorb</span></dt><dd data-i18n="f5d">Gelöschte Songs lassen sich wiederherstellen. Nichts ist sofort weg.</dd></div>
+          <div class="reveal"><dt><svg class="ic"><use href="#i-search"/></svg><span data-i18n="f6t">Entdecken</span></dt><dd data-i18n="f6d">Empfehlungen passend zu deiner Bibliothek und eine Online-Suche.</dd></div>
+          <div class="reveal"><dt><svg class="ic"><use href="#i-keyboard"/></svg><span data-i18n="f7t">Hotkeys</span></dt><dd data-i18n="f7d">Jede Tastenkombination frei belegbar, auch global im Hintergrund.</dd></div>
+          <div class="reveal"><dt><svg class="ic"><use href="#i-download"/></svg><span data-i18n="f8t">Updates</span></dt><dd data-i18n="f8d">Neue Versionen installiert Reson selbst – ein Klick, kein erneuter Download von Hand.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ============ THEMES ============ -->
+    <section class="section section-alt" id="themes">
+      <div class="wrap split">
+        <div class="split-copy">
+          <p class="kicker reveal" data-i18n="thKicker">Themes</p>
+          <h2 class="reveal" data-i18n="thTitle">Sieht aus, wie du willst.</h2>
+          <p class="reveal" data-i18n="thText">Reson kommt im eigenen, ruhigen Design – hell, dunkel oder passend zum System. Dazu 18 weitere Themes von AMOLED-Schwarz bis Vaporwave und ein Editor für dein eigenes. Probier es aus:</p>
+          <div class="swatches reveal" role="radiogroup" aria-label="Theme-Vorschau" data-i18n-aria="thPreview">
+            <button type="button" role="radio" aria-checked="true" data-acc="#d9a866" data-bg="#17171a" aria-label="Reson"></button>
+            <button type="button" role="radio" aria-checked="false" data-acc="#1db954" data-bg="#181818" aria-label="Spotify Green"></button>
+            <button type="button" role="radio" aria-checked="false" data-acc="#2f9dff" data-bg="#0a1c30" aria-label="Ocean Blue"></button>
+            <button type="button" role="radio" aria-checked="false" data-acc="#a855f7" data-bg="#170a28" aria-label="Neon Purple"></button>
+            <button type="button" role="radio" aria-checked="false" data-acc="#e63946" data-bg="#1f0d0d" aria-label="Crimson Red"></button>
+            <button type="button" role="radio" aria-checked="false" data-acc="#ff8c1a" data-bg="#22170a" aria-label="Sunset Orange"></button>
+            <button type="button" role="radio" aria-checked="false" data-acc="#ff5ca8" data-bg="#24101c" aria-label="Rose Pink"></button>
+            <button type="button" role="radio" aria-checked="false" data-acc="#22e0ff" data-bg="#101f22" aria-label="Cyberpunk Cyan"></button>
+          </div>
+          <p class="swatch-name reveal" data-swatch-name>Reson</p>
+        </div>
+        <div class="theme-preview reveal" aria-hidden="true">
+          <div class="tp-card">
+            <div class="tp-cover"><span class="eq big"><i></i><i></i><i></i><i></i></span></div>
+            <div class="tp-info"><b>Nachtschicht</b><small data-i18n="tpSongs">Playlist · 31 Songs</small></div>
+            <div class="tp-row"><span class="tp-play"><svg class="ic"><use href="#i-play"/></svg></span><svg class="ic"><use href="#i-shuffle"/></svg><svg class="ic"><use href="#i-heart"/></svg></div>
+            <ul>
+              <li class="on"><b>Neonregen</b><small>Mira Kessler</small></li>
+              <li><b>3 Uhr morgens</b><small>Tarek &amp; Lou</small></li>
+              <li><b>Leise Straßen</b><small>Henrik Saal</small></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DOWNLOAD ============ -->
+    <section class="section" id="download">
+      <div class="wrap">
+        <div class="section-head center">
+          <p class="kicker reveal" data-i18n="getKicker">Download</p>
+          <h2 class="reveal" data-i18n="getTitle">Reson installieren</h2>
+          <p class="reveal muted" data-release-detail data-i18n="getSub">Kostenlos für Windows, Linux und Android.</p>
+        </div>
+
+        <div class="platforms">
+          <article class="platform reveal" data-platform="windows">
+            <header><svg class="ic"><use href="#i-windows"/></svg><div><h3>Windows</h3><small data-i18n="winReq">Windows 10 und 11 · 64 Bit</small></div></header>
+            <a class="btn btn-primary btn-block" data-asset="windows" href="https://github.com/Gaboro030/meine-musik-app/releases/latest">
+              <svg class="ic"><use href="#i-download"/></svg><span data-i18n="winBtn">Installer laden</span><small data-size></small>
+            </a>
+            <ol class="howto">
+              <li data-i18n="win1">Heruntergeladene .exe öffnen.</li>
+              <li data-i18n="win2">Zeigt Windows „Der Computer wurde geschützt“: auf „Weitere Informationen“ und „Trotzdem ausführen“.</li>
+              <li data-i18n="win3">Installation läuft durch, Reson startet.</li>
+            </ol>
+          </article>
+
+          <article class="platform reveal" data-platform="android">
+            <header><svg class="ic"><use href="#i-android"/></svg><div><h3>Android</h3><small data-i18n="andReq">Android 7 oder neuer</small></div></header>
+            <a class="btn btn-primary btn-block" data-asset="android" href="https://github.com/Gaboro030/meine-musik-app/releases/latest/download/android-Reson.apk">
+              <svg class="ic"><use href="#i-download"/></svg><span data-i18n="andBtn">APK laden</span><small data-size></small>
+            </a>
+            <ol class="howto">
+              <li data-i18n="and1">APK auf dem Handy laden und antippen.</li>
+              <li data-i18n="and2">Beim ersten Mal „Unbekannte Apps installieren“ für den Browser erlauben.</li>
+              <li data-i18n="and3">Auf „Installieren“ tippen – fertig.</li>
+            </ol>
+            <p class="desk-hint desktop-only" data-i18n="andDesk">Gerade am PC? Öffne diese Seite auf dem Handy und tippe dort auf den Knopf.</p>
+          </article>
+
+          <article class="platform reveal" data-platform="linux">
+            <header><svg class="ic"><use href="#i-linux"/></svg><div><h3>Linux</h3><small data-i18n="linReq">Ubuntu, Debian und andere · x86_64</small></div></header>
+            <a class="btn btn-primary btn-block" data-asset="appimage" href="https://github.com/Gaboro030/meine-musik-app/releases/latest">
+              <svg class="ic"><use href="#i-download"/></svg><span>AppImage</span><small data-size></small>
+            </a>
+            <a class="btn btn-ghost btn-block" data-asset="deb" href="https://github.com/Gaboro030/meine-musik-app/releases/latest">
+              <span data-i18n="linDeb">.deb für Ubuntu/Debian</span><small data-size></small>
+            </a>
+            <ol class="howto">
+              <li><span data-i18n="lin1">AppImage: ausführbar machen und starten.</span> <code>chmod +x Reson_*.AppImage</code></li>
+              <li data-i18n="lin2">Oder das .deb per Doppelklick bzw. mit „sudo apt install ./Reson_*.deb“ installieren.</li>
+            </ol>
+          </article>
+        </div>
+
+        <p class="unsupported" data-unsupported hidden><svg class="ic"><use href="#i-phone"/></svg><span data-i18n="unsupported">Für iPhone, iPad und macOS gibt es Reson noch nicht. Auf einem Windows-, Linux- oder Android-Gerät klappt es sofort.</span></p>
+        <p class="all-releases"><a href="https://github.com/Gaboro030/meine-musik-app/releases"><svg class="ic"><use href="#i-github"/></svg><span data-i18n="allReleases">Alle Versionen und Änderungen auf GitHub</span></a></p>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="section section-alt" id="faq">
+      <div class="wrap faq-wrap">
+        <div class="section-head">
+          <p class="kicker reveal" data-i18n="faqKicker">Fragen</p>
+          <h2 class="reveal" data-i18n="faqTitle">Gut zu wissen</h2>
+        </div>
+        <div class="faq">
+          <details class="reveal"><summary><span data-i18n="q1">Kostet Reson etwas?</span><svg class="ic"><use href="#i-chevron-down"/></svg></summary><div><p data-i18n="a1">Nein. Kein Abo, keine Werbung, kein Konto. Reson läuft komplett auf deinem Gerät.</p></div></details>
+          <details class="reveal"><summary><span data-i18n="q2">Warum warnt Windows beim Installieren?</span><svg class="ic"><use href="#i-chevron-down"/></svg></summary><div><p data-i18n="a2">Windows warnt bei jeder neuen App ohne teures Herausgeber-Zertifikat. Über „Weitere Informationen“ und „Trotzdem ausführen“ geht es weiter. Der Quellcode liegt offen auf GitHub.</p></div></details>
+          <details class="reveal"><summary><span data-i18n="q3">Wo liegen meine Songs?</span><svg class="ic"><use href="#i-chevron-down"/></svg></summary><div><p data-i18n="a3">Als normale MP3- oder MP4-Dateien in einem Ordner auf deinem Gerät. Du kannst sie jederzeit kopieren, sichern oder mit anderen Playern abspielen.</p></div></details>
+          <details class="reveal"><summary><span data-i18n="q4">Brauche ich für Spotify-Playlists etwas?</span><svg class="ic"><use href="#i-chevron-down"/></svg></summary><div><p data-i18n="a4">YouTube- und YouTube-Music-Links funktionieren sofort. Für Spotify-Playlists brauchst du einmalig kostenlose Zugangsdaten aus dem Spotify-Developer-Dashboard.</p></div></details>
+          <details class="reveal"><summary><span data-i18n="q5">Wie bekomme ich Updates?</span><svg class="ic"><use href="#i-chevron-down"/></svg></summary><div><p data-i18n="a5">Reson meldet sich, sobald eine neue Version da ist, und installiert sie auf Wunsch selbst. Du musst nichts erneut herunterladen.</p></div></details>
+          <details class="reveal"><summary><span data-i18n="q6">Gibt es Reson für iPhone oder Mac?</span><svg class="ic"><use href="#i-chevron-down"/></svg></summary><div><p data-i18n="a6">Noch nicht. Aktuell gibt es Reson für Windows, Linux und Android.</p></div></details>
+        </div>
+      </div>
+    </section>
+
+    <section class="final">
+      <div class="wrap final-inner reveal">
+        <img src="icon.svg" alt="" width="64" height="64" />
+        <h2 data-i18n="finalTitle">Bereit für deine eigene Musik?</h2>
+        <a class="btn btn-primary btn-lg" data-primary-download href="#download">
+          <svg class="ic" data-primary-icon><use href="#i-download"/></svg>
+          <span data-primary-label data-i18n="ctaGeneric">Kostenlos laden</span>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <a class="brand" href="#top"><img src="icon.svg" alt="" width="24" height="24" /><span>Reson</span></a>
+      <p class="muted" data-i18n="footNote">Lade nur Musik herunter, an der du die Rechte hast oder die du privat nutzen darfst.</p>
+      <div class="footer-actions">
+        <button type="button" class="lang-btn" data-lang-open aria-haspopup="listbox" aria-expanded="false"><svg class="ic"><use href="#i-globe"/></svg><span data-lang-name>Deutsch</span></button>
+        <a class="icon-btn" href="https://github.com/Gaboro030/meine-musik-app" aria-label="GitHub"><svg class="ic"><use href="#i-github"/></svg></a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Handy: Download-Leiste unten, sobald der Hero aus dem Bild ist -->
+  <div class="dock mobile-only" id="dock" aria-hidden="true">
+    <a class="btn btn-primary btn-block" data-primary-download href="#download" tabindex="-1">
+      <svg class="ic" data-primary-icon><use href="#i-download"/></svg>
+      <span data-primary-label data-i18n="ctaGeneric">Kostenlos laden</span>
+    </a>
+  </div>
+
+  <!-- Handy-Menue als Sheet von unten -->
+  <div class="sheet-backdrop" id="menuBackdrop" hidden></div>
+  <div class="sheet" id="menuSheet" role="dialog" aria-modal="true" aria-label="Menü" data-i18n-aria="menu" hidden>
+    <span class="sheet-grip" aria-hidden="true"></span>
+    <nav class="sheet-nav">
+      <a href="#funktionen" data-i18n="navFeatures">Funktionen</a>
+      <a href="#party" data-i18n="navParty">Party-Modus</a>
+      <a href="#themes" data-i18n="navThemes">Themes</a>
+      <a href="#download" data-i18n="navDownload">Download</a>
+      <a href="#faq" data-i18n="navFaq">Fragen</a>
+    </nav>
+    <div class="sheet-row">
+      <span data-i18n="themeLabel">Darstellung</span>
+      <div class="seg theme-seg seg-wide" role="radiogroup" aria-label="Darstellung" data-i18n-aria="themeLabel">
+        <span class="seg-indicator" aria-hidden="true"></span>
+        <button type="button" role="radio" data-theme-pref="system"><span data-i18n="themeSystem">System</span></button>
+        <button type="button" role="radio" data-theme-pref="light"><span data-i18n="themeLight">Hell</span></button>
+        <button type="button" role="radio" data-theme-pref="dark"><span data-i18n="themeDark">Dunkel</span></button>
+      </div>
+    </div>
+    <div class="sheet-row">
+      <span data-i18n="langLabel">Sprache</span>
+      <button type="button" class="lang-btn" data-lang-open aria-haspopup="listbox" aria-expanded="false"><svg class="ic"><use href="#i-globe"/></svg><span data-lang-name>Deutsch</span><svg class="ic"><use href="#i-chevron-down"/></svg></button>
+    </div>
+  </div>
+
+  <!-- Sprachwahl: Popover am Knopf, auf dem Handy als Sheet -->
+  <div class="lang-pop" id="langPop" role="listbox" aria-label="Sprache" data-i18n-aria="langLabel" hidden>
+    <button type="button" role="option" data-lang="system"><span data-i18n="langSystem">Systemsprache</span><svg class="ic"><use href="#i-check"/></svg></button>
+    <button type="button" role="option" data-lang="de"><span>Deutsch</span><svg class="ic"><use href="#i-check"/></svg></button>
+    <button type="button" role="option" data-lang="en"><span>English</span><svg class="ic"><use href="#i-check"/></svg></button>
+    <button type="button" role="option" data-lang="tr"><span>Türkçe</span><svg class="ic"><use href="#i-check"/></svg></button>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
