@@ -169,9 +169,12 @@ jobs:
       # Erst NACH dem Init: "tauri icon" schreibt die Android-Icons nur in ein
       # schon vorhandenes gen/android - vorher erzeugt, ueberschrieb der Init
       # sie mit dem Tauri-Standardsymbol.
+      # icons-android.json: Android schneidet Icons rund bzw. als Squircle
+      # zu. Deshalb eigene Vordergrund-Ebene (nur das Zeichen, in der
+      # sicheren Mitte) auf dem dunklen Reson-Hintergrund statt Weiss.
       - name: Generate app icons
         run: |
-          npx tauri icon icons-source.png   # icons-source.png = dunkle Reson-Fassung (Standard)
+          npx tauri icon icons-android.json
 
       # Muss VOR merge-android-extras.mjs laufen: das Skript setzt den
       # Signatur-Block nur dann in build.gradle.kts ein, wenn es hier eine
