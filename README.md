@@ -278,6 +278,6 @@ Ab dem nächsten Push liegen in den CI-Artefakten `android-Reson.aab`
 
 <div align="center">
 
-**Gebaut mit 🦀 Rust, ☕ und viel zu vielen CI-Läufen.**
+**Gebaut mit 🦀 Rust, ☕ und viel zu vielen CI-Läufen..**
 
 </div>
