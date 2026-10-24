@@ -939,10 +939,74 @@ pub(crate) fn build_ytdlp_args(out_template: &Path, video_id: &str, format: &str
             // in case a broken/missing thumbnail is itself the failure.
             args.push("--embed-thumbnail".into());
             args.push("--add-metadata".into());
+            // Wie in Ytms-to-mp3: YouTube-Music-Cover stecken mit Balken in
+            // einem 16:9-Bild - vor dem Einbetten als JPG quadratisch
+            // zuschneiden, damit das Cover im Player nicht verzerrt.
+            args.push("--convert-thumbnails".into());
+            args.push("jpg".into());
+            args.push("--ppa".into());
+            args.push(format!("ThumbnailsConvertor+ffmpeg_o:{COVER_CROP_ARGS}"));
+            // Lange Video-Beschreibungen gehoeren nicht in die ID3-Tags.
+            args.push("--parse-metadata".into());
+            args.push(":(?P<meta_description>)".into());
+            args.push("--parse-metadata".into());
+            args.push(":(?P<meta_synopsis>)".into());
         }
+    }
+    // YouTube verlangt fuer viele Formate eine JS-Runtime (Player-
+    // Challenges). deno ist yt-dlps Standard; node/bun/quickjs werden
+    // zusaetzlich genommen, falls installiert - fehlende ueberspringt
+    // yt-dlp still.
+    for rt in ["node", "bun", "quickjs"] {
+        args.push("--js-runtimes".into());
+        args.push(rt.into());
     }
     args.push(format!("https://www.youtube.com/watch?v={video_id}"));
     args
+}
+
+/// ffmpeg-Ausgabeargumente fuer das Cover: JPG in hoher Qualitaet, auf die
+/// kuerzere Seite quadratisch zugeschnitten (aus Ytms-to-mp3 uebernommen).
+const COVER_CROP_ARGS: &str = "-c:v mjpeg -qmin 1 -qscale:v 3 -vf crop='if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'";
+
+/// Laufende Downloads, damit "Abbrechen" den yt-dlp-Prozess beenden kann,
+/// und abgebrochene Auftraege, damit kein weiterer Versuch mehr startet.
+static RUNNING: Mutex<std::collections::BTreeMap<String, tauri_plugin_shell::process::CommandChild>> =
+    Mutex::new(std::collections::BTreeMap::new());
+static CANCELLED: Mutex<std::collections::BTreeSet<String>> = Mutex::new(std::collections::BTreeSet::new());
+
+pub(crate) fn is_cancelled(task_id: &str) -> bool {
+    CANCELLED.lock().map(|c| c.contains(task_id)).unwrap_or(false)
+}
+
+/// Raeumt beim Verlassen von download_track_progress (Erfolg, Fehler oder
+/// Abbruch) den Eintrag des Auftrags wieder weg.
+struct TaskGuard(String);
+impl Drop for TaskGuard {
+    fn drop(&mut self) {
+        if let Ok(mut r) = RUNNING.lock() {
+            r.remove(&self.0);
+        }
+        if let Ok(mut c) = CANCELLED.lock() {
+            c.remove(&self.0);
+        }
+    }
+}
+
+/// Bricht Downloads ab: beendet laufende yt-dlp-Prozesse (Desktop) bzw.
+/// laesst die Innertube-Schleife beim naechsten Block aussteigen (Android).
+#[tauri::command]
+pub fn cancel_downloads(task_ids: Vec<String>) {
+    if let Ok(mut c) = CANCELLED.lock() {
+        c.extend(task_ids.iter().cloned());
+    }
+    if let Ok(mut r) = RUNNING.lock() {
+        for id in &task_ids {
+            if let Some(child) = r.remove(id) {
+                let _ = child.kill();
+            }
+        }
+    }
 }
 
 fn eta_re() -> &'static regex::Regex {
@@ -959,9 +1023,31 @@ pub(crate) fn friendly_download_error(stderr: &str) -> String {
         return "YouTube blockiert die Anfrage (Bot-Schutz). Später erneut versuchen.".into();
     }
     if stderr.contains("Video unavailable") {
-        return "Video nicht verfuegbar.".into();
+        return "Video nicht verfügbar (gelöscht, privat oder regional gesperrt).".into();
     }
-    stderr.lines().last().unwrap_or("Download fehlgeschlagen.").to_string()
+    let lower = stderr.to_lowercase();
+    if lower.contains("age") && lower.contains("restrict") {
+        return "Altersbeschränktes Video - lässt sich ohne YouTube-Anmeldung nicht laden.".into();
+    }
+    if lower.contains("ffmpeg") && (lower.contains("not found") || lower.contains("not installed")) {
+        return "ffmpeg fehlt - ohne ffmpeg kann keine MP3 erzeugt werden.".into();
+    }
+    // Die letzte ERROR-Zeile ist die aussagekraeftigste; yt-dlps Vorsatz
+    // "ERROR: [youtube] abc123:" sagt dem Nutzer nichts.
+    let line = stderr
+        .lines()
+        .rev()
+        .find(|l| l.contains("ERROR"))
+        .or_else(|| stderr.lines().rev().find(|l| !l.trim().is_empty()))
+        .unwrap_or("Download fehlgeschlagen.");
+    let cleaned = error_prefix_re().replace(line.trim(), "").to_string();
+    let cleaned = if cleaned.is_empty() { "Download fehlgeschlagen.".to_string() } else { cleaned };
+    cleaned.chars().take(300).collect()
+}
+
+fn error_prefix_re() -> &'static regex::Regex {
+    static CELL: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| regex::Regex::new(r"^ERROR:\s*(\[[^\]]+\]\s*[\w-]*:?\s*)?").unwrap())
 }
 
 /// Same download as above, but streams live percentage back to the
@@ -1003,6 +1089,7 @@ pub async fn download_track_progress(
     {
         return Err("Ungueltige Video-ID.".into());
     }
+    let _guard = TaskGuard(task_id.clone());
 
     // "Original-Studio-Audio bevorzugen": swap to a plain/"Topic" audio
     // upload of the same song when one exists, instead of ripping the
@@ -1041,6 +1128,9 @@ pub async fn download_track_progress(
     let mut last_err = String::new();
 
     for (i, attempt) in attempts.iter().enumerate() {
+        if is_cancelled(&task_id) {
+            break;
+        }
         if i > 0 {
             let note = if attempt.fallback {
                 "Letzter Versuch mit einfacheren Einstellungen …".to_string()
@@ -1054,13 +1144,16 @@ pub async fn download_track_progress(
 
         let args = build_ytdlp_args(&out_template, &video_id, &format, attempt);
         let spawned = app.shell().sidecar("yt-dlp").map_err(|e| e.to_string()).and_then(|c| c.args(args).spawn().map_err(|e| e.to_string()));
-        let (mut rx, _child) = match spawned {
+        let (mut rx, child) = match spawned {
             Ok(v) => v,
             Err(e) => {
                 last_err = e;
                 continue;
             }
         };
+        if let Ok(mut r) = RUNNING.lock() {
+            r.insert(task_id.clone(), child);
+        }
 
         let mut attempt_err: Option<String> = None;
         while let Some(event) = rx.recv().await {
@@ -1090,12 +1183,35 @@ pub async fn download_track_progress(
             }
         }
 
-        if attempt_err.is_none() && out_path.is_file() {
+        if let Ok(mut r) = RUNNING.lock() {
+            r.remove(&task_id);
+        }
+        if is_cancelled(&task_id) {
+            break;
+        }
+        // Die fertige Datei entsteht erst nach der Umwandlung. Liegt sie da,
+        // ist hoechstens Cover/Tags schiefgegangen - wie Ytms-to-mp3 dann
+        // die Datei behalten statt alles neu zu laden.
+        if out_path.is_file() {
             return Ok(());
         }
         last_err = attempt_err.unwrap_or_else(|| "Download fehlgeschlagen (Datei nicht gefunden).".to_string());
     }
 
+    if is_cancelled(&task_id) {
+        // Halbe Reste von yt-dlp wegraeumen - nur dessen eigene
+        // Zwischendateien, nie eine fertige Datei gleichen Namens.
+        if let Ok(rd) = std::fs::read_dir(&dest_dir) {
+            let prefix = format!("{safe_title}.");
+            for entry in rd.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with(&prefix) && (name.contains(".part") || name.ends_with(".ytdl") || name.contains(".temp.")) {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        return Err("Abgebrochen.".into());
+    }
     Err(friendly_download_error(&last_err))
 }
 
@@ -1479,6 +1595,29 @@ mod tests {
         std::fs::write(track.with_extension("album.txt"), "Neu").unwrap();
         assert_eq!(read_track_meta_cached(&track).album, "Neu");
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn friendly_download_error_strips_ytdlp_prefix() {
+        let err = "[download] 10%\nERROR: [youtube] abc123def: Requested format is not available";
+        assert_eq!(friendly_download_error(err), "Requested format is not available");
+    }
+
+    #[test]
+    fn friendly_download_error_explains_known_failures() {
+        assert!(friendly_download_error("ERROR: Sign in to confirm you're not a bot").contains("Bot-Schutz"));
+        assert!(friendly_download_error("ERROR: [youtube] x: Video unavailable").contains("nicht verfügbar"));
+        assert!(friendly_download_error("ERROR: This video is age-restricted").contains("Altersbeschränkt"));
+        assert_eq!(friendly_download_error(""), "Download fehlgeschlagen.");
+    }
+
+    #[test]
+    fn mp3_args_crop_cover_and_drop_description() {
+        let a = &build_attempts("mp3", "320", "best")[0];
+        let args = build_ytdlp_args(Path::new("/tmp/x.%(ext)s"), "abc123def", "mp3", a);
+        assert!(args.iter().any(|x| x.starts_with("ThumbnailsConvertor+ffmpeg_o:") && x.contains("crop=")));
+        assert!(args.iter().any(|x| x == ":(?P<meta_description>)"));
+        assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=abc123def");
     }
 
     #[test]

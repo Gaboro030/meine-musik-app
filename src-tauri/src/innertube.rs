@@ -767,6 +767,9 @@ pub async fn download_progress(
             .await
             .map_err(|_| fail("Verbindung haengt - Download abgebrochen.".to_string()))?;
         let Some(chunk) = next else { break };
+        if crate::commands::is_cancelled(task_id) {
+            return Err(fail("Abgebrochen.".to_string()));
+        }
         let chunk = chunk.map_err(|e| fail(format!("Verbindung abgebrochen: {e}")))?;
         file.write_all(&chunk).await.map_err(|e| fail(e.to_string()))?;
         done += chunk.len() as u64;

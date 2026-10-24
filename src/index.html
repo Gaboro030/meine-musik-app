@@ -498,280 +498,334 @@
   </div>
 
   <div id="settingsModal" class="modal-overlay settings-modal hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 data-i18n="Einstellungen">Einstellungen</h3>
-        <button type="button" id="settingsModalClose" class="modal-close" data-icon="x"></button>
+    <div class="modal settings-shell" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-header settings-head">
+        <h3 id="settingsTitle" data-i18n="Einstellungen">Einstellungen</h3>
+        <label class="settings-search">
+          <span data-icon="search"></span>
+          <input type="search" id="settingsSearch" spellcheck="false" data-i18n-placeholder="Einstellung suchen" placeholder="Einstellung suchen" />
+        </label>
+        <button type="button" id="settingsModalClose" class="modal-close" data-icon="x" data-i18n-title="Schließen" title="Schließen"></button>
       </div>
-      <div class="modal-body">
-        <div class="settings-section">
-          <div class="settings-section-title" data-i18n="Darstellung">Darstellung</div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Erscheinungsbild">Erscheinungsbild</div>
-              <div class="settings-row-desc" data-i18n="Hell, dunkel oder wie das System">Hell, dunkel oder wie das System</div>
+      <div class="settings-layout">
+        <nav class="settings-nav" id="settingsNav" role="tablist" aria-orientation="vertical">
+          <span class="settings-nav-ind" aria-hidden="true"></span>
+          <button type="button" role="tab" data-cat="look" data-icon="palette"><span data-i18n="Darstellung">Darstellung</span></button>
+          <button type="button" role="tab" data-cat="play" data-icon="sliders"><span data-i18n="Wiedergabe">Wiedergabe</span></button>
+          <button type="button" role="tab" data-cat="voice" data-icon="mic" data-desktop-only><span data-i18n="Discord &amp; Sprachchat">Discord &amp; Sprachchat</span></button>
+          <button type="button" role="tab" data-cat="sync" data-icon="refresh"><span data-i18n="Konten &amp; Sync">Konten &amp; Sync</span></button>
+          <button type="button" role="tab" data-cat="keys" data-icon="keyboard" data-desktop-only><span data-i18n="Hotkeys">Hotkeys</span></button>
+          <button type="button" role="tab" data-cat="data" data-icon="folder"><span data-i18n="Daten &amp; Backup">Daten &amp; Backup</span></button>
+          <button type="button" role="tab" data-cat="about" data-icon="info"><span data-i18n="Über Reson">Über Reson</span></button>
+        </nav>
+        <div class="modal-body settings-panes" id="settingsPanes">
+        <section class="settings-section" data-cat="look">
+          <h4 class="settings-section-title" data-i18n="Darstellung">Darstellung</h4>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Erscheinungsbild">Erscheinungsbild</div>
+                <div class="settings-row-desc" data-i18n="Hell, dunkel oder wie das System">Hell, dunkel oder wie das System</div>
+              </div>
+              <div class="lang-switch segmented" id="themeModeSwitch" role="radiogroup" data-i18n-aria-label="Erscheinungsbild" aria-label="Erscheinungsbild">
+                <button type="button" class="lang-switch-btn" role="radio" data-mode="system" data-i18n="System">System</button>
+                <button type="button" class="lang-switch-btn" role="radio" data-mode="light" data-i18n="Hell">Hell</button>
+                <button type="button" class="lang-switch-btn" role="radio" data-mode="dark" data-i18n="Dunkel">Dunkel</button>
+              </div>
             </div>
-            <div class="lang-switch segmented" id="themeModeSwitch" role="radiogroup" data-i18n-aria-label="Erscheinungsbild" aria-label="Erscheinungsbild">
-              <button type="button" class="lang-switch-btn" role="radio" data-mode="system" data-i18n="System">System</button>
-              <button type="button" class="lang-switch-btn" role="radio" data-mode="light" data-i18n="Hell">Hell</button>
-              <button type="button" class="lang-switch-btn" role="radio" data-mode="dark" data-i18n="Dunkel">Dunkel</button>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Sprache">Sprache</div>
+                <div class="settings-row-desc" data-i18n="Sprache der App-Oberfläche">Sprache der App-Oberfläche</div>
+              </div>
+              <div class="lang-switch" id="langSwitch">
+                <button type="button" class="lang-switch-btn" data-lang="de">DE</button>
+                <button type="button" class="lang-switch-btn" data-lang="en">EN</button>
+              </div>
             </div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Sprache">Sprache</div>
-              <div class="settings-row-desc" data-i18n="Sprache der App-Oberfläche">Sprache der App-Oberfläche</div>
-            </div>
-            <div class="lang-switch" id="langSwitch">
-              <button type="button" class="lang-switch-btn" data-lang="de">DE</button>
-              <button type="button" class="lang-switch-btn" data-lang="en">EN</button>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="App-Symbol">App-Symbol</div>
-              <div class="settings-row-desc" data-i18n="Dunkle oder helle Fassung des Reson-Zeichens">Dunkle oder helle Fassung des Reson-Zeichens</div>
-            </div>
-            <div class="app-icon-switch" id="appIconSwitch">
-              <button type="button" class="app-icon-choice" data-app-icon="dunkel" data-i18n-title="Dunkel" title="Dunkel">
-                <img src="icon.svg" alt="" width="30" height="30" />
-              </button>
-              <button type="button" class="app-icon-choice" data-app-icon="hell" data-i18n-title="Hell" title="Hell">
-                <img src="icon-hell.svg" alt="" width="30" height="30" />
-              </button>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Dynamic Glow">Dynamic Glow</div>
-              <div class="settings-row-desc" data-i18n="Hintergrund passt sich der Cover-Farbe des Songs an">Hintergrund passt sich der Cover-Farbe des Songs an</div>
-            </div>
-            <button type="button" id="glowToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
-          </div>
-        </div>
-        <div class="settings-section">
-          <div class="settings-section-title" data-i18n="Wiedergabe &amp; Sound">Wiedergabe &amp; Sound</div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Weicher Übergang (Crossfade)">Weicher Übergang (Crossfade)</div>
-              <div class="settings-row-desc" data-i18n="Songs blenden sich beim Wechsel sanft ineinander statt hart zu schneiden">Songs blenden sich beim Wechsel sanft ineinander statt hart zu schneiden</div>
-            </div>
-            <button type="button" id="crossfadeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Crossfade-Dauer">Crossfade-Dauer</div>
-              <div class="settings-row-desc" data-i18n="Wie lange sich zwei Songs beim Wechsel überlappen">Wie lange sich zwei Songs beim Wechsel überlappen</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="App-Symbol">App-Symbol</div>
+                <div class="settings-row-desc" data-i18n="Dunkle oder helle Fassung des Reson-Zeichens">Dunkle oder helle Fassung des Reson-Zeichens</div>
+              </div>
+              <div class="app-icon-switch" id="appIconSwitch">
+                <button type="button" class="app-icon-choice" data-app-icon="dunkel" data-i18n-title="Dunkel" title="Dunkel">
+                  <img src="icon.svg" alt="" width="30" height="30" />
+                </button>
+                <button type="button" class="app-icon-choice" data-app-icon="hell" data-i18n-title="Hell" title="Hell">
+                  <img src="icon-hell.svg" alt="" width="30" height="30" />
+                </button>
+              </div>
             </div>
           </div>
-          <div class="settings-slider-row">
-            <input type="range" id="crossfadeSecondsSlider" min="1" max="10" step="1" value="4" />
-            <span id="crossfadeSecondsReadout" class="pbtools-readout">4s</span>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="DJ-Beat-Übergänge (experimentell)">DJ-Beat-Übergänge (experimentell)</div>
-              <div class="settings-row-desc" data-i18n="Erkennt das Tempo (BPM) automatisch und startet den Übergang auf dem nächsten Beat statt an einem beliebigen Punkt">Erkennt das Tempo (BPM) automatisch und startet den Übergang auf dem nächsten Beat statt an einem beliebigen Punkt</div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Dynamic Glow">Dynamic Glow</div>
+                <div class="settings-row-desc" data-i18n="Hintergrund passt sich der Cover-Farbe des Songs an">Hintergrund passt sich der Cover-Farbe des Songs an</div>
+              </div>
+              <button type="button" id="glowToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
             </div>
-            <button type="button" id="djBeatmatchToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Lautstärke-Normalisierung">Lautstärke-Normalisierung</div>
-              <div class="settings-row-desc" data-i18n="Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln. Am genauesten nach „Lautstärke analysieren“ im Health-Check.">Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln. Am genauesten nach „Lautstärke analysieren“ im Health-Check.</div>
-            </div>
-            <button type="button" id="normalizeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Discord-Status">Discord-Status</div>
-              <div class="settings-row-desc" data-i18n="Zeigt Freunden auf Discord „Hört … von …“ inklusive Cover und Fortschrittsbalken. Nur am PC. Discord braucht dafür eine eigene Anwendungs-ID - die legst du in einer Minute kostenlos unter discord.com/developers/applications an; der Name der Anwendung ist auch der Name, der bei deinen Freunden erscheint.">Zeigt Freunden auf Discord „Hört … von …“ inklusive Cover und Fortschrittsbalken. Nur am PC. Discord braucht dafür eine eigene Anwendungs-ID - die legst du in einer Minute kostenlos unter discord.com/developers/applications an; der Name der Anwendung ist auch der Name, der bei deinen Freunden erscheint.</div>
-            </div>
-            <button type="button" id="discordToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Discord-Anwendungs-ID">Discord-Anwendungs-ID</div>
-              <div class="settings-row-desc" data-i18n="Die lange Zahl aus deiner Discord-Anwendung („Application ID“)">Die lange Zahl aus deiner Discord-Anwendung („Application ID“)</div>
-            </div>
-            <input type="text" id="discordAppIdInput" class="settings-text-input" inputmode="numeric" placeholder="123456789012345678" />
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Musik an den Sprachchat weitergeben">Musik an den Sprachchat weitergeben</div>
-              <div class="settings-row-desc" data-i18n="Schickt die Musik zusätzlich an ein zweites Ausgabegerät. Wählst du dort ein virtuelles Kabel und stellst dieses in Discord/TeamSpeak als Mikrofon ein, hören deine Freunde die Musik mit. Du selbst hörst unverändert über deine Kopfhörer. Nur am PC.">Schickt die Musik zusätzlich an ein zweites Ausgabegerät. Wählst du dort ein virtuelles Kabel und stellst dieses in Discord/TeamSpeak als Mikrofon ein, hören deine Freunde die Musik mit. Du selbst hörst unverändert über deine Kopfhörer. Nur am PC.</div>
-            </div>
-            <button type="button" id="voiceShareToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Zielgerät für den Sprachchat">Zielgerät für den Sprachchat</div>
-              <div class="settings-row-desc" data-i18n="Das Gerät, das dein Sprachchat als Mikrofon benutzt - typischerweise „CABLE Input“. Nicht deine Kopfhörer wählen, sonst hörst du alles doppelt.">Das Gerät, das dein Sprachchat als Mikrofon benutzt - typischerweise „CABLE Input“. Nicht deine Kopfhörer wählen, sonst hörst du alles doppelt.</div>
-            </div>
-            <select id="voiceShareDeviceSelect" class="settings-select" disabled></select>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Lautstärke der Musik im Sprachchat">Lautstärke der Musik im Sprachchat</div>
-              <div class="settings-row-desc" data-i18n="Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.">Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Mini-Player (Picture-in-Picture)">Mini-Player (Picture-in-Picture)</div>
+                <div class="settings-row-desc" data-i18n="Beim Minimieren schwebt ein kleines Player-Fenster über allen anderen Programmen">Beim Minimieren schwebt ein kleines Player-Fenster über allen anderen Programmen</div>
+              </div>
+              <button type="button" id="pipToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
             </div>
           </div>
-          <div class="settings-slider-row">
-            <input type="range" id="voiceShareVolumeSlider" min="0" max="100" step="1" value="53" />
-            <span id="voiceShareVolumeReadout" class="pbtools-readout">53%</span>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Eigenes Mikrofon dazumischen">Eigenes Mikrofon dazumischen</div>
-              <div class="settings-row-desc" data-i18n="Mischt deine Stimme zur Musik, damit beides zusammen ankommt. Ohne das hören deine Freunde nur die Musik und dich nicht mehr. Benutze Kopfhörer - über Lautsprecher nimmt dein Mikrofon die Musik ein zweites Mal auf und es hallt.">Mischt deine Stimme zur Musik, damit beides zusammen ankommt. Ohne das hören deine Freunde nur die Musik und dich nicht mehr. Benutze Kopfhörer - über Lautsprecher nimmt dein Mikrofon die Musik ein zweites Mal auf und es hallt.</div>
+        </section>
+        <section class="settings-section" data-cat="play">
+          <h4 class="settings-section-title" data-i18n="Wiedergabe">Wiedergabe</h4>
+          <div class="settings-group">
+            <div class="settings-group-title" data-i18n="Übergänge">Übergänge</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Weicher Übergang (Crossfade)">Weicher Übergang (Crossfade)</div>
+                <div class="settings-row-desc" data-i18n="Songs blenden sich beim Wechsel sanft ineinander statt hart zu schneiden">Songs blenden sich beim Wechsel sanft ineinander statt hart zu schneiden</div>
+              </div>
+              <button type="button" id="crossfadeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
             </div>
-            <button type="button" id="voiceShareMicToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Mikrofon">Mikrofon</div>
-              <div class="settings-row-desc" data-i18n="Dein echtes Mikrofon - das, was du sonst im Sprachchat direkt eingestellt hättest">Dein echtes Mikrofon - das, was du sonst im Sprachchat direkt eingestellt hättest</div>
+            <div class="settings-sub" data-depends="crossfadeToggleSwitch"><div class="settings-sub-in">
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Crossfade-Dauer">Crossfade-Dauer</div>
+                <div class="settings-row-desc" data-i18n="Wie lange sich zwei Songs beim Wechsel überlappen">Wie lange sich zwei Songs beim Wechsel überlappen</div>
+              </div>
             </div>
-            <select id="voiceShareMicSelect" class="settings-select" disabled></select>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Lautstärke deiner Stimme">Lautstärke deiner Stimme</div>
-              <div class="settings-row-desc" data-i18n="Wie laut deine Stimme gegenüber der Musik ankommt">Wie laut deine Stimme gegenüber der Musik ankommt</div>
+            <div class="settings-slider-row">
+              <input type="range" id="crossfadeSecondsSlider" min="1" max="10" step="1" value="4" />
+              <span id="crossfadeSecondsReadout" class="pbtools-readout">4s</span>
             </div>
-          </div>
-          <div class="settings-slider-row">
-            <input type="range" id="voiceShareMicVolumeSlider" min="0" max="200" step="5" value="100" />
-            <span id="voiceShareMicVolumeReadout" class="pbtools-readout">100%</span>
-          </div>
-          <div class="settings-row">
-            <div class="settings-row-desc" id="voiceShareHint"></div>
-            <button type="button" id="voiceShareCableBtn" class="settings-select" style="display:none;cursor:pointer" data-i18n="VB-Cable holen">VB-Cable holen</button>
-          </div>
-        </div>
-        <div class="settings-section">
-          <div class="settings-section-title" data-i18n="Playlists abgleichen">Playlists abgleichen</div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Wie das funktioniert">Wie das funktioniert</div>
-              <div class="settings-row-desc" data-i18n="Abgeglichen werden nur Titel, keine Dateien - weder Spotify noch YouTube Music erlauben das Hochladen eigener MP3s. Reson legt drüben eine Playlist an und füllt sie über die Suche mit demselben Song. Was es dort nicht gibt, bleibt außen vor. Anmelden tust du dich beim Anbieter selbst im Browser; Reson bekommt dein Passwort nie zu sehen.">Abgeglichen werden nur Titel, keine Dateien - weder Spotify noch YouTube Music erlauben das Hochladen eigener MP3s. Reson legt drüben eine Playlist an und füllt sie über die Suche mit demselben Song. Was es dort nicht gibt, bleibt außen vor. Anmelden tust du dich beim Anbieter selbst im Browser; Reson bekommt dein Passwort nie zu sehen.</div>
+            </div></div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="DJ-Beat-Übergänge (experimentell)">DJ-Beat-Übergänge (experimentell)</div>
+                <div class="settings-row-desc" data-i18n="Erkennt das Tempo (BPM) automatisch und startet den Übergang auf dem nächsten Beat statt an einem beliebigen Punkt">Erkennt das Tempo (BPM) automatisch und startet den Übergang auf dem nächsten Beat statt an einem beliebigen Punkt</div>
+              </div>
+              <button type="button" id="djBeatmatchToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
             </div>
           </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Spotify-Client-ID">Spotify-Client-ID</div>
-              <div class="settings-row-desc" data-i18n="Aus developer.spotify.com/dashboard. Dort als Redirect-URI genau http://127.0.0.1:8899/oauth/spotify eintragen. Ein Client-Secret wird nicht gebraucht.">Aus developer.spotify.com/dashboard. Dort als Redirect-URI genau http://127.0.0.1:8899/oauth/spotify eintragen. Ein Client-Secret wird nicht gebraucht.</div>
+          <div class="settings-group">
+            <div class="settings-group-title" data-i18n="Lautstärke">Lautstärke</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Lautstärke-Normalisierung">Lautstärke-Normalisierung</div>
+                <div class="settings-row-desc" data-i18n="Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln. Am genauesten nach „Lautstärke analysieren“ im Health-Check.">Gleicht laute/leise Songs beim Wechsel automatisch an, statt selbst nachzuregeln. Am genauesten nach „Lautstärke analysieren“ im Health-Check.</div>
+              </div>
+              <button type="button" id="normalizeToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
             </div>
-            <input type="text" id="spotifyClientIdInput" class="settings-text-input" placeholder="a1b2c3…" />
-          </div>
-          <div class="settings-row">
-            <div class="settings-row-desc" id="spotifyAuthStatus"></div>
-            <button type="button" id="spotifyAuthBtn" class="settings-select" style="cursor:pointer" data-i18n="Bei Spotify anmelden">Bei Spotify anmelden</button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Google-Client-ID (YouTube Music)">Google-Client-ID (YouTube Music)</div>
-              <div class="settings-row-desc" data-i18n="Aus console.cloud.google.com: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client vom Typ Desktop erstellen, Redirect-URI http://127.0.0.1:8899/oauth/google. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.">Aus console.cloud.google.com: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client vom Typ Desktop erstellen, Redirect-URI http://127.0.0.1:8899/oauth/google. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.</div>
-            </div>
-            <input type="text" id="googleClientIdInput" class="settings-text-input" placeholder="…apps.googleusercontent.com" />
-          </div>
-          <div class="settings-row">
-            <div class="settings-row-desc" id="googleAuthStatus"></div>
-            <button type="button" id="googleAuthBtn" class="settings-select" style="cursor:pointer" data-i18n="Bei Google anmelden">Bei Google anmelden</button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Stille überspringen (Skip-Silence)">Stille überspringen (Skip-Silence)</div>
-              <div class="settings-row-desc" data-i18n="Leise Anfänge/Enden bei jedem Song automatisch überspringen">Leise Anfänge/Enden bei jedem Song automatisch überspringen</div>
-            </div>
-            <button type="button" id="skipSilenceToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Mini-Player (Picture-in-Picture)">Mini-Player (Picture-in-Picture)</div>
-              <div class="settings-row-desc" data-i18n="Beim Minimieren schwebt ein kleines Player-Fenster über allen anderen Programmen">Beim Minimieren schwebt ein kleines Player-Fenster über allen anderen Programmen</div>
-            </div>
-            <button type="button" id="pipToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
-          </div>
-        </div>
-        <div class="settings-section">
-          <div class="settings-section-title" data-i18n="Cache &amp; Speicher">Cache &amp; Speicher</div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Songtext-Cache leeren">Songtext-Cache leeren</div>
-              <div class="settings-row-desc" data-i18n="Lokal gespeicherte Songtexte löschen - werden beim nächsten Abspielen neu geladen">Lokal gespeicherte Songtexte löschen - werden beim nächsten Abspielen neu geladen</div>
-            </div>
-            <button type="button" id="clearLyricsCacheBtn" class="btn-secondary" data-i18n="Leeren">Leeren</button>
-          </div>
-        </div>
-        <div class="settings-section">
-          <div class="settings-section-title" data-i18n="Backup">Backup</div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Einstellungen sichern">Einstellungen sichern</div>
-              <div class="settings-row-desc" data-i18n="Themes, Play-Verlauf & Co. als kleine Datei speichern (z.B. in einen Cloud-Ordner)">Themes, Play-Verlauf & Co. als kleine Datei speichern (z.B. in einen Cloud-Ordner)</div>
-            </div>
-            <button type="button" id="exportSettingsBtn" class="btn-secondary" data-i18n="Sichern">Sichern</button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Einstellungen wiederherstellen">Einstellungen wiederherstellen</div>
-              <div class="settings-row-desc" data-i18n="Aus einer zuvor gesicherten Datei zurückspielen">Aus einer zuvor gesicherten Datei zurückspielen</div>
-            </div>
-            <button type="button" id="importSettingsBtn" class="btn-secondary" data-i18n="Wiederherstellen">Wiederherstellen</button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Komplette Bibliothek exportieren">Komplette Bibliothek exportieren</div>
-              <div class="settings-row-desc" data-i18n="Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern">Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern</div>
-            </div>
-            <button type="button" id="exportZipBtn" class="btn-secondary" data-i18n="Als ZIP exportieren">Als ZIP exportieren</button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Bibliothek aus ZIP wiederherstellen">Bibliothek aus ZIP wiederherstellen</div>
-              <div class="settings-row-desc" data-i18n="Fehlende Titel aus einem ZIP-Backup ergänzen (vorhandene Dateien bleiben unangetastet)">Fehlende Titel aus einem ZIP-Backup ergänzen (vorhandene Dateien bleiben unangetastet)</div>
-            </div>
-            <button type="button" id="importZipBtn" class="btn-secondary" data-i18n="Aus ZIP importieren">Aus ZIP importieren</button>
-          </div>
-        </div>
-        <div class="settings-section">
-          <div class="settings-section-title" data-i18n="Sync &amp; Verbindung">Sync &amp; Verbindung</div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Handy-Sync beim Start aktivieren">Handy-Sync beim Start aktivieren</div>
-              <div class="settings-row-desc" data-i18n="Gerät ist sofort im WLAN sichtbar, ohne den Sync-Popover erst zu öffnen">Gerät ist sofort im WLAN sichtbar, ohne den Sync-Popover erst zu öffnen</div>
-            </div>
-            <button type="button" id="syncAutoStartToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
-          </div>
-        </div>
-        <div class="settings-section" id="hotkeysSettingsSection">
-          <div class="settings-section-title" data-i18n="Hotkeys">Hotkeys</div>
-          <div class="hotkey-list" id="hotkeyList"></div>
-          <div class="settings-row-desc" style="margin-top:8px;" data-i18n="Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.">Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.</div>
-        </div>
-        <div class="settings-section">
-          <div class="settings-section-title" data-i18n="App-Info">App-Info</div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Version">Version</div>
-              <div class="settings-row-desc" id="appVersionText">—</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Stille überspringen (Skip-Silence)">Stille überspringen (Skip-Silence)</div>
+                <div class="settings-row-desc" data-i18n="Leise Anfänge/Enden bei jedem Song automatisch überspringen">Leise Anfänge/Enden bei jedem Song automatisch überspringen</div>
+              </div>
+              <button type="button" id="skipSilenceToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
             </div>
           </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Updates">Updates</div>
-              <div class="settings-row-desc" data-update-status aria-live="polite"></div>
+        </section>
+        <section class="settings-section" data-cat="voice" data-desktop-only>
+          <h4 class="settings-section-title" data-i18n="Discord & Sprachchat">Discord &amp; Sprachchat</h4>
+          <div class="settings-group">
+            <div class="settings-group-title" data-i18n="Discord">Discord</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Discord-Status">Discord-Status</div>
+                <div class="settings-row-desc" data-i18n="Zeigt Freunden auf Discord „Hört … von …“ inklusive Cover und Fortschrittsbalken. Nur am PC. Discord braucht dafür eine eigene Anwendungs-ID - die legst du in einer Minute kostenlos unter discord.com/developers/applications an; der Name der Anwendung ist auch der Name, der bei deinen Freunden erscheint.">Zeigt Freunden auf Discord „Hört … von …“ inklusive Cover und Fortschrittsbalken. Nur am PC. Discord braucht dafür eine eigene Anwendungs-ID - die legst du in einer Minute kostenlos unter discord.com/developers/applications an; der Name der Anwendung ist auch der Name, der bei deinen Freunden erscheint.</div>
+              </div>
+              <button type="button" id="discordToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
             </div>
-            <button type="button" class="btn-secondary" data-update-check data-icon="refresh"><span data-i18n="Nach Updates suchen">Nach Updates suchen</span></button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label" data-i18n="Automatisch suchen">Automatisch suchen</div>
-              <div class="settings-row-desc" data-i18n="Im Hintergrund auf GitHub nach neuen Versionen schauen.">Im Hintergrund auf GitHub nach neuen Versionen schauen.</div>
+            <div class="settings-sub" data-depends="discordToggleSwitch"><div class="settings-sub-in">
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Discord-Anwendungs-ID">Discord-Anwendungs-ID</div>
+                <div class="settings-row-desc" data-i18n="Die lange Zahl aus deiner Discord-Anwendung („Application ID“)">Die lange Zahl aus deiner Discord-Anwendung („Application ID“)</div>
+              </div>
+              <input type="text" id="discordAppIdInput" class="settings-text-input" inputmode="numeric" placeholder="123456789012345678" />
             </div>
-            <button type="button" class="toggle-switch" role="switch" aria-checked="true" data-update-auto data-i18n-title="Automatisch suchen" title="Automatisch suchen"></button>
+            </div></div>
           </div>
+          <div class="settings-group">
+            <div class="settings-group-title" data-i18n="Sprachchat">Sprachchat</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Musik an den Sprachchat weitergeben">Musik an den Sprachchat weitergeben</div>
+                <div class="settings-row-desc" data-i18n="Schickt die Musik zusätzlich an ein zweites Ausgabegerät. Wählst du dort ein virtuelles Kabel und stellst dieses in Discord/TeamSpeak als Mikrofon ein, hören deine Freunde die Musik mit. Du selbst hörst unverändert über deine Kopfhörer. Nur am PC.">Schickt die Musik zusätzlich an ein zweites Ausgabegerät. Wählst du dort ein virtuelles Kabel und stellst dieses in Discord/TeamSpeak als Mikrofon ein, hören deine Freunde die Musik mit. Du selbst hörst unverändert über deine Kopfhörer. Nur am PC.</div>
+              </div>
+              <button type="button" id="voiceShareToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-desc" id="voiceShareHint"></div>
+              <button type="button" id="voiceShareCableBtn" class="settings-select" style="display:none;cursor:pointer" data-i18n="VB-Cable holen">VB-Cable holen</button>
+            </div>
+            <div class="settings-sub" data-depends="voiceShareToggleSwitch"><div class="settings-sub-in">
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Zielgerät für den Sprachchat">Zielgerät für den Sprachchat</div>
+                <div class="settings-row-desc" data-i18n="Das Gerät, das dein Sprachchat als Mikrofon benutzt - typischerweise „CABLE Input“. Nicht deine Kopfhörer wählen, sonst hörst du alles doppelt.">Das Gerät, das dein Sprachchat als Mikrofon benutzt - typischerweise „CABLE Input“. Nicht deine Kopfhörer wählen, sonst hörst du alles doppelt.</div>
+              </div>
+              <select id="voiceShareDeviceSelect" class="settings-select" disabled></select>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Lautstärke der Musik im Sprachchat">Lautstärke der Musik im Sprachchat</div>
+                <div class="settings-row-desc" data-i18n="Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.">Wie laut deine Freunde die Musik hören - unabhängig von deiner eigenen Lautstärke. Leiser als deine Stimme einstellen, sonst redest du gegen die Musik an.</div>
+              </div>
+            </div>
+            <div class="settings-slider-row">
+              <input type="range" id="voiceShareVolumeSlider" min="0" max="100" step="1" value="53" />
+              <span id="voiceShareVolumeReadout" class="pbtools-readout">53%</span>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Eigenes Mikrofon dazumischen">Eigenes Mikrofon dazumischen</div>
+                <div class="settings-row-desc" data-i18n="Mischt deine Stimme zur Musik, damit beides zusammen ankommt. Ohne das hören deine Freunde nur die Musik und dich nicht mehr. Benutze Kopfhörer - über Lautsprecher nimmt dein Mikrofon die Musik ein zweites Mal auf und es hallt.">Mischt deine Stimme zur Musik, damit beides zusammen ankommt. Ohne das hören deine Freunde nur die Musik und dich nicht mehr. Benutze Kopfhörer - über Lautsprecher nimmt dein Mikrofon die Musik ein zweites Mal auf und es hallt.</div>
+              </div>
+              <button type="button" id="voiceShareMicToggleSwitch" class="toggle-switch active" role="switch" aria-checked="true"></button>
+            </div>
+            <div class="settings-sub" data-depends="voiceShareMicToggleSwitch"><div class="settings-sub-in">
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Mikrofon">Mikrofon</div>
+                <div class="settings-row-desc" data-i18n="Dein echtes Mikrofon - das, was du sonst im Sprachchat direkt eingestellt hättest">Dein echtes Mikrofon - das, was du sonst im Sprachchat direkt eingestellt hättest</div>
+              </div>
+              <select id="voiceShareMicSelect" class="settings-select" disabled></select>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Lautstärke deiner Stimme">Lautstärke deiner Stimme</div>
+                <div class="settings-row-desc" data-i18n="Wie laut deine Stimme gegenüber der Musik ankommt">Wie laut deine Stimme gegenüber der Musik ankommt</div>
+              </div>
+            </div>
+            <div class="settings-slider-row">
+              <input type="range" id="voiceShareMicVolumeSlider" min="0" max="200" step="5" value="100" />
+              <span id="voiceShareMicVolumeReadout" class="pbtools-readout">100%</span>
+            </div>
+            </div></div>
+            </div></div>
+          </div>
+        </section>
+        <section class="settings-section" data-cat="sync">
+          <h4 class="settings-section-title" data-i18n="Konten & Sync">Konten &amp; Sync</h4>
+          <div class="settings-group">
+            <div class="settings-group-title" data-i18n="Playlists abgleichen">Playlists abgleichen</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Wie das funktioniert">Wie das funktioniert</div>
+                <div class="settings-row-desc" data-i18n="Abgeglichen werden nur Titel, keine Dateien - weder Spotify noch YouTube Music erlauben das Hochladen eigener MP3s. Reson legt drüben eine Playlist an und füllt sie über die Suche mit demselben Song. Was es dort nicht gibt, bleibt außen vor. Anmelden tust du dich beim Anbieter selbst im Browser; Reson bekommt dein Passwort nie zu sehen.">Abgeglichen werden nur Titel, keine Dateien - weder Spotify noch YouTube Music erlauben das Hochladen eigener MP3s. Reson legt drüben eine Playlist an und füllt sie über die Suche mit demselben Song. Was es dort nicht gibt, bleibt außen vor. Anmelden tust du dich beim Anbieter selbst im Browser; Reson bekommt dein Passwort nie zu sehen.</div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Spotify-Client-ID">Spotify-Client-ID</div>
+                <div class="settings-row-desc" data-i18n="Aus developer.spotify.com/dashboard. Dort als Redirect-URI genau http://127.0.0.1:8899/oauth/spotify eintragen. Ein Client-Secret wird nicht gebraucht.">Aus developer.spotify.com/dashboard. Dort als Redirect-URI genau http://127.0.0.1:8899/oauth/spotify eintragen. Ein Client-Secret wird nicht gebraucht.</div>
+              </div>
+              <input type="text" id="spotifyClientIdInput" class="settings-text-input" placeholder="a1b2c3…" />
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-desc" id="spotifyAuthStatus"></div>
+              <button type="button" id="spotifyAuthBtn" class="settings-select" style="cursor:pointer" data-i18n="Bei Spotify anmelden">Bei Spotify anmelden</button>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Google-Client-ID (YouTube Music)">Google-Client-ID (YouTube Music)</div>
+                <div class="settings-row-desc" data-i18n="Aus console.cloud.google.com: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client vom Typ Desktop erstellen, Redirect-URI http://127.0.0.1:8899/oauth/google. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.">Aus console.cloud.google.com: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client vom Typ Desktop erstellen, Redirect-URI http://127.0.0.1:8899/oauth/google. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.</div>
+              </div>
+              <input type="text" id="googleClientIdInput" class="settings-text-input" placeholder="…apps.googleusercontent.com" />
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-desc" id="googleAuthStatus"></div>
+              <button type="button" id="googleAuthBtn" class="settings-select" style="cursor:pointer" data-i18n="Bei Google anmelden">Bei Google anmelden</button>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="settings-group-title" data-i18n="Handy-Sync">Handy-Sync</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Handy-Sync beim Start aktivieren">Handy-Sync beim Start aktivieren</div>
+                <div class="settings-row-desc" data-i18n="Gerät ist sofort im WLAN sichtbar, ohne den Sync-Popover erst zu öffnen">Gerät ist sofort im WLAN sichtbar, ohne den Sync-Popover erst zu öffnen</div>
+              </div>
+              <button type="button" id="syncAutoStartToggleSwitch" class="toggle-switch" role="switch" aria-checked="false"></button>
+            </div>
+          </div>
+        </section>
+        <section class="settings-section" data-cat="keys" id="hotkeysSettingsSection" data-desktop-only>
+          <h4 class="settings-section-title" data-i18n="Hotkeys">Hotkeys</h4>
+          <div class="settings-group">
+            <div class="hotkey-list" id="hotkeyList"></div>
+            <div class="settings-row-desc" style="margin-top:8px;" data-i18n="Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.">Klick auf eine Taste, dann gewünschte Kombination drücken. Esc bricht ab.</div>
+          </div>
+        </section>
+        <section class="settings-section" data-cat="data">
+          <h4 class="settings-section-title" data-i18n="Daten & Backup">Daten &amp; Backup</h4>
+          <div class="settings-group">
+            <div class="settings-group-title" data-i18n="Backup">Backup</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Einstellungen sichern">Einstellungen sichern</div>
+                <div class="settings-row-desc" data-i18n="Themes, Play-Verlauf & Co. als kleine Datei speichern (z.B. in einen Cloud-Ordner)">Themes, Play-Verlauf & Co. als kleine Datei speichern (z.B. in einen Cloud-Ordner)</div>
+              </div>
+              <button type="button" id="exportSettingsBtn" class="btn-secondary" data-i18n="Sichern">Sichern</button>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Einstellungen wiederherstellen">Einstellungen wiederherstellen</div>
+                <div class="settings-row-desc" data-i18n="Aus einer zuvor gesicherten Datei zurückspielen">Aus einer zuvor gesicherten Datei zurückspielen</div>
+              </div>
+              <button type="button" id="importSettingsBtn" class="btn-secondary" data-i18n="Wiederherstellen">Wiederherstellen</button>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Komplette Bibliothek exportieren">Komplette Bibliothek exportieren</div>
+                <div class="settings-row-desc" data-i18n="Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern">Alle Playlists inkl. Musikdateien als ZIP-Archiv sichern</div>
+              </div>
+              <button type="button" id="exportZipBtn" class="btn-secondary" data-i18n="Als ZIP exportieren">Als ZIP exportieren</button>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Bibliothek aus ZIP wiederherstellen">Bibliothek aus ZIP wiederherstellen</div>
+                <div class="settings-row-desc" data-i18n="Fehlende Titel aus einem ZIP-Backup ergänzen (vorhandene Dateien bleiben unangetastet)">Fehlende Titel aus einem ZIP-Backup ergänzen (vorhandene Dateien bleiben unangetastet)</div>
+              </div>
+              <button type="button" id="importZipBtn" class="btn-secondary" data-i18n="Aus ZIP importieren">Aus ZIP importieren</button>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="settings-group-title" data-i18n="Cache & Speicher">Cache &amp; Speicher</div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Songtext-Cache leeren">Songtext-Cache leeren</div>
+                <div class="settings-row-desc" data-i18n="Lokal gespeicherte Songtexte löschen - werden beim nächsten Abspielen neu geladen">Lokal gespeicherte Songtexte löschen - werden beim nächsten Abspielen neu geladen</div>
+              </div>
+              <button type="button" id="clearLyricsCacheBtn" class="btn-secondary" data-i18n="Leeren">Leeren</button>
+            </div>
+          </div>
+        </section>
+        <section class="settings-section" data-cat="about">
+          <h4 class="settings-section-title" data-i18n="Über Reson">Über Reson</h4>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Version">Version</div>
+                <div class="settings-row-desc" id="appVersionText">—</div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Updates">Updates</div>
+                <div class="settings-row-desc" data-update-status aria-live="polite"></div>
+              </div>
+              <button type="button" class="btn-secondary" data-update-check data-icon="refresh"><span data-i18n="Nach Updates suchen">Nach Updates suchen</span></button>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label" data-i18n="Automatisch suchen">Automatisch suchen</div>
+                <div class="settings-row-desc" data-i18n="Im Hintergrund auf GitHub nach neuen Versionen schauen.">Im Hintergrund auf GitHub nach neuen Versionen schauen.</div>
+              </div>
+              <button type="button" class="toggle-switch" role="switch" aria-checked="true" data-update-auto data-i18n-title="Automatisch suchen" title="Automatisch suchen"></button>
+            </div>
+          </div>
+        </section>
+          <p class="settings-nomatch hidden" id="settingsNoMatch" data-i18n="Keine Einstellung gefunden.">Keine Einstellung gefunden.</p>
         </div>
       </div>
     </div>
@@ -1109,6 +1163,7 @@
   <script src="backup.js"></script>
   <script src="friends.js"></script>
   <script src="mobile-ui.js"></script>
+  <script src="settings-ui.js"></script>
   <script src="update-dialog.js"></script>
   <script src="updater.js"></script>
   <script type="module" src="potoken-init.js"></script>
