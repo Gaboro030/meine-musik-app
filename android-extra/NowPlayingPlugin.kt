@@ -8,7 +8,6 @@
 package com.reson.app
 
 import android.app.Activity
-import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -16,7 +15,6 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.Bundle
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -60,11 +58,14 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
     /* ===== In-App-Update =====
        Das APK landet im App-Cache (keine Speicher-Berechtigung noetig, das
        System raeumt dort notfalls selbst auf) und wird NIE aufbewahrt:
-       geloescht bei jedem Start, vor jedem neuen Download, bei Fehlern und
-       sobald die App nach dem Installationsdialog wieder vorn ist - egal,
-       ob installiert oder abgebrochen wurde. */
+       geloescht bei jedem Start (nach einem Update startet die App neu),
+       vor jedem neuen Download und bei Fehlern.
+       NICHT mehr loeschen, sobald die App wieder vorn ist: manche
+       Hersteller-Installer (ColorOS, OxygenOS u.a.) bestehen aus mehreren
+       Schritten und lassen die App dazwischen kurz nach vorn - die Datei
+       war dann weg, bevor Android sie gelesen hatte, und es kam "Paket
+       offenbar ungueltig". */
     private val updateDir get() = File(activity.cacheDir, "updates")
-    @Volatile private var installHandedOff = false
 
     private fun deleteInstallerFiles() {
         updateDir.deleteRecursively()
@@ -73,20 +74,6 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
     override fun load(webView: android.webkit.WebView) {
         super.load(webView)
         deleteInstallerFiles()
-        activity.application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityResumed(a: Activity) {
-                if (a === activity && installHandedOff) {
-                    installHandedOff = false
-                    deleteInstallerFiles()
-                }
-            }
-            override fun onActivityCreated(a: Activity, b: Bundle?) {}
-            override fun onActivityStarted(a: Activity) {}
-            override fun onActivityPaused(a: Activity) {}
-            override fun onActivityStopped(a: Activity) {}
-            override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
-            override fun onActivityDestroyed(a: Activity) {}
-        })
         val filter = IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL)
         val r = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -258,7 +245,6 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
                 .setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         )
-        installHandedOff = true
         invoke.resolve()
     }
 }

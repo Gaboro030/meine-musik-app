@@ -163,12 +163,15 @@ jobs:
       - name: Install frontend deps
         run: npm install
 
+      - name: Init Android project
+        run: npx tauri android init
+
+      # Erst NACH dem Init: "tauri icon" schreibt die Android-Icons nur in ein
+      # schon vorhandenes gen/android - vorher erzeugt, ueberschrieb der Init
+      # sie mit dem Tauri-Standardsymbol.
       - name: Generate app icons
         run: |
           npx tauri icon icons-source.png   # icons-source.png = dunkle Reson-Fassung (Standard)
-
-      - name: Init Android project
-        run: npx tauri android init
 
       # Muss VOR merge-android-extras.mjs laufen: das Skript setzt den
       # Signatur-Block nur dann in build.gradle.kts ein, wenn es hier eine
