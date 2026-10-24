@@ -800,7 +800,7 @@ function renderHome({ discover = true } = {}) {
     img.alt = "";
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
-    playBtn.textContent = "▶";
+    playBtn.innerHTML = icon("play");
     playBtn.title = t("Abspielen");
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -872,7 +872,7 @@ function renderDailyMix() {
     img.alt = "";
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
-    playBtn.textContent = "▶";
+    playBtn.innerHTML = icon("play");
     playBtn.title = t("Abspielen");
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1050,9 +1050,9 @@ historyClearBtn.addEventListener("click", () => {
    die drei Stimmungen verteilt, damit jede Stimmung auch bei einer
    Bibliothek ohne passende Stichworte im Titel gefüllt ist. */
 const MOOD_DEFS = [
-  { id: "chill", label: "😌 Chill", keywords: ["chill", "acoustic", "lofi", "lo-fi", "slowed", "piano", "ballad", "unplugged", "relax", "calm", "sad"] },
-  { id: "workout", label: "💪 Workout", keywords: ["workout", "gym", "pump", "hardstyle", "phonk", "hard", "energy", "hype", "bass boosted"] },
-  { id: "party", label: "🎉 Party", keywords: ["party", "dance", "club", "remix", "edm", "banger", "hits"] },
+  { id: "chill", label: "Chill", keywords: ["chill", "acoustic", "lofi", "lo-fi", "slowed", "piano", "ballad", "unplugged", "relax", "calm", "sad"] },
+  { id: "workout", label: "Workout", keywords: ["workout", "gym", "pump", "hardstyle", "phonk", "hard", "energy", "hype", "bass boosted"] },
+  { id: "party", label: "Party", keywords: ["party", "dance", "club", "remix", "edm", "banger", "hits"] },
 ];
 
 function hashStr(s) {
@@ -1193,7 +1193,7 @@ function buildDiscoverCard(rec) {
   img.alt = "";
   const dlBtn = document.createElement("button");
   dlBtn.className = "card-download-btn";
-  dlBtn.textContent = "⬇";
+  dlBtn.innerHTML = icon("download");
   dlBtn.title = t("In Bibliothek herunterladen");
   dlBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1201,7 +1201,7 @@ function buildDiscoverCard(rec) {
   });
   const watchBtn = document.createElement("button");
   watchBtn.className = "card-watch-btn";
-  watchBtn.textContent = "▶";
+  watchBtn.innerHTML = icon("play");
   watchBtn.title = t("Video direkt ansehen (ohne Download)");
   watchBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1289,7 +1289,7 @@ function getQualityPreset() {
 
 async function downloadDiscoverTrack(rec, btn) {
   btn.disabled = true;
-  btn.textContent = "⏳";
+  btn.innerHTML = icon("refresh", "ic-spin");
   try {
     const preset = getQualityPreset();
     const res = await fetch("/api/library/download", {
@@ -1309,13 +1309,13 @@ async function downloadDiscoverTrack(rec, btn) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || t("Download fehlgeschlagen."));
-    btn.textContent = "✓";
+    btn.innerHTML = icon("checkmark");
     btn.classList.add("done");
     showToast(t('⬇ „{title}" in „Entdeckt" gespeichert', { title: rec.title }));
     await refreshLibrary();
   } catch (err) {
     btn.disabled = false;
-    btn.textContent = "⬇";
+    btn.innerHTML = icon("download");
     showToast(err.message || t("Download fehlgeschlagen."));
   }
 }
@@ -1350,7 +1350,7 @@ function renderLibraryGrid() {
     img.alt = "";
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
-    playBtn.textContent = "▶";
+    playBtn.innerHTML = icon("play");
     playBtn.title = t("Abspielen");
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2022,7 +2022,7 @@ function buildTrackRow(track, i, displayNum) {
     const moreBtn = document.createElement("button");
     moreBtn.type = "button";
     moreBtn.className = "track-more-btn";
-    moreBtn.textContent = "⋯";
+    moreBtn.innerHTML = icon("more");
     moreBtn.title = t("Optionen");
     moreBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2035,7 +2035,7 @@ function buildTrackRow(track, i, displayNum) {
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "track-add-btn";
-    addBtn.textContent = "➕";
+    addBtn.innerHTML = icon("plus");
     addBtn.title = t("Zu Playlist hinzufügen");
     addBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2047,7 +2047,7 @@ function buildTrackRow(track, i, displayNum) {
     tdRemove.className = "col-remove";
     const removeBtn = document.createElement("button");
     removeBtn.className = "track-remove-btn";
-    removeBtn.textContent = "🗑";
+    removeBtn.innerHTML = icon("trash");
     removeBtn.title = t("Aus Playlist entfernen");
     removeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2870,7 +2870,7 @@ function likeKey() {
 function renderLikeState() {
   isLiked = likedTracks.has(likeKey());
   pbLike.classList.toggle("active", isLiked);
-  pbLike.textContent = isLiked ? "♥" : "♡";
+  pbLike.innerHTML = icon(isLiked ? "heart-fill" : "heart");
   pbLike.setAttribute("aria-pressed", String(isLiked));
 }
 function toggleLike() {
@@ -3323,7 +3323,7 @@ function renderQueuePanel() {
     const del = document.createElement("button");
     del.type = "button";
     del.className = "queue-row-btn queue-row-del";
-    del.textContent = "✕";
+    del.innerHTML = icon("x");
     del.title = t("Entfernen");
     del.addEventListener("click", () => {
       userQueue.splice(idx, 1);
@@ -3345,7 +3345,7 @@ function renderQueuePanel() {
       const local = isTrackAvailableLocally(entry.title, entry.artist);
       const badge = document.createElement("span");
       badge.className = "queue-row-source-badge";
-      badge.textContent = local ? "📀" : "🌐";
+      badge.innerHTML = icon(local ? "disc" : "globe");
       badge.title = local ? t("Bereits in deiner Bibliothek - spielt lokal") : t("Nicht lokal vorhanden - wird gestreamt");
       row.appendChild(badge);
       const actions = document.createElement("div");
@@ -3353,7 +3353,7 @@ function renderQueuePanel() {
       const del = document.createElement("button");
       del.type = "button";
       del.className = "queue-row-btn queue-row-del";
-      del.textContent = "✕";
+      del.innerHTML = icon("x");
       del.title = t("Entfernen");
       del.addEventListener("click", () => {
         // Server broadcastet queue_update - liveQueue + Panel syncen darüber.
@@ -3764,7 +3764,11 @@ function renderVolume(pct) {
   // scaleX statt width: gleiche Optik, aber ohne Layout pro Bild.
   pbVolumeBar.style.transform = `scaleX(${pct})`;
   placeHandle(pbVolumeHandle, volumeTrackWidth, pct);
-  pbVolIcon.textContent = pct === 0 ? "🔇" : pct < 0.5 ? "🔉" : "🔊";
+  const volIconName = pct === 0 ? "volume-x" : pct < 0.5 ? "volume-1" : "volume-2";
+  if (pbVolIcon.dataset.icon !== volIconName) {
+    pbVolIcon.dataset.icon = volIconName;
+    pbVolIcon.innerHTML = icon(volIconName);
+  }
   const percent = Math.round(pct * 100);
   if (pbVolumePercent) pbVolumePercent.textContent = `${percent}%`;
   pbVolumeWrap.setAttribute("aria-valuenow", String(percent));
@@ -6206,6 +6210,7 @@ async function openMiniPlayer() {
     .mp-controls { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
     button { background: none; border: none; color: #fff; font-size: 1.4rem; cursor: pointer; padding: 4px; }
     button:hover { opacity: 0.7; }
+    button svg { width: 22px; height: 22px; display: block; }
   `;
   pipWindow.document.head.appendChild(style);
   const cover = pipWindow.document.createElement("img");
@@ -6219,10 +6224,10 @@ async function openMiniPlayer() {
   const controls = pipWindow.document.createElement("div");
   controls.className = "mp-controls";
   const prevBtn = pipWindow.document.createElement("button");
-  prevBtn.textContent = "⏮";
+  prevBtn.innerHTML = icon("prev");
   const playBtn = pipWindow.document.createElement("button");
   const nextBtn = pipWindow.document.createElement("button");
-  nextBtn.textContent = "⏭";
+  nextBtn.innerHTML = icon("next");
   controls.append(prevBtn, playBtn, nextBtn);
   pipWindow.document.body.append(cover, info, controls);
 
@@ -6230,7 +6235,7 @@ async function openMiniPlayer() {
     cover.src = pbCover.src;
     titleEl.textContent = pbTitle.textContent;
     artistEl.textContent = pbArtist.textContent;
-    playBtn.textContent = audioEl.paused ? "▶" : "⏸";
+    playBtn.innerHTML = audioEl.paused ? icon("play") : icon("pause");
   }
   refresh();
   prevBtn.addEventListener("click", () => pbPrev.click());
@@ -6587,7 +6592,7 @@ function attachAddButton(coverWrap, trackData, className = "card-add-btn") {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = className;
-  btn.textContent = "➕";
+  btn.innerHTML = icon("plus");
   btn.title = t("Zu Playlist hinzufügen");
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -6634,7 +6639,7 @@ function renderSearchSongs(matches) {
     img.alt = "";
     const playBtn = document.createElement("button");
     playBtn.className = "card-play-btn";
-    playBtn.textContent = "▶";
+    playBtn.innerHTML = icon("play");
     playBtn.title = t("Abspielen");
     playBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -6758,13 +6763,13 @@ function renderSearchHistoryDropdown() {
     item.className = "search-history-item";
     const icon = document.createElement("span");
     icon.className = "search-history-icon";
-    icon.textContent = "🕐";
+    icon.innerHTML = window.icon("history");
     const text = document.createElement("span");
     text.className = "search-history-text";
     text.textContent = q;
     const remove = document.createElement("span");
     remove.className = "search-history-remove";
-    remove.textContent = "✕";
+    remove.innerHTML = window.icon("x");
     remove.addEventListener("click", (e) => {
       e.stopPropagation();
       removeSearchHistoryEntry(q);
@@ -7849,23 +7854,22 @@ document.addEventListener("click", (e) => {
 /* ===== Themes ===== */
 const THEME_STORAGE_KEY = "meineMusikTheme";
 
+// Klicks auf die Themes verarbeitet themes.js (mit Kreis-Uebergang) und ruft
+// dabei diese Funktion fuer Markierung + Speicher auf.
 function applyTheme(theme) {
-  if (theme && theme !== "spotify-green") {
-    document.documentElement.setAttribute("data-theme", theme);
+  const name = theme || "reson";
+  if (name !== "reson" && name !== "spotify-green") {
+    document.documentElement.setAttribute("data-theme", name);
   } else {
     document.documentElement.removeAttribute("data-theme");
   }
   themeOptionBtns.forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.theme === (theme || "spotify-green"));
+    btn.classList.toggle("active", btn.dataset.theme === name);
   });
-  localStorage.setItem(THEME_STORAGE_KEY, theme || "spotify-green");
+  localStorage.setItem(THEME_STORAGE_KEY, name);
 }
 
-themeOptionBtns.forEach((btn) => {
-  btn.addEventListener("click", () => applyTheme(btn.dataset.theme));
-});
-
-applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "spotify-green");
+applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "reson");
 
 /* ===== Party mode (synced playback across devices) =====
    This device is always the *source* while party mode is on - it POSTs
@@ -7895,7 +7899,7 @@ function renderParticipants(list) {
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className = "qr-participant-remove";
-    removeBtn.textContent = "✕";
+    removeBtn.innerHTML = icon("x");
     removeBtn.title = t("Aus der Party entfernen");
     removeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -8224,12 +8228,12 @@ function renderTrash(entries) {
       tdActions.className = "trash-actions-cell";
       const restoreBtn = document.createElement("button");
       restoreBtn.className = "trash-restore-btn";
-      restoreBtn.textContent = "↩️";
+      restoreBtn.innerHTML = icon("restore");
       restoreBtn.title = t("Wiederherstellen");
       restoreBtn.addEventListener("click", () => restoreTrashEntry(entry.id));
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "trash-delete-btn";
-      deleteBtn.textContent = "🗑";
+      deleteBtn.innerHTML = icon("trash");
       deleteBtn.title = t("Endgültig löschen");
       deleteBtn.addEventListener("click", () => deleteTrashEntryForever(entry.id));
       tdActions.append(restoreBtn, deleteBtn);
@@ -8288,7 +8292,7 @@ function renderDuplicates(groups) {
       info.textContent = `${i === 0 ? "★ " : ""}${track.playlist} — ${track.file}`;
       const delBtn = document.createElement("button");
       delBtn.className = "trash-delete-btn";
-      delBtn.textContent = "🗑";
+      delBtn.innerHTML = icon("trash");
       delBtn.title = t("In den Papierkorb verschieben");
       delBtn.addEventListener("click", async () => {
         try {

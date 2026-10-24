@@ -33,15 +33,18 @@
     "Gestern": "Yesterday",
     "Song ist nicht mehr in der Bibliothek.": "This song is no longer in the library.",
     "🔀 Ganze Bibliothek mischen": "🔀 Shuffle whole library",
+    "Ganze Bibliothek mischen": "Shuffle whole library",
     "Bibliothek ist leer.": "Library is empty.",
     "Stille am Anfang/Ende": "Silence at start/end",
     "Eigener, separater Scan (nicht Teil des normalen Health-Checks oben) - prueft jede MP3-Datei per ffmpeg auf laengere Stille am Anfang oder Ende und kann sie verlustfrei wegschneiden. Braucht ein auf dem System installiertes ffmpeg.":
       "Separate scan (not part of the regular health check above) - checks every MP3 file with ffmpeg for longer silence at the start or end and can trim it losslessly. Requires ffmpeg installed on the system.",
     "🔇 Auf Stille prüfen": "🔇 Check for silence",
+    "Auf Stille prüfen": "Check for silence",
     "Lautstärke angleichen": "Match volume",
     "Misst jeden Titel einmal per ffmpeg aus und merkt sich, wie viel lauter oder leiser er gegenüber den anderen ist. Beim Abspielen wird das automatisch ausgeglichen - kein Lautstärke-Sprung mehr beim Songwechsel. Die Messung läuft nur auf Knopfdruck und kann bei grossen Bibliotheken einige Minuten dauern. Braucht ein auf dem System installiertes ffmpeg.":
       "Measures every track once with ffmpeg and remembers how much louder or quieter it is than the rest. Playback then evens that out automatically - no more volume jump when the song changes. The measurement only runs when you ask for it and can take a few minutes on large libraries. Requires ffmpeg installed on the system.",
     "🔊 Lautstärke analysieren": "🔊 Analyse volume",
+    "Lautstärke analysieren": "Analyse volume",
     "Alles neu messen": "Measure everything again",
     "Noch nichts gemessen - bis dahin gleicht ein Kompressor grob aus.":
       "Nothing measured yet - until then a compressor evens things out roughly.",
@@ -55,9 +58,11 @@
     "Sucht MP3s unter 192 kbps und holt auf Wunsch eine bessere Fassung nach - bevorzugt die reine Audiospur („- Topic“) statt der Videoversion. Ersetzt wird nur, wenn die gefundene Fassung wirklich höher aufgelöst ist; das Original wandert vorher in den Papierkorb und lässt sich zurückholen. Braucht ffmpeg auf dem System.":
       "Finds MP3s below 192 kbps and, on request, fetches a better version - preferring the plain audio upload („- Topic“) over the video version. A file is only replaced when the version found really is higher quality; the original goes to the trash first and can be brought back. Requires ffmpeg on the system.",
     "🎧 Bitraten prüfen": "🎧 Check bitrates",
+    "Bitraten prüfen": "Check bitrates",
     "Alle aufwerten": "Improve all",
     "Bessere Quelle suchen": "Find better source",
     "✅ Keine Titel unter 192 kbps gefunden.": "✅ No tracks below 192 kbps found.",
+    "Keine Titel unter 192 kbps gefunden.": "No tracks below 192 kbps found.",
     "Aufwerten fehlgeschlagen.": "Improving failed.",
     "🎧 {title}: {old} → {new} kbps": "🎧 {title}: {old} → {new} kbps",
     "{ok} von {total} aufgewertet.": "{ok} of {total} improved.",
@@ -123,7 +128,9 @@
     "Bitte zuerst die Discord-Anwendungs-ID eintragen.": "Please enter the Discord application ID first.",
     "Nicht im selben WLAN? Dann per Code verbinden:": "Not on the same Wi-Fi? Connect with a code:",
     "📥 Code zum Empfangen erstellen": "📥 Create a code to receive",
+    "Code zum Empfangen erstellen": "Create a code to receive",
     "📤 Code eingeben und senden": "📤 Enter a code and send",
+    "Code eingeben und senden": "Enter a code and send",
     "Code zum Empfangen": "Code to receive",
     "Verbindung wird vorbereitet …": "Preparing connection …",
     "Auf dem anderen Gerät scannen oder den Code eintippen.": "Scan on the other device, or type in the code.",
@@ -189,6 +196,7 @@
     "Pop": "Pop",
     "Nachtmodus": "Night mode",
     "✅ Keine nennenswerte Stille gefunden.": "✅ No significant silence found.",
+    "Keine nennenswerte Stille gefunden.": "No significant silence found.",
     "Anfang: {s}s": "Start: {s}s",
     "Ende: {s}s": "End: {s}s",
     "Trimmen": "Trim",
@@ -242,6 +250,7 @@
     "Guten Morgen": "Good morning",
     "Guten Abend": "Good evening",
     "📻 Daily Mix": "📻 Daily Mix",
+    "Daily Mix": "Daily Mix",
     "Stimmungen": "Moods",
     "Zuletzt hinzugefügt": "Recently added",
     "Andere Songs entdecken": "Discover other songs",
@@ -280,6 +289,7 @@
     "In deiner Bibliothek": "In your library",
     "Gefundene Playlists": "Playlists found",
     "🌐 Online gefunden – zum Herunterladen": "🌐 Found online – to download",
+    "Online gefunden – zum Herunterladen": "Found online – to download",
     "Keine Ergebnisse.": "No results.",
 
     // ----- Papierkorb -----
@@ -299,8 +309,11 @@
     "Prueft die Bibliothek auf verwaiste Sidecar-Dateien (Cover/Album/ Interpret-Sidecars ohne zugehoerigen Track) und kaputte Papierkorb-Eintraege (Datei fehlt, Wiederherstellen wuerde scheitern).":
       "Checks the library for orphaned sidecar files (cover/album/artist sidecars without a matching track) and broken trash entries (file missing, restoring would fail).",
     "🔍 Erneut scannen": "🔍 Scan again",
+    "Erneut scannen": "Scan again",
     "🧹 Alles bereinigen": "🧹 Clean up everything",
+    "Alles bereinigen": "Clean up everything",
     "✅ Alles sauber - nichts gefunden.": "✅ All clean - nothing found.",
+    "Alles sauber - nichts gefunden.": "All clean - nothing found.",
     "Verwaiste Sidecar-Dateien": "Orphaned sidecar files",
     "Kaputte Papierkorb-Eintraege": "Broken trash entries",
 
@@ -437,6 +450,8 @@
     "Schon von einem anderen Programm belegt, wirkt nur im Fenster: {names}. Die Medientasten der Tastatur funktionieren unabhängig davon überall.":
       "Already taken by another program, only works inside the window: {names}. The keyboard's media keys keep working everywhere.",
     "Klicken zum Kopieren": "Click to copy",
+    "Erscheinungsbild": "Appearance",
+    "Hell, dunkel oder wie das System": "Light, dark or follow the system",
     "Mehr von {artist}": "More from {artist}",
     // ----- Freunde (friends.js) -----
     "Ablehnen": "Decline",

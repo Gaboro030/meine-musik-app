@@ -70,11 +70,31 @@
       "--sp-gradient-top": o.gradTop || mix(o.accent, o.bg, 0.72),
       "--sp-surface": o.surface || rgba(o.accent, 0.08),
       "--sp-scrollbar": o.scrollbar || lighten(o.bg, 0.18),
+      // Schrift AUF der Akzentfarbe (Play-Knopf, aktive Pillen): bei hellem
+      // Akzent dunkel, bei dunklem hell - sonst wird es unlesbar.
+      "--sp-on-accent": luminance(o.accent) > 0.35 ? "#111111" : "#ffffff",
     };
+  }
+  // Relative Helligkeit 0..1 (WCAG-Formel) einer #rrggbb-Farbe.
+  function luminance(hex) {
+    const ch = hexToRgb(hex).map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
   }
 
   /* ===== Themes: Palette + Schrift + Radius + Effekt-Klasse ===== */
   const THEMES = {
+    /* Reson - das eigene Standard-Design: fast schwarze, leicht warme
+       Flaechen, ein gedaempfter Messington als einziger Akzent. Als
+       einziges Theme mit heller Fassung - welche gilt, entscheidet die
+       Einstellung System/Hell/Dunkel. */
+    reson: {
+      pal: derivePalette({ bg: "#0f0f11", elevated: "#17171a", elevatedHover: "#202024", muted: "#a3a3ab", muted2: "#6f6f78", accent: "#d9a866", accentHover: "#e6bb82", gradTop: "#1c1b1e", text: "#ececef", border: "rgba(255,255,255,0.07)", surface: "rgba(255,255,255,0.045)", scrollbar: "#2c2c31", black: "#0a0a0b" }),
+      light: derivePalette({ bg: "#f5f4f1", elevated: "#ffffff", elevatedHover: "#eeece7", muted: "#5c5a54", muted2: "#8a877f", accent: "#8f5e1f", accentHover: "#a46d27", gradTop: "#e8e5de", text: "#1b1a17", border: "rgba(0,0,0,0.08)", surface: "rgba(0,0,0,0.04)", scrollbar: "#cfccc4", black: "#ebe9e4" }),
+      font: "inter", radius: [14, 10, 6],
+    },
     "spotify-green": {
       pal: derivePalette({ bg: "#121212", elevated: "#181818", elevatedHover: "#282828", muted: "#a7a7a7", muted2: "#727272", accent: "#1db954", accentHover: "#1ed760", gradTop: "#2a2a2a", border: "rgba(255,255,255,0.08)", surface: "rgba(255,255,255,0.06)", scrollbar: "#3f3f3f", black: "#000000" }),
       font: "inter", radius: [12, 8, 4],
@@ -226,12 +246,52 @@
     });
   }
 
+  /* ===== Erscheinungsbild: System / Hell / Dunkel =====
+     Gilt fuer das Reson-Theme (das einzige mit heller Fassung). Die
+     anderen Themes sind feste Paletten und bleiben, wie sie sind. */
+  const MODE_KEY = "themeMode";
+  const darkMq = matchMedia("(prefers-color-scheme: dark)");
+  const themeMode = () => localStorage.getItem(MODE_KEY) || "system";
+  const wantsDark = () => themeMode() === "dark" || (themeMode() === "system" && darkMq.matches);
+
+  /* Theme-Wechsel mit Kreis-Uebergang: das neue Design waechst als Kreis
+     aus dem angeklickten Knopf. Ohne Ursprung (Systemwechsel) weiche
+     Ueberblendung, bei "weniger Bewegung" sofort. */
+  function withReveal(update, originEl) {
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!document.startViewTransition || reduce) {
+      update();
+      return;
+    }
+    root.classList.add("theme-switching");
+    if (originEl) root.classList.add("theme-reveal");
+    const transition = document.startViewTransition(update);
+    if (originEl) {
+      const r = originEl.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      transition.ready.then(() => {
+        root.animate(
+          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+          { duration: 700, easing: "cubic-bezier(0.22, 1, 0.36, 1)", pseudoElement: "::view-transition-new(root)" }
+        );
+      });
+    }
+    transition.finished.finally(() => root.classList.remove("theme-switching", "theme-reveal"));
+  }
+
   /* ===== Theme wirklich anwenden ===== */
   function applyFullTheme(name) {
-    const theme = THEMES[name] || THEMES["spotify-green"];
+    const theme = THEMES[name] || THEMES.reson;
     const aspects = loadAspects(name);
     const custom = name === "custom" ? loadCustom() : null;
-    const pal = name === "custom" ? customPalette(custom) : theme.pal;
+    const pal = custom ? customPalette(custom) : theme.light && !wantsDark() ? theme.light : theme.pal;
+    // Hell oder dunkel? Steuert color-scheme (native Regler, Scrollbalken)
+    // und die Stellen im CSS, die bei hellen Flaechen anders aussehen muessen.
+    const scheme = luminance(pal["--sp-bg"]) > 0.4 ? "light" : "dark";
+    root.dataset.scheme = scheme;
+    root.style.colorScheme = scheme;
 
     // Reset: alle verwalteten Inline-Variablen + Effekt-Klassen weg
     ALL_VARS.forEach((v) => root.style.removeProperty(v));
@@ -272,19 +332,61 @@
     }
   }
 
-  function currentTheme() {
-    return localStorage.getItem(THEME_KEY) || "spotify-green";
+  // Einmalig: wer nie bewusst ein Theme gewaehlt hat, stand auf dem alten
+  // Standard "spotify-green" - der neue Standard ist Reson.
+  if (!localStorage.getItem("themeResonMigrated")) {
+    if ((localStorage.getItem(THEME_KEY) || "spotify-green") === "spotify-green") {
+      localStorage.setItem(THEME_KEY, "reson");
+    }
+    localStorage.setItem("themeResonMigrated", "1");
   }
 
-  /* player.js hat seine Klick-Handler schon registriert (setzt data-theme
-     + localStorage + active-Klasse) - unser Handler läuft danach und legt
-     die erweiterte Anwendung drüber. */
+  function currentTheme() {
+    return localStorage.getItem(THEME_KEY) || "reson";
+  }
+
+  // Ein Theme waehlen: Markierung + Speicher (applyTheme aus player.js) und
+  // die volle Anwendung hier - alles in EINEM Schritt, damit der
+  // Kreis-Uebergang ein sauberes Vorher/Nachher bekommt.
+  function selectTheme(name, originEl) {
+    withReveal(() => {
+      if (typeof applyTheme === "function") applyTheme(name);
+      applyFullTheme(name);
+      renderModeSwitch();
+    }, originEl);
+  }
+
   document.querySelectorAll(".theme-option").forEach((btn) => {
-    btn.addEventListener("click", () => applyFullTheme(btn.dataset.theme || "spotify-green"));
+    btn.addEventListener("click", () => selectTheme(btn.dataset.theme || "reson", btn));
     btn.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      openContextMenu(btn.dataset.theme || "spotify-green", e.clientX, e.clientY);
+      openContextMenu(btn.dataset.theme || "reson", e.clientX, e.clientY);
     });
+  });
+
+  /* Schalter System/Hell/Dunkel in den Einstellungen. Waehlen schaltet auf
+     das Reson-Theme um - nur das hat beide Fassungen. Steht ein anderes
+     Theme, ist keine Stellung markiert. */
+  const modeSwitch = document.getElementById("themeModeSwitch");
+  function renderModeSwitch() {
+    if (!modeSwitch) return;
+    const active = currentTheme() === "reson" ? themeMode() : "";
+    modeSwitch.querySelectorAll("[data-mode]").forEach((b) => {
+      const on = b.dataset.mode === active;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-checked", String(on));
+    });
+  }
+  if (modeSwitch) {
+    modeSwitch.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mode]");
+      if (!b) return;
+      localStorage.setItem(MODE_KEY, b.dataset.mode);
+      selectTheme("reson", b);
+    });
+  }
+  darkMq.addEventListener("change", () => {
+    if (themeMode() === "system" && currentTheme() === "reson") withReveal(() => applyFullTheme("reson"));
   });
 
   /* ===== Rechtsklick-Menü ===== */
@@ -491,5 +593,7 @@
   }
 
   /* ===== Initial anwenden (player.js hat sein applyTheme schon gemacht) ===== */
+  if (typeof applyTheme === "function") applyTheme(currentTheme()); // Markierung nach der Umstellung oben
   applyFullTheme(currentTheme());
+  renderModeSwitch();
 })();
