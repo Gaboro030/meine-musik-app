@@ -202,6 +202,11 @@
 
   const ACCENT_VARS = ["--sp-green", "--sp-green-hover"];
   const ALL_VARS = Object.keys(THEMES["spotify-green"].pal).concat("--app-font", "--radius-lg", "--radius-md", "--radius-sm");
+  const ACCENT_KEY = "uiAccentColor";
+  const accentOverride = () => {
+    const v = localStorage.getItem(ACCENT_KEY) || "";
+    return /^#[0-9a-f]{6}$/i.test(v) ? v : "";
+  };
   const FX_CLASSES = ["fx-scanlines", "fx-vaporwave", "fx-sunsetbg", "fx-glowpulse", "fx-custom-anim"];
 
   /* ===== Aspekte (Rechtsklick-Schalter) ===== */
@@ -259,7 +264,10 @@
      Ueberblendung, bei "weniger Bewegung" sofort. */
   function withReveal(update, originEl) {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!document.startViewTransition || reduce) {
+    // Linux-Desktop (WebKitGTK): startViewTransition laesst den ganzen
+    // Webprozess abstuerzen (nachgestellt mit WebKitGTK 2.52 + NVIDIA:
+    // Speicherzugriffsfehler beim ersten Wechsel) - dort ohne Kreis.
+    if (!document.startViewTransition || reduce || root.classList.contains("os-linux")) {
       update();
       return;
     }
@@ -313,6 +321,14 @@
     }
     if (aspects.accent) {
       ACCENT_VARS.forEach((k) => root.style.setProperty(k, pal[k]));
+    }
+    // Gewaehlte UI-Farbe (Einstellungen > Darstellung) schlaegt den Akzent
+    // jedes Themes - auch mit abgeschaltetem Aspekt "Akzentfarbe".
+    const accent = accentOverride();
+    if (accent) {
+      root.style.setProperty("--sp-green", accent);
+      root.style.setProperty("--sp-green-hover", lighten(accent, 0.2));
+      root.style.setProperty("--sp-on-accent", luminance(accent) > 0.35 ? "#111111" : "#ffffff");
     }
     if (aspects.font) {
       const fontKey = custom ? custom.font : theme.font;
@@ -388,6 +404,40 @@
   darkMq.addEventListener("change", () => {
     if (themeMode() === "system" && currentTheme() === "reson") withReveal(() => applyFullTheme("reson"));
   });
+
+  /* UI-Farbe: Farbfelder + freie Farbe. Leer = Akzent des Themes. */
+  const accentPicker = document.getElementById("accentPicker");
+  const accentInput = document.getElementById("accentCustomInput");
+  function renderAccentPicker() {
+    if (!accentPicker) return;
+    const cur = accentOverride();
+    let matched = false;
+    accentPicker.querySelectorAll("[data-accent]").forEach((b) => {
+      b.style.setProperty("--swatch", b.dataset.accent || "transparent");
+      const on = b.dataset.accent.toLowerCase() === cur.toLowerCase();
+      matched = matched || on;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-checked", String(on));
+    });
+    const custom = accentPicker.querySelector(".accent-swatch-custom");
+    custom.classList.toggle("active", !matched);
+    if (accentInput) accentInput.value = cur || getComputedStyle(root).getPropertyValue("--sp-green").trim() || "#d9a866";
+  }
+  function setAccent(value, originEl) {
+    if (value) localStorage.setItem(ACCENT_KEY, value);
+    else localStorage.removeItem(ACCENT_KEY);
+    const update = () => { applyFullTheme(currentTheme()); renderAccentPicker(); };
+    if (originEl) withReveal(update, originEl);
+    else update();
+  }
+  if (accentPicker) {
+    accentPicker.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-accent]");
+      if (b) setAccent(b.dataset.accent, b);
+    });
+  }
+  // input = Live-Vorschau beim Ziehen im Farbwaehler, ohne Kreis-Uebergang
+  if (accentInput) accentInput.addEventListener("input", () => setAccent(accentInput.value));
 
   /* ===== Rechtsklick-Menü ===== */
   let ctxMenu = null;
@@ -596,4 +646,5 @@
   if (typeof applyTheme === "function") applyTheme(currentTheme()); // Markierung nach der Umstellung oben
   applyFullTheme(currentTheme());
   renderModeSwitch();
+  renderAccentPicker();
 })();

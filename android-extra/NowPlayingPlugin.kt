@@ -18,6 +18,11 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.webkit.ScriptHandler
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -90,6 +95,37 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
         }
         receiver = r
         ContextCompat.registerReceiver(activity, r, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        forwardInsets(webView)
+    }
+
+    /* ===== Systemleisten / Kamera-Ausschnitt an die Seite =====
+       Ab Android 15 zeichnet die App immer bis unter Status- und
+       Gesten-Leiste (Edge-to-Edge). Manche WebViews melden dabei
+       env(safe-area-inset-*) als 0 - dann lagen Knoepfe unter der Kamera
+       bzw. der Gesten-Leiste. styles.css nimmt das Groessere aus env() und
+       --native-inset-*. Das Document-Start-Script setzt die Werte auch nach
+       jedem Neuladen der Seite, bevor sie das erste Mal zeichnet. */
+    private var insetScript: ScriptHandler? = null
+
+    private fun forwardInsets(webView: android.webkit.WebView) {
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { v, insets ->
+            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val d = v.resources.displayMetrics.density
+            val vars = "s.setProperty('--native-inset-top','${b.top / d}px');" +
+                "s.setProperty('--native-inset-right','${b.right / d}px');" +
+                "s.setProperty('--native-inset-bottom','${b.bottom / d}px');" +
+                "s.setProperty('--native-inset-left','${b.left / d}px');"
+            val js = "(function(){function f(){var s=document.documentElement.style;$vars}" +
+                "if(document.documentElement)f();else document.addEventListener('DOMContentLoaded',f);})();"
+            webView.evaluateJavascript(js, null)
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                insetScript?.remove()
+                insetScript = WebViewCompat.addDocumentStartJavaScript(webView, js, setOf("*"))
+            }
+            // Nicht verbrauchen: die WebView rechnet ihr env() weiter selbst.
+            ViewCompat.onApplyWindowInsets(v, insets)
+        }
+        ViewCompat.requestApplyInsets(webView)
     }
 
     @Command

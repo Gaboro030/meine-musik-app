@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#000000" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -15,7 +15,6 @@
   <script src="icons.js"></script>
 </head>
 <body>
-  <div id="ambientGlow" class="ambient-glow"></div>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -535,6 +534,23 @@
             </div>
             <div class="settings-row">
               <div>
+                <div class="settings-row-label" data-i18n="UI-Farbe">UI-Farbe</div>
+                <div class="settings-row-desc" data-i18n="Akzentfarbe für Knöpfe, Markierungen und Regler – gilt für jedes Theme">Akzentfarbe für Knöpfe, Markierungen und Regler – gilt für jedes Theme</div>
+              </div>
+              <div class="accent-picker" id="accentPicker" role="radiogroup" data-i18n-aria-label="UI-Farbe" aria-label="UI-Farbe">
+                <button type="button" class="accent-swatch accent-swatch-auto" role="radio" data-accent="" data-i18n-title="Theme-Standard" title="Theme-Standard" aria-label="Theme-Standard"></button>
+                <button type="button" class="accent-swatch" role="radio" data-accent="#d9a866" title="#d9a866" aria-label="#d9a866"></button>
+                <button type="button" class="accent-swatch" role="radio" data-accent="#1db954" title="#1db954" aria-label="#1db954"></button>
+                <button type="button" class="accent-swatch" role="radio" data-accent="#2f9dff" title="#2f9dff" aria-label="#2f9dff"></button>
+                <button type="button" class="accent-swatch" role="radio" data-accent="#a855f7" title="#a855f7" aria-label="#a855f7"></button>
+                <button type="button" class="accent-swatch" role="radio" data-accent="#ff5ca8" title="#ff5ca8" aria-label="#ff5ca8"></button>
+                <button type="button" class="accent-swatch" role="radio" data-accent="#e63946" title="#e63946" aria-label="#e63946"></button>
+                <button type="button" class="accent-swatch" role="radio" data-accent="#ff8c1a" title="#ff8c1a" aria-label="#ff8c1a"></button>
+                <label class="accent-swatch accent-swatch-custom" data-i18n-title="Eigene Farbe" title="Eigene Farbe"><input type="color" id="accentCustomInput" data-i18n-aria-label="Eigene Farbe" aria-label="Eigene Farbe"></label>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
                 <div class="settings-row-label" data-i18n="Sprache">Sprache</div>
                 <div class="settings-row-desc" data-i18n="Sprache der App-Oberfläche">Sprache der App-Oberfläche</div>
               </div>
@@ -1038,6 +1054,25 @@
     </div>
   </div>
 
+  <!-- Handy: Tab-Leiste unten (Daumen-Reichweite) statt 7 Wisch-Tabs oben.
+       nav-item + data-view: player.js bindet Klick und Markierung selbst. -->
+  <nav class="mobile-tabbar" id="mobileTabbar" data-i18n-aria-label="Navigation" aria-label="Navigation">
+    <button type="button" class="nav-item tabbar-item" data-view="home"><span class="nav-icon" data-icon="home"></span><span data-i18n="Home">Home</span></button>
+    <button type="button" class="nav-item tabbar-item" data-view="library"><span class="nav-icon" data-icon="library"></span><span data-i18n="Bibliothek">Bibliothek</span></button>
+    <button type="button" class="nav-item tabbar-item" data-view="history"><span class="nav-icon" data-icon="history"></span><span data-i18n="Verlauf">Verlauf</span></button>
+    <button type="button" class="tabbar-item" id="mobileMoreBtn" aria-haspopup="dialog" aria-controls="mobileMoreSheet"><span class="nav-icon" data-icon="more"></span><span data-i18n="Mehr">Mehr</span></button>
+  </nav>
+  <div id="mobileMoreSheet" class="mobile-more-sheet hidden" role="dialog" aria-modal="true" data-i18n-aria-label="Mehr" aria-label="Mehr">
+    <div class="mobile-more-card">
+      <div class="mobile-more-grip" aria-hidden="true"></div>
+      <button type="button" class="nav-item" data-view="trash"><span class="nav-icon" data-icon="trash"></span><span data-i18n="Papierkorb">Papierkorb</span></button>
+      <button type="button" class="nav-item" data-view="duplicates"><span class="nav-icon" data-icon="copy"></span><span data-i18n="Duplikate">Duplikate</span></button>
+      <button type="button" class="nav-item" data-view="stats"><span class="nav-icon" data-icon="chart"></span><span data-i18n="Statistik">Statistik</span></button>
+      <button type="button" class="nav-item" data-view="health"><span class="nav-icon" data-icon="activity"></span><span data-i18n="Health-Check">Health-Check</span></button>
+      <button type="button" class="nav-item" data-more-click="settingsToggleBtn"><span class="nav-icon" data-icon="settings"></span><span data-i18n="Einstellungen">Einstellungen</span></button>
+    </div>
+  </div>
+
   <div class="player-bar-anchor player-hidden">
   <footer class="player-bar">
     <div class="player-bar-left">
@@ -1163,6 +1198,8 @@
   <script src="backup.js"></script>
   <script src="friends.js"></script>
   <script src="mobile-ui.js"></script>
+  <script src="back-stack.js"></script>
+  <script src="back-nav.js"></script>
   <script src="settings-ui.js"></script>
   <script src="update-dialog.js"></script>
   <script src="updater.js"></script>

@@ -112,6 +112,9 @@ pub fn run() {
             let trash_dir = data_dir.join("trash");
             fs::create_dir_all(&trash_dir).ok();
 
+            #[cfg(target_os = "linux")]
+            commands::start_loopback_stream_server(root.clone());
+
             app.manage(commands::AppState {
                 music_root: root.clone(),
                 trash_dir,

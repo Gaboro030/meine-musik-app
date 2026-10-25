@@ -1,6 +1,6 @@
 [package]
 name = "meine-musik"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 
 [lib]
@@ -54,7 +54,9 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # schicken (siehe read_track_meta/compressed_cover in commands.rs). Nur
 # jpeg+png (Decode) noetig - reine Rust-Codecs, kein System-libjpeg, damit
 # unkritisch fuers Android-NDK-Cross-Compile.
-image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# webp: yt-dlp legt das YouTube-Thumbnail als .webp neben den Titel, wenn
+# das Einbetten scheitert - ohne Decoder fehlte bei diesen Songs das Cover.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # Komplett-Bibliotheks-Export/Import als ZIP (Backup). "deflate" statt der
 # default-Features, damit kein bzip2/zstd-C-Code mitkompiliert wird (siehe
 # Cross-Compile-Vorsicht bei den anderen Abhaengigkeiten hier).

@@ -86,6 +86,14 @@ if (!gradle.includes(mediaDep)) {
 } else {
   console.log("-> androidx.media dependency already present");
 }
+// NowPlayingPlugin.kt reicht die Systemleisten-Abstaende per
+// WebViewCompat.addDocumentStartJavaScript an die Seite. wry nutzt
+// androidx.webkit selbst schon - nur falls die Vorlage es mal nicht
+// mehr mitbringt, hier nachziehen.
+if (!gradle.includes("androidx.webkit:webkit")) {
+  gradle = gradle.replace(/(dependencies\s*\{)/, `$1\n    implementation("androidx.webkit:webkit:1.12.1")`);
+  console.log("-> added androidx.webkit dependency to build.gradle.kts");
+}
 
 /* ===== R8/Minify im Release abschalten =====
    Der Debug-Build (bisher der einzige) laeuft mit isMinifyEnabled = false,

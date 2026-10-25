@@ -77,7 +77,14 @@ function awaitPoToken(timeoutMs = 6000) {
    und Suche) - Format und Schluessel deshalb unveraendert lassen. */
 const QUALITY_PRESET_KEY = "downloadQualityPreset";
 const PREFS_KEY = "downloaderPrefs";
-const opts = { format: "mp3", bitrate: "192", quality: "best", studio: true, parallel: isAndroid ? 2 : 3 };
+// parallel 0 = "Alle Kerne": ein Titel pro logischem CPU-Kern (jeder Titel
+// ist ein eigener yt-dlp- + ffmpeg-Prozess), sonst die feste Anzahl.
+const CORES = Math.max(1, navigator.hardwareConcurrency || 4);
+const ALL_CORES = 0;
+const PARALLEL_CHOICES = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64].filter((n) => n < CORES).concat(ALL_CORES);
+const parallelCount = () => (opts.parallel === ALL_CORES ? CORES : opts.parallel);
+const parallelLabel = (n) => (n === ALL_CORES ? t("Alle Kerne ({n})", { n: CORES }) : t("{n} gleichzeitig", { n }));
+const opts = { format: "mp3", bitrate: "192", quality: "best", studio: true, parallel: isAndroid ? 2 : ALL_CORES };
 try {
   const q = JSON.parse(localStorage.getItem(QUALITY_PRESET_KEY) || "null");
   if (q) {
@@ -88,7 +95,7 @@ try {
   const p = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
   if (p) {
     if (typeof p.studio === "boolean") opts.studio = p.studio;
-    if ([1, 2, 3, 4, 6].includes(p.parallel)) opts.parallel = p.parallel;
+    if (Number.isInteger(p.parallel) && p.parallel >= 0 && p.parallel <= 64) opts.parallel = p.parallel;
   }
 } catch (_) { /* kaputter Speicher: Standardwerte */ }
 
@@ -143,7 +150,7 @@ function renderOptions() {
   studioChip.classList.toggle("hidden", mp4);
   studioChip.setAttribute("aria-checked", String(opts.studio));
   formatSeg.querySelector("[data-audio-label]").textContent = isAndroid ? t("Audio") : "MP3";
-  parallelChip.querySelector("[data-parallel-label]").textContent = t("{n} gleichzeitig", { n: opts.parallel });
+  parallelChip.querySelector("[data-parallel-label]").textContent = parallelLabel(opts.parallel);
   if (isAndroid) {
     platformNote.lastChild && platformNote.lastChild.nodeType === 3 && platformNote.lastChild.remove();
     platformNote.append(t("Auf Android wird Audio als M4A gespeichert und Video in Standard-Qualität – abgespielt wird beides ganz normal."));
@@ -183,9 +190,19 @@ studioChip.addEventListener("click", () => {
 /* Parallel-Auswahl als kleines Popover (auf dem Handy als Leiste unten) */
 const parallelPop = $("parallelPop");
 function renderParallelPop() {
-  parallelPop.querySelectorAll("[data-n]").forEach((b) => {
-    b.textContent = t("{n} gleichzeitig", { n: b.dataset.n });
-    b.setAttribute("aria-selected", String(+b.dataset.n === opts.parallel));
+  // Gespeicherter Wert, der auf diesem Rechner nicht in der Liste steht
+  // (z.B. 8 vom PC, jetzt auf einem 4-Kern-Geraet), bleibt waehlbar.
+  const choices = PARALLEL_CHOICES.includes(opts.parallel) ? PARALLEL_CHOICES : [opts.parallel, ...PARALLEL_CHOICES];
+  parallelPop.querySelectorAll("[data-n]").forEach((b) => b.remove());
+  const hint = parallelPop.querySelector(".dl-pop-hint");
+  choices.forEach((n) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "option");
+    b.dataset.n = n;
+    b.textContent = parallelLabel(n);
+    b.setAttribute("aria-selected", String(n === opts.parallel));
+    parallelPop.insertBefore(b, hint);
   });
 }
 function closeParallelPop() { parallelPop.classList.add("hidden"); }
@@ -662,7 +679,7 @@ $("startBtn").addEventListener("click", async () => {
       renderRun();
     }
   }
-  await Promise.all(Array.from({ length: Math.min(opts.parallel, list.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(parallelCount(), list.length) }, worker));
 
   // Nach Abbruch zurueck in den Ausgangszustand, was nicht dran war
   list.forEach((x) => { if (x.state === "queue") setRowState(x, "idle"); });
