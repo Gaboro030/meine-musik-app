@@ -1,4 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Sichere Abstaende zu Statusleiste, Kamera-Ausschnitt und Gesten-Leiste:
+   das Groessere aus env() und dem, was die Android-Huelle meldet
+   (--native-inset-*, NowPlayingPlugin.kt) - manche WebViews liefern bei
+   Edge-to-Edge fuer env() nur 0. */
+:root {
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--native-inset-top, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--native-inset-right, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--native-inset-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--native-inset-left, 0px));
+}
+
 
 /* Downloader im Reson-Design. Gleiche Farbnamen wie styles.css (--sp-*):
    laeuft die Seite als Ebene im Player, uebernimmt downloader.js die
@@ -79,8 +90,8 @@ a { color: inherit; text-decoration: none; }
   max-width: 980px;
   margin: 0 auto;
   padding: 18px var(--gutter) 140px;
-  padding-left: max(var(--gutter), env(safe-area-inset-left));
-  padding-right: max(var(--gutter), env(safe-area-inset-right));
+  padding-left: max(var(--gutter), var(--safe-left));
+  padding-right: max(var(--gutter), var(--safe-right));
 }
 
 /* ===== Knoepfe ===== */
@@ -365,6 +376,7 @@ a { color: inherit; text-decoration: none; }
   transform-origin: top left; animation: popIn var(--dur-base) var(--ease-out);
 }
 @keyframes popIn { from { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+.dl-pop { max-height: min(70vh, 520px); overflow-y: auto; overscroll-behavior: contain; }
 .dl-pop-title { padding: 8px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sp-muted); }
 .dl-pop-hint { padding: 6px 10px 6px; font-size: 12px; color: var(--sp-muted-2); max-width: 260px; }
 .dl-pop button {
@@ -446,10 +458,10 @@ a { color: inherit; text-decoration: none; }
   .dl-pop { left: 10px !important; right: 10px; top: auto !important; bottom: 10px; min-width: 0; transform-origin: bottom center; }
   .dl-pop button { min-height: 48px; font-size: 15px; }
   .dl-modal { align-items: end; padding: 0; }
-  .dl-modal-card { width: 100%; border-radius: 18px 18px 0 0; max-height: 85vh; padding-bottom: env(safe-area-inset-bottom); }
+  .dl-modal-card { width: 100%; border-radius: 18px 18px 0 0; max-height: 85vh; padding-bottom: var(--safe-bottom); }
 }
 /* Als eigenstaendige Seite auf dem Handy: Home-Leiste beachten */
-body:not(.in-frame) .dl-dock { bottom: max(16px, calc(env(safe-area-inset-bottom) + 8px)); }
+body:not(.in-frame) .dl-dock { bottom: max(16px, calc(var(--safe-bottom) + 8px)); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

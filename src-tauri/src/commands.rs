@@ -48,11 +48,62 @@ pub struct TrackMeta {
 pub(crate) fn stream_url_for(playlist: &str, file: &str) -> String {
     let enc =
         |s: &str| percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string();
+    #[cfg(target_os = "linux")]
+    if let Some(base) = LOOPBACK_STREAM_BASE.get() {
+        return format!("{base}/{}/{}", enc(playlist), enc(file));
+    }
     if cfg!(any(windows, target_os = "android")) {
         format!("http://stream.localhost/{}/{}", enc(playlist), enc(file))
     } else {
         format!("stream://localhost/{}/{}", enc(playlist), enc(file))
     }
+}
+
+/// Linux: WebKitGTK reicht <audio>-Quellen aus eigenen URI-Schemes
+/// (stream://) nicht an GStreamer durch - jeder Titel endet sofort mit
+/// MEDIA_ERR_SRC_NOT_SUPPORTED, und der Player springt Song fuer Song
+/// weiter. Ueber echtes HTTP spielt dieselbe Datei. Deshalb liefert hier
+/// ein kleiner Server NUR auf 127.0.0.1 dieselben Antworten wie das
+/// stream://-Protokoll. Der zufaellige Pfad-Schluessel pro Start haelt
+/// andere Programme und Webseiten auf diesem Rechner von der Bibliothek
+/// fern (der Port allein waere leicht zu erraten).
+#[cfg(target_os = "linux")]
+static LOOPBACK_STREAM_BASE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "linux")]
+pub fn start_loopback_stream_server(root: PathBuf) {
+    use axum::response::IntoResponse;
+    // Synchron binden: list_playlists darf nie eine URL ohne Server bauen.
+    let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", 0)) else { return };
+    let Ok(addr) = listener.local_addr() else { return };
+    if listener.set_nonblocking(true).is_err() {
+        return;
+    }
+    let token = uuid::Uuid::new_v4().simple().to_string();
+    let prefix = format!("/{token}/");
+    let _ = LOOPBACK_STREAM_BASE.set(format!("http://127.0.0.1:{}/{token}", addr.port()));
+    tauri::async_runtime::spawn(async move {
+        let Ok(listener) = tokio::net::TcpListener::from_std(listener) else { return };
+        let router = axum::Router::new().fallback(
+            move |uri: axum::http::Uri, headers: axum::http::HeaderMap| {
+                let root = root.clone();
+                let prefix = prefix.clone();
+                async move {
+                    // Roher (noch percent-kodierter) Pfad - stream_file dekodiert selbst.
+                    let Some(rel) = uri.path().strip_prefix(prefix.as_str()) else {
+                        return StatusCode::NOT_FOUND.into_response();
+                    };
+                    let range = headers
+                        .get(header::RANGE)
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string);
+                    let (parts, body) = stream_file(&root, rel, range).await.into_parts();
+                    axum::response::Response::from_parts(parts, axum::body::Body::from(body))
+                }
+            },
+        );
+        let _ = axum::serve(listener, router).await;
+    });
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -149,6 +200,10 @@ fn compressed_cover(path: &Path, raw: &[u8], fallback_mime: &str) -> Option<Stri
         // durchreichen als das Cover komplett zu verlieren.
         return Some(format!("data:{};base64,{}", fallback_mime, BASE64.encode(raw)));
     };
+    // 16:9-YouTube-Thumbnails mittig quadratisch zuschneiden, wie es der
+    // Downloader beim Einbetten tut (COVER_CROP_ARGS) - sonst Balken im Cover.
+    let side = img.width().min(img.height());
+    let img = img.crop_imm((img.width() - side) / 2, (img.height() - side) / 2, side, side);
     let resized = img.thumbnail(320, 320);
     let mut cursor = std::io::Cursor::new(Vec::new());
     if resized.write_to(&mut cursor, image::ImageFormat::Jpeg).is_ok() {
@@ -193,11 +248,14 @@ pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
         }
     }
     // m4a-Dateien (Android-Downloads) haben keine ID3-Frames fürs Cover -
-    // der Downloader legt stattdessen ein "<name>.jpg" daneben.
+    // der Downloader legt stattdessen ein "<name>.jpg" daneben. Scheitert
+    // yt-dlps --embed-thumbnail, bleibt das Thumbnail als .webp liegen.
     if meta.cover.is_none() {
-        let sidecar = path.with_extension("jpg");
-        if let Ok(bytes) = std::fs::read(&sidecar) {
-            meta.cover = compressed_cover(path, &bytes, "image/jpeg");
+        for (ext, mime) in [("jpg", "image/jpeg"), ("webp", "image/webp"), ("png", "image/png")] {
+            if let Ok(bytes) = std::fs::read(path.with_extension(ext)) {
+                meta.cover = compressed_cover(path, &bytes, mime);
+                break;
+            }
         }
     }
     // Same story for the artist - m4a downloads (Android) have no ID3 frame
@@ -336,7 +394,7 @@ fn meta_fingerprint(path: &Path) -> Option<u64> {
     let m = std::fs::metadata(path).ok()?;
     m.len().hash(&mut h);
     m.modified().ok().hash(&mut h);
-    for ext in ["jpg", "artist.txt", "album.txt", "cover_cache.jpg"] {
+    for ext in ["jpg", "webp", "png", "artist.txt", "album.txt", "cover_cache.jpg"] {
         match std::fs::metadata(path.with_extension(ext)) {
             Ok(s) => {
                 s.len().hash(&mut h);
@@ -1544,6 +1602,41 @@ mod tests {
         assert_eq!(mp4_duration(&track), Some(5.0));
         assert_eq!(read_track_meta(&track).duration, Some(5.0));
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Linux-Loopback-Server: liefert Bereiche mit CORS, aber nur mit dem
+    /// Schluessel aus stream_url_for - ohne ihn gibt es nichts.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loopback_stream_server_needs_token() {
+        let root = temp_root();
+        std::fs::create_dir_all(root.join("P")).unwrap();
+        std::fs::write(root.join("P/a b.mp3"), b"0123456789").unwrap();
+        start_loopback_stream_server(root);
+        let url = stream_url_for("P", "a b.mp3");
+        assert!(url.starts_with("http://127.0.0.1:"));
+        let client = reqwest::Client::new();
+        let r = client.get(&url).header("range", "bytes=2-4").send().await.unwrap();
+        assert_eq!(r.status(), 206);
+        assert_eq!(r.headers()["access-control-allow-origin"], "*");
+        assert_eq!(r.bytes().await.unwrap().as_ref(), b"234");
+        let base = url.split('/').take(3).collect::<Vec<_>>().join("/");
+        let r = client.get(format!("{base}/P/a%20b.mp3")).send().await.unwrap();
+        assert_eq!(r.status(), 404);
+    }
+
+    /// Liegengebliebenes 16:9-.webp-Thumbnail wird zum quadratischen Cover.
+    #[test]
+    fn webp_sidecar_becomes_square_cover() {
+        let root = temp_root();
+        let track = root.join("a.mp3");
+        std::fs::write(&track, b"kein id3").unwrap();
+        let img = image::RgbImage::from_pixel(64, 36, image::Rgb([200, 30, 30]));
+        img.save_with_format(root.join("a.webp"), image::ImageFormat::WebP).unwrap();
+        let meta = read_track_meta(&track);
+        assert!(meta.cover.unwrap().starts_with("data:image/jpeg;base64,"));
+        let cached = image::open(root.join("a.cover_cache.jpg")).unwrap();
+        assert_eq!(cached.width(), cached.height());
     }
 
     /// Offener Bereich wird gestueckelt, kleiner Bereich bleibt exakt,

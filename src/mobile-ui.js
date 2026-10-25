@@ -17,6 +17,20 @@
    level `scroll` as a fallback for non-touch input. */
 (function () {
   "use strict";
+  /* "Mehr" in der Tab-Leiste: Sheet mit den selteneren Ansichten. Die
+     Eintraege sind nav-item[data-view] (player.js schaltet die Ansicht),
+     hier nur auf/zu. Zurueck-Geste schliesst es ueber back-nav.js. */
+  const moreBtn = document.getElementById("mobileMoreBtn");
+  const moreSheet = document.getElementById("mobileMoreSheet");
+  if (moreBtn && moreSheet) {
+    moreBtn.addEventListener("click", () => moreSheet.classList.toggle("hidden"));
+    moreSheet.addEventListener("click", (e) => {
+      const item = e.target.closest(".nav-item");
+      if (e.target === moreSheet || item) moreSheet.classList.add("hidden");
+      if (item && item.dataset.moreClick) document.getElementById(item.dataset.moreClick).click();
+    });
+  }
+
   const scroller = document.querySelector(".content-scroll");
   if (!scroller) return;
 
@@ -29,7 +43,9 @@
   // Mausrad-Scrollen, was den Songtext-Button dort dauerhaft unklickbar
   // machte ("Songtext auf 2. Monitor im Vollbild blockiert"). JS und CSS
   // muessen dieselbe Bedingung nutzen, sonst entsteht ein Hybrid-Layout.
-  const mq = window.matchMedia("(max-width: 900px) and (pointer: coarse)");
+  // Zweiter Teil: Handy quer (915x412) - das Desktop-Layout passt in die
+  // Hoehe nicht, die Seitenleiste lief ueber. Gleiche Liste wie styles.css.
+  const mq = window.matchMedia("(max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse)");
 
   // Touchmove wird global auf `document` beobachtet (siehe unten) - ohne
   // diese Sperre zaehlte Scrollen INNERHALB eines offenen Vollbild-Overlays

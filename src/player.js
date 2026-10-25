@@ -5717,11 +5717,12 @@ if ("mediaSession" in navigator) {
 
 /* ===== Ambient Glow =====
    Samples the currently playing track's cover on an offscreen canvas and
-   sets the blurred background blob (#ambientGlow) to its average color.
+   derives the two dominant colors for the player/playlist gradient.
+   (Die farbige Flaeche hinter dem Rahmen ist weg - sie lag als gruener
+   Rand um Seitenleiste und Hauptbereich.)
    Library covers are same-origin data: URIs (embedded APIC art read back
    through /api/library), so this never hits a canvas CORS taint - it's
    only ever called with the current track's own cover. */
-const ambientGlowEl = document.getElementById("ambientGlow");
 let lastCoverSrc = null; // re-sampled when Dynamic Glow gets switched back on
 
 function updateAmbientGlow(coverSrc) {
@@ -5763,13 +5764,6 @@ function updateAmbientGlow(coverSrc) {
           : null;
       const bright = mix(acc.bright);
       const dark = mix(acc.dark);
-      const avg = mix([
-        acc.bright[0] + acc.dark[0],
-        acc.bright[1] + acc.dark[1],
-        acc.bright[2] + acc.dark[2],
-        acc.bright[3] + acc.dark[3],
-      ]);
-      if (avg) ambientGlowEl.style.backgroundColor = `rgb(${avg[0]}, ${avg[1]}, ${avg[2]})`;
       const root = document.documentElement;
       if (bright) root.style.setProperty("--dyn-c1", `${bright[0]}, ${bright[1]}, ${bright[2]}`);
       if (dark) root.style.setProperty("--dyn-c2", `${dark[0]}, ${dark[1]}, ${dark[2]}`);
@@ -5833,10 +5827,8 @@ function setGlowEnabled(enabled) {
   glowToggleSwitch.classList.toggle("active", enabled);
   glowToggleSwitch.setAttribute("aria-checked", String(enabled));
   if (enabled) {
-    ambientGlowEl.classList.remove("glow-off");
     updateAmbientGlow(lastCoverSrc);
   } else {
-    ambientGlowEl.classList.add("glow-off");
     // Cover-Farbverlauf auf Player/Playlist gehört zum selben Feature -
     // aus heißt komplett aus, zurück zur reinen Theme-Optik.
     document.body.classList.remove("has-dynamic-colors");
@@ -5850,7 +5842,6 @@ function toggleGlow() {
 glowToggleSwitch.addEventListener("click", () => setGlowEnabled(!glowEnabled));
 glowToggleSwitch.classList.toggle("active", glowEnabled);
 glowToggleSwitch.setAttribute("aria-checked", String(glowEnabled));
-if (!glowEnabled) ambientGlowEl.classList.add("glow-off");
 
 /* ===== Vollbild-Visualizer =====
    AnalyserNode sitzt im initAudioGraph()-Graph (nach masterGain, vor

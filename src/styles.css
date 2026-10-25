@@ -1,4 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Sichere Abstaende zu Statusleiste, Kamera-Ausschnitt und Gesten-Leiste:
+   das Groessere aus env() und dem, was die Android-Huelle meldet
+   (--native-inset-*, NowPlayingPlugin.kt) - manche WebViews liefern bei
+   Edge-to-Edge fuer env() nur 0. */
+:root {
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--native-inset-top, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--native-inset-right, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--native-inset-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--native-inset-left, 0px));
+}
+
 
 :root {
   /* Standard = Reson (dunkel). themes.js setzt beim Start dieselben Werte
@@ -383,27 +394,6 @@ button, .track-row, .nav-item, .card, .playlist-item {
   -webkit-user-select: none;
 }
 
-/* ========= AMBIENT GLOW ========= */
-/* Fixed, negative z-index so it always paints behind the (non-positioned)
-   .app-shell regardless of DOM order - the blurred color blob only shows
-   through the 8px gaps around sidebar/main-content. Color is set inline by
-   player.js from the current track's cover; the transition here is what
-   makes that change fade smoothly instead of snapping.
-   Kein filter: blur(140px) mehr: eine einfarbige Flaeche, die ueber den
-   Rand hinausragt, sieht weichgezeichnet genauso aus - der Filter kostete
-   aber bei jedem Neuzeichnen einen Vollbild-Blur, und auf Linux (WebKitGTK,
-   v.a. mit NVIDIA) hat genau das die ganze App ruckeln lassen. */
-.ambient-glow {
-  position: fixed;
-  inset: -10%;
-  z-index: -1;
-  background-color: #1db954;
-  opacity: 0.28;
-  transition: background-color 1.4s ease, opacity 0.6s ease;
-  pointer-events: none;
-}
-.ambient-glow.glow-off { opacity: 0; }
-
 /* ========= DYNAMISCHES COLOR-MATCHING (Spotify-Style) =========
    player.js extrahiert beim Trackwechsel ZWEI dominante Cover-Farben
    (helle + dunkle Hälfte, --dyn-c1/--dyn-c2 als "r, g, b"-Tripel) und
@@ -438,7 +428,7 @@ body.has-dynamic-colors .playlist-hero {
 .app-shell {
   display: flex;
   width: 100%;
-  height: calc(100dvh - 90px);
+  height: calc(100dvh - 90px - var(--safe-bottom));
   gap: 8px;
   padding: 8px;
 }
@@ -749,7 +739,7 @@ body.has-dynamic-colors .playlist-hero {
 
 .friend-banner-stack {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  top: calc(var(--safe-top) + 14px);
   left: 50%;
   transform: translateX(-50%);
   width: min(420px, calc(100vw - 24px));
@@ -1291,7 +1281,9 @@ body.has-dynamic-colors .playlist-hero {
   flex-direction: column;
   overflow: hidden;
 }
-.settings-head { gap: 14px; padding: 14px 16px 14px 22px; }
+/* .modal-header.: sonst gewinnt die spaetere .modal-header-Regel (18px 22px)
+   und der Statusleisten-Abstand unten griff auf dem Handy nie. */
+.modal-header.settings-head { gap: 14px; padding: 14px 16px 14px 22px; }
 .settings-head h3 { flex: none; }
 .settings-search {
   flex: 1; max-width: 320px; margin-left: auto; display: flex; align-items: center; gap: 8px;
@@ -1384,15 +1376,16 @@ body.has-dynamic-colors .playlist-hero {
 .settings-group > .settings-sub.is-open > .settings-sub-in { margin-bottom: 6px; }
 .os-android [data-desktop-only] { display: none !important; }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .settings-modal.modal-overlay { padding: 0; }
   .settings-modal .modal.settings-shell { max-width: none; height: 100dvh; border-radius: 0; border: 0; }
-  .settings-head { flex-wrap: wrap; padding: calc(12px + env(safe-area-inset-top)) 12px 10px 18px; row-gap: 10px; }
+  .modal-header.settings-head { flex-wrap: wrap; padding: calc(12px + var(--safe-top)) max(12px, var(--safe-right)) 10px max(18px, var(--safe-left)); row-gap: 10px; }
   .settings-head h3 { flex: 1; }
-  .settings-search { order: 3; flex: 1 1 100%; max-width: none; margin: 0 6px 0 0; height: 42px; }
+  .settings-search { order: 3; flex: 1 1 100%; max-width: none; margin: 0 6px 0 0; height: 44px; }
+  .settings-search input { align-self: stretch; width: 100%; font-size: 1rem; }
   .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .settings-nav {
-    flex-direction: row; gap: 6px; padding: 10px 12px; overflow-x: auto; overflow-y: hidden;
+    flex-direction: row; gap: 6px; padding: 10px max(12px, var(--safe-right)) 10px max(12px, var(--safe-left)); overflow-x: auto; overflow-y: hidden;
     border-right: 0; border-bottom: 1px solid var(--sp-border); scrollbar-width: none;
   }
   .settings-nav::-webkit-scrollbar { display: none; }
@@ -1400,7 +1393,7 @@ body.has-dynamic-colors .playlist-hero {
   .settings-nav button .ic { width: 16px; height: 16px; }
   .settings-nav-ind { border-radius: 999px; background: color-mix(in srgb, var(--sp-green) 16%, transparent); }
   .settings-nav button[aria-selected="true"] { color: var(--sp-green); }
-  .settings-panes { padding: 16px 14px calc(28px + env(safe-area-inset-bottom)); }
+  .settings-panes { padding: 16px max(14px, var(--safe-right)) calc(28px + var(--safe-bottom)) max(14px, var(--safe-left)); }
   .settings-panes .settings-section-title { display: none; }
   .settings-panes.is-searching .settings-section-title { display: block; }
   .settings-group { padding: 2px 14px; }
@@ -1510,6 +1503,42 @@ body.has-dynamic-colors .playlist-hero {
 .lang-switch-btn.active {
   background: var(--sp-green);
   color: var(--sp-on-accent);
+}
+
+/* UI-Farbe: runde Farbfelder, das erste = Theme-Standard (halb/halb),
+   das letzte = freier Farbwaehler. Umbrechen statt ueberlaufen, damit die
+   Reihe auch auf schmalen Handys passt. */
+.accent-picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 260px;
+}
+.accent-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  transition: transform var(--dur-fast, 120ms) ease, box-shadow 0.2s ease;
+}
+.accent-swatch::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+@media (hover: hover) { .accent-swatch:hover { transform: scale(1.1); } }
+.accent-swatch.active { box-shadow: 0 0 0 2px var(--sp-bg), 0 0 0 4px var(--sp-text); }
+.accent-swatch-auto { background: linear-gradient(135deg, var(--sp-muted) 50%, var(--sp-elevated) 50%); }
+.accent-swatch-custom { background: conic-gradient(#ff004c, #ffb000, #1db954, #00c3ff, #7b2fff, #ff004c); overflow: hidden; }
+.accent-swatch-custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+@media (max-width: 600px) {
+  .settings-row:has(.accent-picker) { flex-direction: column; align-items: stretch; }
+  .accent-picker { justify-content: flex-start; max-width: none; gap: 10px; }
+  .accent-swatch { width: 34px; height: 34px; }
 }
 
 /* Auswahl der App-Symbol-Fassung (dunkel/hell) - zeigt die beiden
@@ -2309,7 +2338,7 @@ body.modal-scroll-lock { overflow: hidden; }
   text-overflow: ellipsis;
   margin-top: 2px;
 }
-@media (max-width: 900px) and (pointer: coarse) {
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
   .pb-next-up { display: none; }
 }
 .pb-like {
@@ -2676,7 +2705,7 @@ body.modal-scroll-lock { overflow: hidden; }
 .visualizer-artist { font-size: 1.05rem; color: var(--sp-muted); margin-top: 6px; }
 .visualizer-close {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 16px);
+  top: calc(var(--safe-top) + 16px);
   right: 16px;
   z-index: 2;
   width: 40px;
@@ -3653,7 +3682,7 @@ body.modal-scroll-lock { overflow: hidden; }
 .health-progress-label { padding: 6px 0 0; }
 
 /* ========= RESPONSIVE ========= */
-@media (max-width: 900px) and (pointer: coarse) {
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
   .sidebar { width: 200px; }
   .player-bar { grid-template-columns: 1fr; height: auto; padding: 10px 16px; gap: 6px; }
   .player-bar-right { display: none; }
@@ -3945,7 +3974,9 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
    gradient-scrim hover cards, pill-shaped active states, bigger spacing.
    Appended last so it wins over the original rules above by source order. */
 
-.app-shell { gap: 14px; padding: 14px 14px 0; }
+/* max(..., --safe-*): Tablets im Querformat nutzen dieses Layout - Kamera-
+   Ausschnitt seitlich, Gesten-Leiste unten. Am PC sind die Werte 0. */
+.app-shell { gap: 14px; padding: max(14px, var(--safe-top)) max(14px, var(--safe-right)) 0 max(14px, var(--safe-left)); }
 
 /* --- Sidebar: floating glass panel --- */
 .sidebar {
@@ -4043,7 +4074,7 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
 .player-bar {
   height: auto;
   min-height: 86px;
-  margin: 0 14px 14px;
+  margin: 0 max(14px, var(--safe-right)) max(14px, var(--safe-bottom)) max(14px, var(--safe-left));
   background: linear-gradient(180deg, var(--sp-elevated) 0%, var(--sp-black) 100%);
   border: 1px solid var(--sp-border);
   border-radius: 18px;
@@ -4071,7 +4102,7 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
   padding: 20px 12px;
 }
 
-@media (max-width: 900px) and (pointer: coarse) {
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
   .app-shell { padding: 8px 8px 0; gap: 8px; }
   .player-bar { margin: 0 8px 8px; border-radius: 14px; }
 }
@@ -4229,7 +4260,7 @@ body { font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiase
    + Musik hinzufügen) als feste Leiste GANZ UNTEN über der Player-Bar,
    Playlists als horizontale Chips, 2-Spalten-Kartenraster - nichts mehr
    gequetscht. Nur CSS, gleiche DOM-Struktur. */
-@media (max-width: 900px) and (pointer: coarse) {
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
   /* overflow-x hidden: egal was irgendwo mal zu breit wird - die Seite
      rutscht nie seitlich aus dem Bildschirm. */
   body { overflow: auto; overflow-x: hidden; }
@@ -4238,8 +4269,21 @@ body { font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiase
     width: 100%;
     height: auto;
     min-height: 100dvh;
-    padding: 10px 10px 0;
+    padding: calc(10px + var(--safe-top)) max(10px, var(--safe-right)) 0 max(10px, var(--safe-left));
     gap: 10px;
+  }
+  /* Unter der Statusleiste scrollt der Inhalt durch - eine Flaeche in
+     Hintergrundfarbe haelt die System-Symbole dort lesbar. */
+  html::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--safe-top);
+    background: var(--sp-bg);
+    z-index: 440;
+    pointer-events: none;
   }
 
   /* --- Sidebar wird zur Top-Leiste (NICHT sticky - der komplette
@@ -4273,12 +4317,31 @@ body { font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiase
     width: auto;
     flex: 0 0 auto;
     justify-content: center;
-    padding: 11px 14px;
-    font-size: 0.88rem;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-size: 0.86rem;
     white-space: nowrap;
     background: var(--sp-surface);
   }
-  .nav-item.active { background: var(--sp-green); }
+  .nav-item.active { background: var(--sp-green); color: var(--sp-on-accent); }
+  /* Der senkrechte Desktop-Strich links am aktiven Eintrag gehoert nicht
+     an eine Pille - auf dem Handy sah er wie ein Farbfehler aus. */
+  .nav-item.active::before { display: none; }
+  /* Waagerecht wischbar, aber ohne grauen Scrollbalken unter den Tabs;
+     der weiche Rand rechts zeigt, dass es weitergeht. */
+  .nav-main, .playlist-list {
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  }
+  .nav-main::-webkit-scrollbar, .playlist-list::-webkit-scrollbar { display: none; }
+  .nav-item, .playlist-item { scroll-snap-align: start; }
+  /* min-width: 0 - sonst haelt das Suchfeld seine Inhaltsbreite und
+     ragt bei 320px rechts aus der Karte. */
+  .search-bar { min-width: 0; }
+  .search-input { min-width: 0; width: 100%; text-overflow: ellipsis; }
   .sidebar-divider, .sidebar-section-title { display: none; }
   .playlist-list {
     flex: none;
@@ -4353,9 +4416,9 @@ body { font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiase
      Leisten-Container würden sie rechts aus dem Bildschirm laufen. */
   .sidebar-tool-popover {
     position: fixed;
-    left: 12px;
-    right: 12px;
-    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    left: max(12px, var(--safe-left));
+    right: max(12px, var(--safe-right));
+    top: calc(var(--safe-top) + 16px);
     bottom: auto;
     min-width: 0;
     max-height: 70vh;
@@ -4396,7 +4459,7 @@ body { font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiase
        zwei Zeilen der Bar) unsichtbar hinter die Geste-Leiste, nur die
        obere Info-Zeile blieb sichtbar. Fester 20px-Mindestabstand als
        Fallback, echter env()-Wert gewinnt wenn er groesser ist. */
-    bottom: max(calc(env(safe-area-inset-bottom, 0px) + 8px), 20px);
+    bottom: max(calc(var(--safe-bottom) + 8px), 20px);
   }
   .player-bar {
     margin: 0 10px;
@@ -4414,7 +4477,7 @@ body { font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiase
      Song, statt der früheren pauschalen Überlappungs-Reservierung für die
      fixed-Bar. */
   .content-scroll {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    padding-bottom: calc(var(--safe-bottom) + 16px);
   }
 
   /* --- EIN Scroll-Container für den ganzen Viewport ---
@@ -4559,7 +4622,7 @@ body { font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiase
   .pull-refresh-indicator {
     display: block;
     position: fixed;
-    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    top: calc(var(--safe-top) + 8px);
     left: 50%;
     transform: translateX(-50%);
     padding: 6px 14px;
@@ -4704,11 +4767,128 @@ th .ic { width: 15px; height: 15px; }
 
 /* Handy: Titel darf schrumpfen, Knoepfe ruecken zusammen - bei 390px lief
    das letzte Symbol (Video/Warteschlange) sonst ueber den Rand. */
-@media (max-width: 900px) and (pointer: coarse) {
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
   .player-bar-left { gap: 4px; min-width: 0; max-width: 100%; }
   .player-bar-left .pb-info { flex: 1 1 auto; margin-right: 4px; }
   .player-bar-left .pb-like, .player-bar-left .pb-lyrics, .player-bar-left .pb-video, .player-bar-left .pb-queue {
     width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
   }
   .player-bar-left .pb-video.hidden { display: none; }
+}
+
+/* ========= HANDY: TAB-LEISTE UNTEN + "MEHR" =========
+   Vorher lagen 7 Ansichten als Wisch-Pillen oben und schoben sich aus dem
+   Bild ("Pap…"). Jetzt die drei haeufigsten plus "Mehr" unten in
+   Daumen-Reichweite, der Rest im Sheet. Eine Variable fuer die Hoehe
+   (inkl. Gesten-Leiste), alle Abstaende darueber rechnen damit - so
+   driften Player-Bar, Songtext und Warteschlange nicht auseinander. */
+.mobile-tabbar, .mobile-more-sheet { display: none; }
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  :root { --mobile-tabbar-h: calc(58px + max(var(--safe-bottom), 10px)); }
+
+  .sidebar .nav-main { display: none; }
+  /* Platz fuer die feste Tab-Leiste am Ende - am Inhalt statt am body:
+     body ist hier der Scroll-Container mit fester Hoehe, dessen Innen-
+     abstand unten zaehlt nicht zur Scrollhoehe (gemessen). Die sticky
+     Player-Bar ruckt am Ende genau in diese leere Flaeche. */
+  .app-shell { padding-bottom: calc(var(--mobile-tabbar-h) + 8px); }
+  /* Ganzes Suchfeld tippbar (vorher nur die 17px hohe Textzeile) */
+  .search-bar { min-height: 44px; padding-block: 0; }
+  .search-input { align-self: stretch; font-size: 1rem; }
+
+  .mobile-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 450; /* ueber der Player-Bar (rutscht beim Scrollen dahinter weg), unter Menues/Overlays */
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    height: var(--mobile-tabbar-h);
+    padding: 4px max(var(--safe-right), 8px) max(var(--safe-bottom), 10px) max(var(--safe-left), 8px);
+    background: var(--sp-black);
+    border-top: 1px solid var(--sp-border);
+  }
+  .mobile-tabbar .tabbar-item {
+    width: auto;
+    min-width: 0;
+    min-height: 48px;
+    padding: 4px 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--sp-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .mobile-tabbar .tabbar-item .nav-icon {
+    width: 44px;
+    height: 26px;
+    border-radius: 999px;
+    transition: background var(--dur-base, 220ms) var(--ease-out, ease), transform var(--dur-fast, 120ms) ease;
+  }
+  .mobile-tabbar .tabbar-item:active .nav-icon { transform: scale(0.92); }
+  .mobile-tabbar .tabbar-item.active,
+  body:has(.mobile-more-sheet .nav-item.active) #mobileMoreBtn { color: var(--sp-text); background: none; }
+  .mobile-tabbar .tabbar-item.active .nav-icon,
+  body:has(.mobile-more-sheet .nav-item.active) #mobileMoreBtn .nav-icon {
+    background: color-mix(in srgb, var(--sp-green) 22%, transparent);
+    color: var(--sp-green);
+  }
+  .mobile-tabbar .tabbar-item.active::before { display: none; }
+
+  /* Player-Bar klebt ueber der Tab-Leiste; Ebenen, die bis zur Bar
+     reichen, rechnen die Leiste mit ein. */
+  .player-bar-anchor { bottom: calc(var(--mobile-tabbar-h) + 8px); }
+  .lyrics-overlay, .downloader-overlay { bottom: calc(var(--mobile-player-bar-h) + var(--mobile-tabbar-h) + 16px); }
+  .queue-panel { bottom: calc(var(--mobile-player-bar-h) + var(--mobile-tabbar-h) + 28px); }
+
+  /* "Mehr"-Sheet: von unten, ueber allem ausser echten Fenstern */
+  .mobile-more-sheet:not(.hidden) {
+    display: flex;
+    align-items: flex-end;
+    position: fixed;
+    inset: 0 0 var(--mobile-tabbar-h) 0; /* endet ueber der Tab-Leiste: die bleibt sichtbar, "Mehr" schliesst wieder */
+    z-index: 980;
+    background: rgba(0, 0, 0, 0.55);
+    animation: more-fade var(--dur-base, 220ms) var(--ease-out, ease);
+    overscroll-behavior: contain;
+  }
+  .mobile-more-card {
+    width: 100%;
+    max-height: calc(100dvh - var(--mobile-tabbar-h) - var(--safe-top) - 24px);
+    overflow-y: auto;
+    padding: 8px max(var(--safe-right), 12px) 12px max(var(--safe-left), 12px);
+    background: var(--sp-elevated);
+    border-radius: 20px 20px 0 0;
+    border-top: 1px solid var(--sp-border);
+    animation: more-up var(--dur-slow, 380ms) var(--ease-out, ease);
+  }
+  .mobile-more-grip { width: 36px; height: 4px; margin: 4px auto 10px; border-radius: 4px; background: var(--sp-muted-2); }
+  .mobile-more-card .nav-item {
+    width: 100%;
+    min-height: 52px;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: 0 14px;
+    border-radius: var(--radius-md);
+    background: none;
+    font-size: 0.98rem;
+  }
+  .mobile-more-card .nav-item.active { background: color-mix(in srgb, var(--sp-green) 16%, transparent); color: var(--sp-text); }
+  .mobile-more-card .nav-item.active::before { display: none; }
+  /* Beim Tippen gehoert der Platz ueber der Tastatur dem Eingabefeld -
+     Tab-Leiste und Player-Bar kommen nach dem Tippen zurueck. */
+  body:has(input:focus:not([type="range"]):not([type="checkbox"]), textarea:focus) .mobile-tabbar,
+  body:has(input:focus:not([type="range"]):not([type="checkbox"]), textarea:focus) .player-bar-anchor { display: none; }
+  @keyframes more-fade { from { opacity: 0; } }
+  @keyframes more-up { from { transform: translateY(40px); opacity: 0.4; } }
 }
