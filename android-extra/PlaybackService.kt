@@ -11,13 +11,18 @@
 // see nowplaying.rs) whenever a track starts, changes, or playback stops.
 // Notification button taps get broadcast back out (ACTION_MEDIA_CONTROL) -
 // NowPlayingPlugin listens for that and relays it to JS as "media-control".
+//
+// Zugleich der MediaBrowserService fuer Android Auto: das Auto bindet sich
+// hier an, blaettert durch Playlists und Titel (onGetRoot/onLoadChildren)
+// und waehlt per mediaId oder Sprachsuche. Die Bibliothek kennt nur die
+// Web-Seite - sie schickt eine Kopie (NowPlayingPlugin.setAutoLibrary), die
+// hier als Datei liegt, damit das Auto sie auch vor dem ersten Start zeigt.
 package com.reson.app
 
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -32,15 +37,25 @@ import android.graphics.Paint
 import android.graphics.Shader
 import android.media.AudioManager
 import android.os.Build
-import android.os.IBinder
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.media.MediaBrowserServiceCompat
 import androidx.media.app.NotificationCompat.MediaStyle
+import android.support.v4.media.MediaBrowserCompat.MediaItem
+import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import org.json.JSONArray
+import java.io.File
+import java.util.Locale
+import java.util.UUID
 
-class PlaybackService : Service() {
+class PlaybackService : MediaBrowserServiceCompat() {
     private lateinit var mediaSession: MediaSessionCompat
     private var lastTitle = "Reson"
     private var lastArtist = ""
@@ -68,7 +83,79 @@ class PlaybackService : Service() {
         const val ACTION_NEXT = "com.reson.app.NEXT"
         const val ACTION_PREV = "com.reson.app.PREV"
         const val ACTION_MEDIA_CONTROL = "com.reson.app.MEDIA_CONTROL"
+
+        /**
+         * Der Dienst ist exportiert (Android Auto muss sich binden koennen).
+         * Damit nicht jede App per startService die Benachrichtigung
+         * umschreiben oder die Wiedergabe steuern kann, tragen unsere
+         * eigenen Intents dieses Kennwort - es entsteht neu mit jedem
+         * Prozess und verlaesst ihn nie.
+         */
+        const val EXTRA_TOKEN = "com.reson.app.TOKEN"
+        val TOKEN: String = UUID.randomUUID().toString()
+
+        /** Laeuft die Web-Seite (und damit das <audio>)? Setzt NowPlayingPlugin. */
+        @Volatile var webAktiv = false
+
+        /**
+         * Auswahl aus dem Auto, die ankam, bevor die Seite zuhoerte (das Auto
+         * hat die App erst gestartet). NowPlayingPlugin reicht sie nach.
+         */
+        @Volatile var wartend: Pair<String, String?>? = null
+
+        @Volatile private var instanz: PlaybackService? = null
+
+        private const val ROOT = "__root__"
+        private const val LEER = "__leer__"
+        private const val PLAYLISTS = "__playlists__"
+        private const val ALLE = "__alle__"
+        /** Mehr zeigt das Auto ohnehin nicht sinnvoll an. */
+        private const val MAX_ALLE = 500
+
+        /** Diese duerfen blaettern; alle anderen sehen eine leere Liste. */
+        private val VERTRAUT = setOf(
+            "com.google.android.projection.gearhead", // Android Auto
+            "com.google.android.carassistant",
+            "com.google.android.googlequicksearchbox", // Assistant
+            "com.google.android.wearable.app",
+            "com.google.android.autosimulator", // Desktop Head Unit
+            "com.android.car.media", // Android Automotive
+            "com.google.android.apps.automotive.templates.host",
+        )
+
+        private const val AKTIONEN =
+            PlaybackStateCompat.ACTION_PLAY or
+                PlaybackStateCompat.ACTION_PAUSE or
+                PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                PlaybackStateCompat.ACTION_SEEK_TO or
+                PlaybackStateCompat.ACTION_STOP or
+                PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
+                PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH
+
+        private fun bibliothekDatei(context: Context) = File(context.filesDir, "auto-library.json")
+
+        /** Von NowPlayingPlugin.setAutoLibrary (Hintergrund-Thread). */
+        fun bibliothekSpeichern(context: Context, json: String) {
+            val ziel = bibliothekDatei(context)
+            val tmp = File(ziel.path + ".tmp")
+            tmp.writeText(json)
+            if (!tmp.renameTo(ziel)) {
+                ziel.writeText(json)
+                tmp.delete()
+            }
+            instanz?.bibliothekGeaendert()
+        }
     }
+
+    private data class AutoTitel(val file: String, val title: String, val artist: String)
+    private data class AutoPlaylist(val name: String, val tracks: List<AutoTitel>)
+
+    private var bibliothek: List<AutoPlaylist> = emptyList()
+    private var bibliothekStand = -1L
+    private val abonniert = mutableSetOf<String>()
+    private val haupt = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
@@ -87,6 +174,11 @@ class PlaybackService : Service() {
             override fun onSkipToNext() = melden("next")
             override fun onSkipToPrevious() = melden("prev")
             override fun onStop() = melden("pause")
+            // Android Auto / Assistant
+            override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
+                if (mediaId != null) melden("playMedia", mediaId)
+            }
+            override fun onPlayFromSearch(query: String?, extras: Bundle?) = melden("search", query ?: "")
             override fun onSeekTo(pos: Long) {
                 lastPosition = pos
                 sendBroadcast(
@@ -98,6 +190,17 @@ class PlaybackService : Service() {
             }
         })
         mediaSession.isActive = true
+        // Ohne PLAY_FROM_MEDIA_ID in den Aktionen laesst Android Auto die
+        // Eintraege der Bibliothek nicht antippen - auch bevor hier je etwas
+        // lief, muss das also schon stehen.
+        mediaSession.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(AKTIONEN)
+                .setState(PlaybackStateCompat.STATE_NONE, 0L, 0f)
+                .build()
+        )
+        sessionToken = mediaSession.sessionToken
+        instanz = this
         // NOT_EXPORTED reicht: System-Broadcasts kommen trotzdem an.
         ContextCompat.registerReceiver(
             this,
@@ -114,15 +217,60 @@ class PlaybackService : Service() {
         }
     }
 
-    /** Ein Tastendruck von aussen - weiterreichen an die WebView. */
-    private fun melden(control: String) {
+    /**
+     * Ein Tastendruck oder eine Auswahl von aussen - weiterreichen an die
+     * WebView. Laeuft die gar nicht (Android Auto hat nur diesen Dienst
+     * geweckt), merken und die App starten; NowPlayingPlugin reicht die
+     * Auswahl nach, sobald die Seite zuhoert.
+     */
+    private fun melden(control: String, value: String? = null) {
+        if (!webAktiv) {
+            if (control == "pause") return
+            wartend = control to value
+            appStarten()
+            return
+        }
         sendBroadcast(
-            Intent(ACTION_MEDIA_CONTROL).putExtra("control", control).setPackage(packageName)
+            Intent(ACTION_MEDIA_CONTROL)
+                .putExtra("control", control)
+                .putExtra("value", value)
+                .setPackage(packageName)
         )
     }
 
+    private fun appStarten() {
+        val gestartet = try {
+            packageManager.getLaunchIntentForPackage(packageName)?.let {
+                startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            } ?: false
+        } catch (e: Exception) {
+            false
+        }
+        zustandOhneSeite(
+            if (gestartet) PlaybackStateCompat.STATE_CONNECTING else PlaybackStateCompat.STATE_ERROR
+        )
+        // Hintergrund-Starts kann Android still verweigern - dann nach ein
+        // paar Sekunden sagen, was zu tun ist, statt ewig zu "verbinden".
+        haupt.postDelayed({ if (!webAktiv) zustandOhneSeite(PlaybackStateCompat.STATE_ERROR) }, 8000)
+    }
+
+    private fun zustandOhneSeite(state: Int) {
+        val b = PlaybackStateCompat.Builder().setActions(AKTIONEN).setState(state, 0L, 0f)
+        if (state == PlaybackStateCompat.STATE_ERROR) {
+            b.setErrorMessage(
+                PlaybackStateCompat.ERROR_CODE_APP_ERROR,
+                text("Öffne Reson einmal auf dem Handy.", "Open Reson on your phone once.")
+            )
+        }
+        mediaSession.setPlaybackState(b.build())
+    }
+
+    private fun text(de: String, en: String) =
+        if (Locale.getDefault().language == "de") de else en
+
     private fun controlPendingIntent(action: String): PendingIntent {
-        val intent = Intent(this, PlaybackService::class.java).setAction(action)
+        val intent = Intent(this, PlaybackService::class.java).setAction(action).putExtra(EXTRA_TOKEN, TOKEN)
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         return PendingIntent.getService(this, action.hashCode(), intent, flags)
     }
@@ -175,6 +323,19 @@ class PlaybackService : Service() {
         return bmp
     }
 
+    /**
+     * Grosse Cover (1200px und mehr) sprengen sonst die Groessengrenze, mit
+     * der Android Metadaten an Sperrbildschirm und Auto weiterreicht - das
+     * Bild fehlte dann einfach.
+     */
+    private fun verkleinert(bmp: Bitmap): Bitmap {
+        val max = 720
+        val seite = maxOf(bmp.width, bmp.height)
+        if (seite <= max) return bmp
+        val f = max.toFloat() / seite
+        return Bitmap.createScaledBitmap(bmp, (bmp.width * f).toInt(), (bmp.height * f).toInt(), true)
+    }
+
     /** Cover laden und merken - erneutes Dekodieren pro Update spart das. */
     private fun coverBild(pfad: String, title: String): Bitmap {
         if (pfad.isNotEmpty() && pfad == lastCoverPath) {
@@ -187,7 +348,7 @@ class PlaybackService : Service() {
                 null
             }
         } else null
-        val bild = geladen ?: ersatzCover(title)
+        val bild = geladen?.let { verkleinert(it) } ?: ersatzCover(title)
         lastCoverPath = pfad
         lastCover = bild
         return bild
@@ -214,15 +375,7 @@ class PlaybackService : Service() {
             PlaybackStateCompat.Builder()
                 // Ohne diese Liste blendet Android die entsprechenden
                 // Knoepfe aus oder laesst sie wirkungslos.
-                .setActions(
-                    PlaybackStateCompat.ACTION_PLAY or
-                        PlaybackStateCompat.ACTION_PAUSE or
-                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                        PlaybackStateCompat.ACTION_SEEK_TO or
-                        PlaybackStateCompat.ACTION_STOP
-                )
+                .setActions(AKTIONEN)
                 .setState(
                     if (playing) PlaybackStateCompat.STATE_PLAYING
                     else PlaybackStateCompat.STATE_PAUSED,
@@ -258,6 +411,9 @@ class PlaybackService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // null = Neustart nach START_STICKY, das ist in Ordnung. Alles andere
+        // muss von uns selbst kommen (siehe TOKEN).
+        if (intent != null && intent.getStringExtra(EXTRA_TOKEN) != TOKEN) return START_NOT_STICKY
         when (intent?.action) {
             ACTION_PLAY, ACTION_PAUSE, ACTION_NEXT, ACTION_PREV -> {
                 // Button tap in the notification/lockscreen - not a JS
@@ -294,6 +450,8 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        instanz = null
+        haupt.removeCallbacksAndMessages(null)
         try {
             unregisterReceiver(kopfhoererWeg)
         } catch (e: IllegalArgumentException) {
@@ -303,5 +461,117 @@ class PlaybackService : Service() {
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    /* ===== Android Auto: Bibliothek zum Durchblaettern =====
+       Aufbau: Wurzel -> "Playlists" und "Alle Titel" (zwei Reiter im Auto).
+       Playlist -> "Zufaellig abspielen" + ihre Titel. mediaIds sind JSON,
+       damit Namen mit beliebigen Zeichen eindeutig bleiben - die Web-Seite
+       liest sie wieder aus (nowplaying-native.js, playMediaId). */
+    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot? {
+        // "Zuletzt gespielt" fuer die Wiederaufnahme nach einem Neustart
+        // bieten wir nicht an - ohne laufende Seite gibt es nichts zu spielen.
+        if (rootHints?.getBoolean(BrowserRoot.EXTRA_RECENT) == true) return null
+        val vertraut = clientUid == Process.myUid() || clientUid == Process.SYSTEM_UID || clientPackageName in VERTRAUT
+        if (!vertraut) return BrowserRoot(LEER, null)
+        val extras = Bundle().apply {
+            putBoolean("android.media.browse.SEARCH_SUPPORTED", true)
+            putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 1) // Liste
+            putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)
+        }
+        return BrowserRoot(ROOT, extras)
+    }
+
+    override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaItem>>) {
+        synchronized(abonniert) { abonniert.add(parentId) }
+        result.sendResult(kinder(parentId).toMutableList())
+    }
+
+    override fun onSearch(query: String, extras: Bundle?, result: Result<MutableList<MediaItem>>) {
+        val q = query.trim().lowercase()
+        val treffer = mutableListOf<MediaItem>()
+        if (q.isNotEmpty()) {
+            for (pl in bibliothekLesen()) {
+                for (t in pl.tracks) {
+                    if ("${t.title} ${t.artist}".lowercase().contains(q)) treffer.add(titel(pl, t))
+                    if (treffer.size >= 50) break
+                }
+                if (treffer.size >= 50) break
+            }
+        }
+        result.sendResult(treffer)
+    }
+
+    private fun kinder(parentId: String): List<MediaItem> {
+        if (parentId == LEER) return emptyList()
+        val pls = bibliothekLesen()
+        return when (parentId) {
+            ROOT -> listOf(
+                ordner(PLAYLISTS, text("Playlists", "Playlists"), null),
+                ordner(ALLE, text("Alle Titel", "All songs"), null),
+            )
+            PLAYLISTS -> pls.map { pl ->
+                ordner(id("p", pl.name), pl.name, text("${pl.tracks.size} Titel", "${pl.tracks.size} songs"))
+            }
+            ALLE -> {
+                val alle = pls.flatMap { pl -> pl.tracks.map { pl to it } }
+                    .sortedBy { it.second.title.lowercase() }
+                    .take(MAX_ALLE)
+                listOf(abspielbar(id("s"), text("Alles mischen", "Shuffle all"), null)) +
+                    alle.map { (pl, t) -> titel(pl, t) }
+            }
+            else -> {
+                val teile = try { JSONArray(parentId) } catch (e: Exception) { return emptyList() }
+                if (teile.optString(0) != "p") return emptyList()
+                val pl = pls.firstOrNull { it.name == teile.optString(1) } ?: return emptyList()
+                listOf(abspielbar(id("ps", pl.name), text("Zufällig abspielen", "Shuffle play"), pl.name)) +
+                    pl.tracks.map { titel(pl, it) }
+            }
+        }
+    }
+
+    private fun id(vararg teile: String) = JSONArray(teile.toList()).toString()
+
+    private fun ordner(mediaId: String, title: String, subtitle: String?) = MediaItem(
+        MediaDescriptionCompat.Builder().setMediaId(mediaId).setTitle(title).setSubtitle(subtitle).build(),
+        MediaItem.FLAG_BROWSABLE
+    )
+
+    private fun abspielbar(mediaId: String, title: String, subtitle: String?) = MediaItem(
+        MediaDescriptionCompat.Builder().setMediaId(mediaId).setTitle(title).setSubtitle(subtitle).build(),
+        MediaItem.FLAG_PLAYABLE
+    )
+
+    private fun titel(pl: AutoPlaylist, t: AutoTitel) =
+        abspielbar(id("t", pl.name, t.file), t.title, t.artist.ifEmpty { pl.name })
+
+    /** Datei nur neu lesen, wenn die Seite eine neue Fassung geschickt hat. */
+    @Synchronized
+    private fun bibliothekLesen(): List<AutoPlaylist> {
+        val datei = bibliothekDatei(this)
+        val stand = if (datei.isFile) datei.lastModified() else 0L
+        if (stand == bibliothekStand) return bibliothek
+        bibliothekStand = stand
+        bibliothek = try {
+            val arr = JSONArray(datei.readText())
+            (0 until arr.length()).map { i ->
+                val pl = arr.getJSONObject(i)
+                val tr = pl.optJSONArray("tracks") ?: JSONArray()
+                AutoPlaylist(
+                    pl.optString("name"),
+                    (0 until tr.length()).map { j ->
+                        val t = tr.getJSONObject(j)
+                        AutoTitel(t.optString("file"), t.optString("title"), t.optString("artist"))
+                    }
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        return bibliothek
+    }
+
+    /** Neue Fassung von der Seite: jede offene Ansicht im Auto auffrischen. */
+    private fun bibliothekGeaendert() {
+        val ids = synchronized(abonniert) { abonniert.toList() }
+        haupt.post { ids.forEach { notifyChildrenChanged(it) } }
+    }
 }

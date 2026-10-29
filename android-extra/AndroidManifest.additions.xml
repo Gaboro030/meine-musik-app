@@ -1,6 +1,7 @@
 <!--
   Merge these into src-tauri/gen/android/app/src/main/AndroidManifest.xml
-  after `npm run android:init` generates that file.
+  after `npm run android:init` generates that file
+  (scripts/merge-android-extras.mjs does this automatically).
 -->
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
@@ -8,7 +9,18 @@
 <uses-permission android:name="android.permission.WAKE_LOCK" />
 
 <!-- inside <application> -->
+<!-- Exportiert mit MediaBrowserService-Filter, damit Android Auto die
+     Bibliothek durchblaettern kann (PlaybackService.onGetRoot entscheidet,
+     wer darf). -->
 <service
     android:name=".PlaybackService"
     android:foregroundServiceType="mediaPlayback"
-    android:exported="false" />
+    android:exported="true">
+    <intent-filter>
+        <action android:name="android.media.browse.MediaBrowserService" />
+    </intent-filter>
+</service>
+<!-- res/xml/automotive_app_desc.xml: <automotiveApp><uses name="media" /></automotiveApp> -->
+<meta-data
+    android:name="com.google.android.gms.car.application"
+    android:resource="@xml/automotive_app_desc" />

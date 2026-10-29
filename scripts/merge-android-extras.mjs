@@ -48,10 +48,25 @@ for (const perm of permissions) {
   }
 }
 
+// Exportiert und mit MediaBrowserService-Filter: so findet Android Auto
+// die App und darf sich zum Durchblaettern der Bibliothek binden. Wer
+// blaettern darf, entscheidet PlaybackService.onGetRoot; Start-Befehle
+// von fremden Apps verwirft der Dienst (Kennwort, siehe TOKEN).
 const serviceTag =
-  '<service android:name=".PlaybackService" android:foregroundServiceType="mediaPlayback" android:exported="false" />';
+  '<service android:name=".PlaybackService" android:foregroundServiceType="mediaPlayback" android:exported="true">' +
+  '<intent-filter><action android:name="android.media.browse.MediaBrowserService" /></intent-filter></service>';
+// Aeltere Fassung (nicht exportiert, ohne Filter) aus einem schon
+// gepatchten Manifest ersetzen statt sie doppelt stehen zu lassen.
+manifest = manifest.replace(/\s*<service android:name="\.PlaybackService"[^>]*\/>/, "");
 if (!manifest.includes('android:name=".PlaybackService"')) {
   manifest = manifest.replace(/(<\/application>)/, `    ${serviceTag}\n$1`);
+}
+
+// Android Auto: "diese App ist eine Medien-App".
+const autoMeta =
+  '<meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />';
+if (!manifest.includes("com.google.android.gms.car.application")) {
+  manifest = manifest.replace(/(<\/application>)/, `    ${autoMeta}\n$1`);
 }
 
 // FileProvider: Android 7+ erlaubt keine file://-Adressen an fremde Apps -
@@ -68,6 +83,10 @@ mkdirSync(xmlDir, { recursive: true });
 writeFileSync(
   join(xmlDir, "file_paths.xml"),
   '<?xml version="1.0" encoding="utf-8"?>\n<paths><cache-path name="updates" path="updates/" /></paths>\n'
+);
+writeFileSync(
+  join(xmlDir, "automotive_app_desc.xml"),
+  '<?xml version="1.0" encoding="utf-8"?>\n<automotiveApp>\n    <uses name="media" />\n</automotiveApp>\n'
 );
 
 writeFileSync(manifestPath, manifest);

@@ -619,6 +619,8 @@ async function refreshLibrary() {
     library = [];
   }
   resyncAfterLibraryRefresh();
+  // Android Auto liest die Bibliothek mit (nowplaying-native.js).
+  document.dispatchEvent(new CustomEvent("reson-library-changed"));
   renderSidebar();
   if (library.length) {
     // Entdecken/Künstler-Reihen nur beim ersten Mal laden: die fragen YouTube
