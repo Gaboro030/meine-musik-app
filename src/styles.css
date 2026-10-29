@@ -4892,3 +4892,217 @@ th .ic { width: 15px; height: 15px; }
   @keyframes more-fade { from { opacity: 0; } }
   @keyframes more-up { from { transform: translateY(40px); opacity: 0.4; } }
 }
+
+/* ========= HANDY-FEINSCHLIFF: Songzeilen, Blaetter, Downloader =========
+   Drei Dinge, die auf dem Handy nach "Desktop-Seite draufgeklatscht"
+   aussahen:
+   1. Die Songtabelle hatte alle sieben Desktop-Spalten. Ein langer Titel
+      (nowrap) zog die Tabelle auf ~800px, die Seite wurde breiter als der
+      Bildschirm und rutschte nach rechts - inklusive Tab-Leiste. Jetzt wie
+      bei Spotify: Cover, Titel/Interpret, rechts ⋮. Hinzufuegen/Entfernen
+      stehen im ⋮-Blatt (openTrackMoreMenu in player.js).
+   2. Menues und Werkzeug-Popover lagen als Karten mitten im Bild, ohne
+      Abdunklung, und Tipps daneben trafen den Song dahinter. Jetzt Blaetter
+      von unten mit Griff, Abdunklung und Abstand zur Gesten-Leiste.
+   3. Der Downloader endete ueber der Player-Leiste und liess darunter die
+      Startseite durchscheinen, lag oben unter der Statusleiste, und sein
+      X schwebte beim Scrollen ueber der Liste. Jetzt eine eigene Seite mit
+      Kopfleiste. */
+.downloader-title { display: none; }
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  /* --- 1. Songzeilen --- */
+  /* Zeilen als Flex statt Tabellenzellen: nur so darf die Titelspalte
+     schrumpfen und mit … enden, statt die Tabelle aufzublasen. */
+  .track-table, .track-table tbody, .track-spacer, .track-spacer td { display: block; width: 100%; }
+  .track-row { display: flex; align-items: center; }
+  .track-row > td { display: block; }
+  .track-row > td:nth-child(2) { flex: 1 1 auto; min-width: 0; }
+  .track-table thead,
+  .track-table .col-index,
+  .track-row > td:nth-child(3),
+  .track-table .col-duration,
+  .track-table .col-add,
+  .track-table .col-remove { display: none; }
+  #trackTable.bulk-select-active .col-index { display: grid; place-items: center; flex: none; width: 44px; padding: 0; }
+  .track-row td { padding: 7px 0 7px 8px; }
+  .track-row td.col-more { flex: none; width: 52px; padding: 0 2px 0 0; text-align: center; }
+  .track-row:hover { background: none; }
+  .track-row:active { background: color-mix(in srgb, var(--sp-text) 7%, transparent); }
+  .track-thumb { width: 48px; height: 48px; }
+  .track-title { font-size: 0.98rem; }
+  .track-artist { font-size: 0.84rem; margin-top: 1px; }
+  .track-more-btn {
+    width: 44px;
+    height: 44px;
+    display: inline-grid;
+    place-items: center;
+    color: var(--sp-muted);
+    touch-action: manipulation;
+  }
+  /* ⋮ statt ⋯ - dasselbe Symbol, nur gedreht */
+  .track-more-btn .ic { width: 20px; height: 20px; transform: rotate(90deg); }
+  .track-more-btn:active { background: color-mix(in srgb, var(--sp-text) 10%, transparent); }
+
+  /* Playlist-Kopf: Titel allein in seiner Zeile, die vier Werkzeuge
+     darunter statt daneben gequetscht; Aktionen in EINER Zeile wie bei
+     Spotify - links Offline/Auswaehlen als Symbole, rechts Zufall + Play. */
+  .playlist-title-row { flex-wrap: wrap; justify-content: center; row-gap: 10px; }
+  .playlist-title-row h1 { flex: 1 1 100%; }
+  .playlist-title-row .icon-btn { width: 40px; height: 40px; }
+  .playlist-drop-hint { display: none; }
+  .playlist-actions { flex-wrap: nowrap; justify-content: flex-start; gap: 10px; }
+  #offlineDownloadBtn, #bulkSelectBtn {
+    order: 1;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
+  #offlineDownloadBtn > span:not(.btn-icon-download), #bulkSelectBtn > span { display: none; }
+  #shuffleAllBtn { order: 2; margin-left: auto; }
+  #playAllBtn { order: 3; }
+  .bulk-edit-bar { flex-wrap: wrap; }
+  .bulk-edit-count { flex: 1 1 100%; }
+  .bulk-edit-bar .btn-secondary { flex: 1 1 auto; min-height: 44px; }
+
+  /* --- 2. Blaetter von unten --- */
+  body:has(> .add-to-playlist-menu)::after,
+  body:has(.sidebar-tool-popover:not(.hidden))::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 950;
+    background: rgba(0, 0, 0, 0.55);
+    animation: more-fade var(--dur-base, 220ms) var(--ease-out, ease);
+  }
+  .add-to-playlist-menu,
+  .sidebar-tool-popover {
+    position: fixed;
+    /* !important: player.js setzt top/left als Inline-Stil fuer die
+       Desktop-Variante neben dem Knopf. */
+    top: auto !important;
+    left: 0 !important;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    min-width: 0;
+    max-width: 640px; /* Querformat/Tablet: nicht ueber die ganze Breite */
+    margin-inline: auto;
+    max-height: calc(100dvh - var(--safe-top) - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 6px max(14px, var(--safe-right)) calc(max(var(--safe-bottom), 12px) + 12px) max(14px, var(--safe-left));
+    border: 0;
+    border-top: 1px solid var(--sp-border);
+    border-radius: 24px 24px 0 0;
+    background: var(--sp-elevated);
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    z-index: 970;
+  }
+  .add-to-playlist-menu,
+  .sidebar-tool-popover { animation: sheet-up var(--dur-slow, 380ms) var(--ease-out, ease); }
+  .sidebar-tool-popover { display: flex; flex-direction: column; gap: 12px; z-index: 960; }
+  .sidebar-tool-popover.hidden { transform: translateY(48px); }
+  .add-to-playlist-menu::before,
+  .sidebar-tool-popover::before {
+    content: "";
+    display: block;
+    flex: none;
+    width: 36px;
+    height: 4px;
+    margin: 4px auto 10px;
+    border-radius: 4px;
+    background: var(--sp-muted-2);
+  }
+  .sidebar-tool-popover-title {
+    margin: 0 4px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--sp-text);
+    text-transform: none;
+    letter-spacing: -0.01em;
+  }
+  .add-to-playlist-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 52px;
+    padding: 0 14px;
+    border-radius: 12px;
+    font-size: 1rem;
+    touch-action: manipulation;
+  }
+  .add-to-playlist-item .ic { width: 20px; height: 20px; color: var(--sp-muted); }
+  .add-to-playlist-item:active { background: var(--sp-elevated-hover); }
+  .add-to-playlist-new { padding: 8px 4px 0; }
+  .add-to-playlist-new input { min-height: 44px; font-size: 1rem; }
+  .add-to-playlist-new button { min-width: 44px; min-height: 44px; }
+  .track-more-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 2px 14px 14px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--sp-border);
+  }
+  .track-more-head img { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: var(--sp-surface); flex: none; }
+  .track-more-text { min-width: 0; }
+  .track-more-title, .track-more-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track-more-title { font-weight: 600; color: var(--sp-text); }
+  .track-more-artist { font-size: 0.85rem; color: var(--sp-muted); }
+  @keyframes sheet-up { from { transform: translateY(48px); opacity: 0.4; } }
+
+  /* Freunde einladen: QR als ruhige Karte statt bildschirmbreiter Flaeche,
+     Party-Teil (QR, Link, Internet-Link) zusammen, Freunde darunter. */
+  #qrPopover .qr-image { width: min(208px, 58vw); aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; align-self: center; padding: 10px; border-radius: 18px; }
+  #qrPopover .qr-hint { margin: 0 8px; font-size: 0.84rem; line-height: 1.45; word-break: normal; overflow-wrap: anywhere; }
+  #qrPopover > .qr-participants-title,
+  #qrPopover > .qr-participant-list,
+  #qrPopover > .internet-link-btn { order: 1; }
+  #qrPopover > .internet-link-btn { margin-top: 0; min-height: 48px; }
+  #qrPopover > .friends-section { order: 2; display: flex; flex-direction: column; gap: 10px; }
+  #qrPopover .qr-participants-title { margin-top: 6px; padding-top: 16px; }
+  .friends-section .friends-name-input { margin-bottom: 0; }
+  .friends-section .party-chat-input { min-height: 48px; font-size: 1rem; }
+  .friends-section .party-chat-send-btn { width: 48px; height: 48px; flex: none; font-size: 1.3rem; }
+  .friends-section .sync-remote-btn { min-height: 48px; }
+  .friends-section .sync-peer-list { margin-top: 0; max-height: none; }
+  .sidebar-tool-popover .party-toggle-switch { min-height: 48px; }
+
+  /* --- 3. Downloader als eigene Seite --- */
+  .downloader-overlay {
+    inset: 0;
+    bottom: 0;
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  }
+  .downloader-overlay:not(.hidden) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .downloader-overlay.hidden { transform: translateY(32px); }
+  @starting-style { .downloader-overlay:not(.hidden) { transform: translateY(32px); } }
+  .downloader-close {
+    position: static;
+    width: 48px;
+    height: 48px;
+    margin: 4px 0 4px 6px;
+    background: none;
+  }
+  .downloader-close:active { background: color-mix(in srgb, var(--sp-text) 10%, transparent); }
+  .downloader-close .ic { width: 22px; height: 22px; }
+  .downloader-title {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding-left: 6px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .downloader-frame { grid-column: 1 / -1; height: 100%; }
+}

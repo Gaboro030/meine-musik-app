@@ -460,6 +460,54 @@ a { color: inherit; text-decoration: none; }
   .dl-modal { align-items: end; padding: 0; }
   .dl-modal-card { width: 100%; border-radius: 18px 18px 0 0; max-height: 85vh; padding-bottom: var(--safe-bottom); }
 }
+/* ===== Handy: Optionen eingeklappt =====
+   Fuenf Schalter-Reihen (Format, Qualitaet, Studio, gleichzeitig, Hinweis)
+   schoben die Titelliste auf dem Handy aus dem ersten Bild. Eingeklappt
+   bleibt eine Zeile, die sagt, was eingestellt ist. */
+.dl-opts-toggle { display: none; }
+@media (max-width: 700px) {
+  .dl-opts-toggle {
+    display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px;
+    padding: 6px 12px 6px 14px; border-radius: var(--radius-md);
+    border: 1px solid var(--sp-border); background: var(--inset); text-align: left;
+    transition: background-color var(--dur-base), transform var(--dur-fast) var(--ease-out);
+    touch-action: manipulation;
+  }
+  .dl-opts-toggle:active { transform: scale(0.985); background: var(--inset-2); }
+  .dl-opts-ic { display: grid; color: var(--sp-green); }
+  .dl-opts-text { flex: 1; min-width: 0; display: grid; line-height: 1.3; }
+  .dl-opts-text b { font-size: 14px; font-weight: 600; }
+  .dl-opts-text small { font-size: 12px; color: var(--sp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dl-opts-chev { display: grid; color: var(--sp-muted); transition: transform var(--dur-base) var(--ease-out); }
+  .dl-source.opts-open .dl-opts-chev { transform: rotate(180deg); }
+  .dl-source:not(.opts-open) .dl-opts,
+  .dl-source:not(.opts-open) .dl-note { display: none; }
+  .dl-source.opts-open .dl-opts,
+  .dl-source.opts-open .dl-note { animation: rise var(--dur-base) var(--ease-out); }
+  .dl-chip, .seg-sm button { min-height: 40px; }
+  /* Zwei Chips nebeneinander nur, wenn beide ganz lesbar bleiben -
+     auf 320px stehen sie untereinander statt "Studio-Au…". */
+  .dl-opts { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+  .trk { cursor: pointer; touch-action: manipulation; }
+  .trk:active { background: var(--inset); }
+  .trk-check { width: 22px; height: 22px; }
+  .dl-sources { margin-top: 12px; }
+  .dl-empty { padding-top: 28px; gap: 8px; }
+  .dl-empty h2 { font-size: 18px; }
+  .dl-empty p { font-size: 14px; }
+}
+
+/* Als Ebene im Player auf dem Handy: dort sitzt eine echte Kopfleiste
+   (Schliessen + Titel) ueber dem Rahmen - die eigene Ueberschrift waere
+   doppelt, und der Knopf schwebte sonst beim Scrollen ueber der Liste. */
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  .in-frame .dl-head { display: none; }
+  .in-frame .dl-page { padding-top: 4px; }
+  .in-frame .dl-source { margin-top: 0; }
+  .in-frame .dl-toasts { top: 8px; }
+}
+
 /* Als eigenstaendige Seite auf dem Handy: Home-Leiste beachten */
 body:not(.in-frame) .dl-dock { bottom: max(16px, calc(var(--safe-bottom) + 8px)); }
 

@@ -40,7 +40,16 @@
         <button id="lyricsBtn" type="submit" class="btn btn-primary"><span data-i18n="Suchen">Suchen</span></button>
       </form>
 
-      <div class="dl-opts">
+      <!-- Handy: die Optionen stehen eingeklappt als eine Zeile da
+           ("Audio · Studio-Audio · 2 gleichzeitig") statt als fuenf
+           Schalter-Reihen, die den halben Bildschirm belegen. -->
+      <button type="button" id="optsToggle" class="dl-opts-toggle" aria-expanded="false" aria-controls="dlOpts">
+        <span class="dl-opts-ic" data-icon="sliders"></span>
+        <span class="dl-opts-text"><b data-i18n="Download-Optionen">Download-Optionen</b><small id="optsSummary"></small></span>
+        <span class="dl-opts-chev" data-icon="chevron-down"></span>
+      </button>
+
+      <div class="dl-opts" id="dlOpts">
         <div class="seg seg-sm" id="formatSeg" role="radiogroup" data-i18n-aria="Format" aria-label="Format">
           <span class="seg-ind" aria-hidden="true"></span>
           <button type="button" role="radio" data-format="mp3" aria-checked="true" data-icon="music"><span data-audio-label>MP3</span></button>

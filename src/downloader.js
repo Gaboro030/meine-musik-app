@@ -151,6 +151,7 @@ function renderOptions() {
   studioChip.setAttribute("aria-checked", String(opts.studio));
   formatSeg.querySelector("[data-audio-label]").textContent = isAndroid ? t("Audio") : "MP3";
   parallelChip.querySelector("[data-parallel-label]").textContent = parallelLabel(opts.parallel);
+  $("optsSummary").textContent = optsSummary();
   if (isAndroid) {
     platformNote.lastChild && platformNote.lastChild.nodeType === 3 && platformNote.lastChild.remove();
     platformNote.append(t("Auf Android wird Audio als M4A gespeichert und Video in Standard-Qualität – abgespielt wird beides ganz normal."));
@@ -158,6 +159,26 @@ function renderOptions() {
   }
   requestAnimationFrame(placeAllIndicators);
 }
+
+// Eingeklappte Zeile auf dem Handy: was gerade eingestellt ist, in Worten.
+function optsSummary() {
+  const mp4 = opts.format === "mp4";
+  const quality = { best: t("Beste"), 1080: "1080p", 720: "720p", 480: "480p" }[opts.quality];
+  const format = mp4
+    ? (isAndroid ? "MP4" : `MP4 · ${quality}`)
+    : (isAndroid ? t("Audio") : `MP3 · ${opts.bitrate} kbps`);
+  return [format, !mp4 && opts.studio ? t("Studio-Audio") : "", parallelLabel(opts.parallel)].filter(Boolean).join(" · ");
+}
+
+const optsToggle = $("optsToggle");
+optsToggle.addEventListener("click", () => {
+  const open = optsToggle.getAttribute("aria-expanded") !== "true";
+  optsToggle.setAttribute("aria-expanded", String(open));
+  optsToggle.closest(".dl-source").classList.toggle("opts-open", open);
+  // Die gleitenden Markierungen messen ihre Knoepfe - die hatten im
+  // eingeklappten Zustand noch keine Breite.
+  if (open) requestAnimationFrame(placeAllIndicators);
+});
 
 formatSeg.addEventListener("click", (e) => {
   const b = e.target.closest("button");
@@ -173,6 +194,8 @@ bitrateSeg.addEventListener("click", (e) => {
   opts.bitrate = b.dataset.value;
   selectIn(bitrateSeg, b);
   saveOpts();
+  renderOptions();
+  updateDock();
 });
 qualitySeg.addEventListener("click", (e) => {
   const b = e.target.closest("button");
@@ -180,11 +203,13 @@ qualitySeg.addEventListener("click", (e) => {
   opts.quality = b.dataset.value;
   selectIn(qualitySeg, b);
   saveOpts();
+  renderOptions();
 });
 studioChip.addEventListener("click", () => {
   opts.studio = !opts.studio;
   studioChip.setAttribute("aria-checked", String(opts.studio));
   saveOpts();
+  renderOptions();
 });
 
 /* Parallel-Auswahl als kleines Popover (auf dem Handy als Leiste unten) */
@@ -470,6 +495,12 @@ function buildRow(tr, i) {
   bar.appendChild(document.createElement("i"));
 
   li.append(cb, img, info, dur, act, bar);
+  // Ganze Zeile antippbar statt nur des 20px-Kaestchens - auf dem Handy
+  // traf man das sonst kaum.
+  li.addEventListener("click", (e) => {
+    if (e.target.closest("button, input") || cb.disabled) return;
+    cb.click();
+  });
   tr.li = li;
   tr.els = { cb, sub, dl, bar: bar.firstChild };
   return li;

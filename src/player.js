@@ -2032,9 +2032,10 @@ function buildTrackRow(track, i, displayNum) {
     moreBtn.className = "track-more-btn";
     moreBtn.innerHTML = icon("more");
     moreBtn.title = t("Optionen");
+    moreBtn.setAttribute("aria-label", t("Optionen"));
     moreBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openTrackMoreMenu(moreBtn, track);
+      openTrackMoreMenu(moreBtn, track, i);
     });
     tdMore.appendChild(moreBtn);
 
@@ -3106,15 +3107,42 @@ function closeTrackMoreMenu() {
     trackMoreMenuEl = null;
   }
 }
-function openTrackMoreMenu(anchorBtn, track) {
+// Gleiche Bedingung wie das Handy-Layout in styles.css.
+const phoneLayout = window.matchMedia("(max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse)");
+
+/* ⋮ am Song. Am Handy ist das die EINZIGE Aktion in der Zeile (wie bei
+   Spotify) - Hinzufuegen und Entfernen, am PC eigene Spalten, stehen dann
+   mit im Menue, das als Blatt von unten kommt (styles.css). index = Platz
+   in currentPlaylist.tracks, nur fuer "Entfernen" noetig. */
+function openTrackMoreMenu(anchorBtn, track, index) {
   closeTrackMoreMenu();
+  const phone = phoneLayout.matches;
   const menu = document.createElement("div");
   menu.className = "add-to-playlist-menu track-more-menu";
-  const mkItem = (label, fn) => {
+  if (phone) {
+    const head = document.createElement("div");
+    head.className = "track-more-head";
+    const img = document.createElement("img");
+    img.src = coverFor(track);
+    img.alt = "";
+    const text = document.createElement("div");
+    text.className = "track-more-text";
+    const title = document.createElement("div");
+    title.className = "track-more-title";
+    title.textContent = track.title;
+    const artist = document.createElement("div");
+    artist.className = "track-more-artist";
+    artist.textContent = track.artist || t("Unbekannter Interpret");
+    text.append(title, artist);
+    head.append(img, text);
+    menu.appendChild(head);
+  }
+  const mkItem = (label, iconName, fn) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "add-to-playlist-item";
-    b.textContent = t(label);
+    if (phone) b.innerHTML = icon(iconName);
+    b.append(t(label));
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       closeTrackMoreMenu();
@@ -3122,9 +3150,16 @@ function openTrackMoreMenu(anchorBtn, track) {
     });
     menu.appendChild(b);
   };
-  mkItem("Als nächstes spielen", () => enqueueNext(track));
-  mkItem("An Warteschlange anhängen", () => enqueueLast(track));
-  mkItem("Warteschlange anzeigen", () => openQueuePanel());
+  mkItem("Als nächstes spielen", "next", () => enqueueNext(track));
+  mkItem("An Warteschlange anhängen", "plus", () => enqueueLast(track));
+  if (phone && currentPlaylist) {
+    mkItem("Zu Playlist hinzufügen", "folder", () =>
+      openAddMenu(anchorBtn, { source_playlist: currentPlaylist.name, filename: track.file }));
+  }
+  mkItem("Warteschlange anzeigen", "history", () => openQueuePanel());
+  if (phone && currentPlaylist && Number.isInteger(index)) {
+    mkItem("Aus Playlist entfernen", "trash", () => deleteTrack(index));
+  }
   document.body.appendChild(menu);
   const rect = anchorBtn.getBoundingClientRect();
   const top = Math.min(rect.bottom + 4, window.innerHeight - menu.offsetHeight - 8);
