@@ -27,7 +27,13 @@
     moreSheet.addEventListener("click", (e) => {
       const item = e.target.closest(".nav-item");
       if (e.target === moreSheet || item) moreSheet.classList.add("hidden");
-      if (item && item.dataset.moreClick) document.getElementById(item.dataset.moreClick).click();
+      // Erst nach diesem Klick: der allgemeine "Klick daneben"-Schliesser
+      // der Werkzeug-Popover (Design) saehe ihn sonst noch und machte das
+      // eben geoeffnete Popover sofort wieder zu.
+      if (item && item.dataset.moreClick) {
+        const ziel = document.getElementById(item.dataset.moreClick);
+        setTimeout(() => ziel.click(), 0);
+      }
     });
   }
 
@@ -66,9 +72,12 @@
     document.body.classList.toggle("mobile-bars-hidden", mq.matches && hidden);
   }
 
+  // Am Handy rollt .app-shell (styles.css, HANDY-HUELLE), sonst das
+  // Dokument - beides mitlesen, das andere steht dann einfach auf 0.
+  const shell = document.querySelector(".app-shell");
   function docScrollTop() {
     const doc = document.scrollingElement || document.documentElement;
-    return doc ? doc.scrollTop : 0;
+    return Math.max(doc ? doc.scrollTop : 0, shell ? shell.scrollTop : 0);
   }
 
   function nearTop() {
@@ -77,7 +86,8 @@
 
   function nearBottom() {
     const doc = document.scrollingElement || document.documentElement;
-    const docAtBottom = !doc || doc.scrollTop + doc.clientHeight >= doc.scrollHeight - 4;
+    const docAtBottom = (!doc || doc.scrollTop + doc.clientHeight >= doc.scrollHeight - 4) &&
+      (!shell || shell.scrollTop + shell.clientHeight >= shell.scrollHeight - 4);
     const innerAtBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
     return docAtBottom && innerAtBottom;
   }
@@ -108,6 +118,7 @@
 
   window.addEventListener("scroll", onScroll, { passive: true });
   scroller.addEventListener("scroll", onScroll, { passive: true });
+  if (shell) shell.addEventListener("scroll", onScroll, { passive: true });
 
   // Direct touch tracking - reacts immediately and never depends on
   // whether a `scroll` event actually fires for this gesture. Measures

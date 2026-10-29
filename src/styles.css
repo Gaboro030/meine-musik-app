@@ -5106,3 +5106,105 @@ th .ic { width: 15px; height: 15px; }
   }
   .downloader-frame { grid-column: 1 / -1; height: 100%; }
 }
+
+/* ========= HANDY-HUELLE: Tab-Leiste in eigener Zeile =========
+   Bisher scrollte das ganze Dokument, und die Tab-Leiste lag fest
+   darueber - Ueberschriften, Karten und Knoepfe liefen unter "Home" und
+   "Mehr" durch, ein Tipp am unteren Rand traf die Leiste statt des
+   Knopfes (gemessen mit check-layout.py, besonders im Querformat).
+   Jetzt ist body ein Raster: oben der rollende Inhalt (.app-shell), unten
+   die Tab-Leiste in ihrer eigenen Zeile. Die Player-Leiste schwebt in
+   derselben Zelle unten ueber dem Inhalt; der Inhalt haelt ihr am Ende
+   Platz frei. */
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  html, body { height: 100%; }
+  body {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .app-shell {
+    grid-row: 1;
+    grid-column: 1;
+    min-height: 0;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 16px;
+  }
+  body:has(.player-bar-anchor:not(.player-hidden)) .app-shell {
+    padding-bottom: calc(var(--mobile-player-bar-h) + 28px);
+  }
+  body.modal-scroll-lock .app-shell { overflow: hidden; }
+  .player-bar-anchor {
+    grid-row: 1;
+    grid-column: 1;
+    align-self: end;
+    position: relative;
+    bottom: auto;
+    z-index: 445;
+    margin-bottom: 8px;
+    pointer-events: none;
+  }
+  .player-bar-anchor .player-bar { pointer-events: auto; }
+  .mobile-tabbar {
+    grid-row: 2;
+    grid-column: 1;
+    position: relative;
+  }
+  /* Grosse Systemschrift: "Biblio-thek" statt "Biblioth|ek" */
+  .mobile-tabbar .tabbar-item { hyphens: auto; -webkit-hyphens: auto; }
+
+  /* Tippflaechen auf 44px+ (check-layout.py) und lange Beschriftungen
+     bei grosser Systemschrift umbrechen statt abschneiden. */
+  .nav-arrow { width: 44px; height: 44px; flex: none; }
+  .search-bar { min-height: 46px; }
+  #shuffleLibraryBtn { min-height: 44px; max-width: 100%; margin-bottom: 14px; white-space: normal; text-align: start; }
+  .recs-refresh-btn { width: 44px; height: 44px; }
+
+  /* Kopfzeile: sieben Symbole passten auf schmalen Handys nur mit 33px
+     Breite. Equalizer, Design und Einstellungen stehen im "Mehr"-Blatt
+     (index.html), oben bleiben Freunde, Party, Sync und Downloader.
+     Die Design-Huelle bleibt als display:contents stehen - ihr Popover
+     wird weiter gebraucht, nur der Knopf verschwindet. */
+  .mobile-action-dock .sidebar-tool-wrap:has(> #eqDockBtn),
+  .mobile-action-dock .sidebar-tool-wrap:has(> #settingsToggleBtn) { display: none; }
+  .mobile-action-dock .sidebar-tool-wrap:has(> #themeToggleBtn) { display: contents; }
+  #themeToggleBtn { display: none; }
+  .recs-refresh-btn { flex: none; }
+
+  /* Player-Leiste: die Symbole waren 18px gross - Tippflaeche jetzt 44px,
+     dafuer weniger Abstand dazwischen (gleiche Gesamtbreite). */
+  .pb-controls { gap: 6px; }
+  .pb-controls .pb-btn:not(.pb-play) {
+    width: 44px;
+    height: 44px;
+    display: inline-grid;
+    place-items: center;
+    touch-action: manipulation;
+  }
+  .pb-controls .pb-play { width: 44px; height: 44px; }
+  .playlist-title-row .icon-btn, #shuffleAllBtn { width: 44px; height: 44px; }
+  .playlist-search-input, .playlist-sort-select { min-height: 44px; }
+
+  /* Blaetter: der untere Rand ist ein Rahmen statt Innenabstand - so endet
+     der Rollbereich ueber der Gesten-Leiste, und kein Eintrag rollt in
+     den Bereich, in dem die Wisch-Geste den Tipp schluckt. */
+  .add-to-playlist-menu,
+  .sidebar-tool-popover {
+    padding-bottom: 12px;
+    border-bottom: max(var(--safe-bottom), 8px) solid var(--sp-elevated);
+  }
+  /* Grosse Systemschrift: Eintraege umbrechen statt "…" */
+  .add-to-playlist-item {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    padding-block: 10px;
+    line-height: 1.3;
+    text-align: start;
+  }
+}
