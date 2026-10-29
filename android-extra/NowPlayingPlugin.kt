@@ -54,6 +54,12 @@ class NetzSperrenArgs {
     var an: Boolean = false
 }
 
+@InvokeArg
+class AutoLibraryArgs {
+    /** JSON aus nowplaying-native.js: [{name, tracks: [{file, title, artist}]}] */
+    var library: String = ""
+}
+
 @TauriPlugin
 class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
     private var receiver: BroadcastReceiver? = null
@@ -90,12 +96,57 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
                 if (action == "seek") {
                     data.put("position", intent.getLongExtra("position", 0L))
                 }
+                // Android Auto: mediaId bzw. Suchbegriff
+                intent.getStringExtra("value")?.let { data.put("value", it) }
                 trigger("media-control", data)
             }
         }
         receiver = r
         ContextCompat.registerReceiver(activity, r, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        PlaybackService.webAktiv = true
         forwardInsets(webView)
+    }
+
+    override fun onDestroy(activity: androidx.appcompat.app.AppCompatActivity) {
+        PlaybackService.webAktiv = false
+        receiver?.let {
+            try {
+                activity.unregisterReceiver(it)
+            } catch (e: IllegalArgumentException) {
+                // war nie registriert
+            }
+        }
+        receiver = null
+    }
+
+    /**
+     * Hat Android Auto die App erst gestartet, wartet seine Auswahl im
+     * Dienst - sobald die Seite auf "media-control" hoert, nachreichen.
+     */
+    @Command
+    override fun registerListener(invoke: Invoke) {
+        super.registerListener(invoke)
+        val w = PlaybackService.wartend ?: return
+        if (!hasListener("media-control")) return
+        PlaybackService.wartend = null
+        val data = JSObject()
+        data.put("action", w.first)
+        w.second?.let { data.put("value", it) }
+        trigger("media-control", data)
+    }
+
+    /** Kopie der Bibliothek fuer Android Auto (PlaybackService). */
+    @Command
+    fun setAutoLibrary(invoke: Invoke) {
+        val args = invoke.parseArgs(AutoLibraryArgs::class.java)
+        Thread {
+            try {
+                PlaybackService.bibliothekSpeichern(activity, args.library)
+                invoke.resolve()
+            } catch (e: Exception) {
+                invoke.reject(e.message ?: "Bibliothek nicht gespeichert")
+            }
+        }.start()
     }
 
     /* ===== Systemleisten / Kamera-Ausschnitt an die Seite =====
@@ -132,6 +183,7 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
     fun updateNowPlaying(invoke: Invoke) {
         val args = invoke.parseArgs(NowPlayingArgs::class.java)
         val intent = Intent(activity, PlaybackService::class.java)
+        intent.putExtra(PlaybackService.EXTRA_TOKEN, PlaybackService.TOKEN)
         intent.putExtra("title", args.title)
         intent.putExtra("artist", args.artist)
         intent.putExtra("playing", args.playing)

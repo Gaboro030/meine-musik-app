@@ -67,7 +67,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; }
 body {
-  font: 400 15px/1.5 var(--app-font);
+  font: 400 0.9375rem/1.5 var(--app-font);
   background: var(--sp-bg);
   color: var(--sp-text);
   -webkit-font-smoothing: antialiased;
@@ -89,7 +89,7 @@ a { color: inherit; text-decoration: none; }
 .dl-page {
   max-width: 980px;
   margin: 0 auto;
-  padding: 18px var(--gutter) 140px;
+  padding: calc(18px + var(--safe-top)) var(--gutter) 140px;
   padding-left: max(var(--gutter), var(--safe-left));
   padding-right: max(var(--gutter), var(--safe-right));
 }
@@ -98,7 +98,7 @@ a { color: inherit; text-decoration: none; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 42px; padding: 0 18px; border-radius: 999px;
-  border: 1px solid transparent; font-weight: 600; font-size: 14px; white-space: nowrap;
+  border: 1px solid transparent; font-weight: 600; font-size: 0.875rem; white-space: nowrap;
   transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-base) var(--ease-out),
               border-color var(--dur-base) var(--ease-out), opacity var(--dur-base);
 }
@@ -108,7 +108,7 @@ a { color: inherit; text-decoration: none; }
 .btn-primary:hover { background: var(--sp-green-hover); }
 .btn-ghost { background: var(--inset); border-color: var(--sp-border); }
 .btn-ghost:hover { background: var(--inset-2); }
-.btn-sm { min-height: 36px; padding: 0 14px; font-size: 13px; }
+.btn-sm { min-height: 36px; padding: 0 14px; font-size: 0.8125rem; }
 .btn .ic { width: 16px; height: 16px; }
 .btn.busy { pointer-events: none; }
 .btn.busy::after {
@@ -134,14 +134,14 @@ a { color: inherit; text-decoration: none; }
 .seg button {
   position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   min-height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: none;
-  color: var(--sp-muted); font-weight: 600; font-size: 14px; white-space: nowrap;
+  color: var(--sp-muted); font-weight: 600; font-size: 0.875rem; white-space: nowrap;
   transition: color var(--dur-base) var(--ease-out);
 }
 .seg button:hover { color: var(--sp-text); }
 .seg button[aria-checked="true"], .seg button[aria-selected="true"] { color: var(--sp-text); }
 .seg button small { font-size: 0.75em; opacity: 0.7; margin-left: 1px; }
 .seg button .ic { width: 16px; height: 16px; }
-.seg-sm button { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.seg-sm button { min-height: 32px; padding: 0 12px; font-size: 0.8125rem; }
 .seg-ind {
   position: absolute; top: 3px; bottom: 3px; left: 0; width: 0; border-radius: 999px;
   background: var(--sp-elevated); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), inset 0 0 0 1px var(--sp-border);
@@ -152,13 +152,13 @@ a { color: inherit; text-decoration: none; }
 .dl-head { display: flex; align-items: center; gap: 14px; padding-right: 52px; /* Platz fuer den Schliessen-Knopf des Players */ }
 .dl-back {
   display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 12px 0 6px;
-  border-radius: 999px; color: var(--sp-muted); font-weight: 600; font-size: 13px;
+  border-radius: 999px; color: var(--sp-muted); font-weight: 600; font-size: 0.8125rem;
   background: var(--inset); border: 1px solid var(--sp-border);
   transition: color var(--dur-base), background-color var(--dur-base);
 }
 .dl-back:hover { color: var(--sp-text); background: var(--inset-2); }
-.dl-head h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
-.dl-head p { color: var(--sp-muted); font-size: 14px; margin-top: 2px; }
+.dl-head h1 { font-size: 1.625rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.dl-head p { color: var(--sp-muted); font-size: 0.875rem; margin-top: 2px; }
 /* Als Ebene im Player gibt es den Zurueck-Weg schon oben rechts */
 .in-frame .dl-back { display: none; }
 
@@ -176,7 +176,7 @@ a { color: inherit; text-decoration: none; }
 .dl-add:focus-within { border-color: color-mix(in srgb, var(--sp-green) 60%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sp-green) 14%, transparent); }
 .dl-add-ic { display: grid; color: var(--sp-muted-2); }
 .dl-add input {
-  flex: 1; min-width: 0; height: 40px; border: 0; outline: 0; background: transparent; font-size: 15px;
+  flex: 1; min-width: 0; height: 40px; border: 0; outline: 0; background: transparent; font-size: 0.9375rem;
 }
 .dl-add input::placeholder { color: var(--sp-muted-2); }
 .dl-paste {
@@ -191,7 +191,7 @@ a { color: inherit; text-decoration: none; }
 .dl-chip {
   display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 14px;
   border-radius: 999px; border: 1px solid var(--sp-border); background: var(--inset);
-  color: var(--sp-muted); font-size: 13px; font-weight: 600;
+  color: var(--sp-muted); font-size: 0.8125rem; font-weight: 600;
   transition: color var(--dur-base), background-color var(--dur-base), border-color var(--dur-base);
 }
 .dl-chip .ic { width: 16px; height: 16px; }
@@ -201,12 +201,12 @@ a { color: inherit; text-decoration: none; }
   background: color-mix(in srgb, var(--sp-green) 12%, transparent);
 }
 .dl-note {
-  display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--sp-muted);
+  display: flex; gap: 10px; align-items: flex-start; font-size: 0.8125rem; color: var(--sp-muted);
   padding: 10px 12px; border-radius: var(--radius-md); background: var(--inset);
 }
 .dl-note .ic { width: 16px; height: 16px; color: var(--sp-green); margin-top: 2px; }
 
-.dl-status { min-height: 0; margin-top: 12px; font-size: 14px; color: var(--sp-muted); }
+.dl-status { min-height: 0; margin-top: 12px; font-size: 0.875rem; color: var(--sp-muted); }
 .dl-status:empty { display: none; }
 .dl-status.error { color: var(--err); padding: 12px 14px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--err) 10%, transparent); }
 
@@ -217,14 +217,14 @@ a { color: inherit; text-decoration: none; }
   background: var(--inset); color: var(--sp-green); margin-bottom: 6px;
 }
 .dl-empty-ic .ic { width: 28px; height: 28px; }
-.dl-empty h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.dl-empty h2 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
 .dl-empty p { color: var(--sp-muted); max-width: 30em; }
 .dl-sources { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 8px; width: min(100%, 460px); text-align: left; }
 .dl-sources li {
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
-  padding: 10px 14px; border-radius: var(--radius-md); background: var(--inset); font-size: 13px;
+  padding: 10px 14px; border-radius: var(--radius-md); background: var(--inset); font-size: 0.8125rem;
 }
-.dl-sources code { font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--sp-muted-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dl-sources code { font: 0.75rem/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--sp-muted-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 /* ===== Laden-Platzhalter ===== */
 .dl-skeleton { margin-top: 22px; display: grid; gap: 8px; }
@@ -263,12 +263,12 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.55);
 }
 .dl-hero-text { position: relative; min-width: 0; }
-.dl-kind { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sp-muted); }
+.dl-kind { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sp-muted); }
 .dl-hero h2 {
   font-size: clamp(22px, 4vw, 34px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 4px 0 6px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
 }
-.dl-hero p { color: var(--sp-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.dl-hero p { color: var(--sp-muted); font-size: 0.875rem; font-variant-numeric: tabular-nums; }
 
 .dl-toolbar {
   position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
@@ -278,7 +278,7 @@ a { color: inherit; text-decoration: none; }
 }
 .dl-toolbar.stuck { border-bottom-color: var(--sp-border); }
 .dl-filter b {
-  font-size: 11px; font-weight: 700; min-width: 20px; padding: 1px 6px; border-radius: 999px;
+  font-size: 0.6875rem; font-weight: 700; min-width: 20px; padding: 1px 6px; border-radius: 999px;
   background: var(--inset-2); color: var(--sp-muted); font-variant-numeric: tabular-nums;
 }
 .dl-find {
@@ -286,7 +286,7 @@ a { color: inherit; text-decoration: none; }
   border-radius: 999px; background: var(--inset); border: 1px solid var(--sp-border); color: var(--sp-muted-2);
 }
 .dl-find .ic { width: 16px; height: 16px; }
-.dl-find input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 14px; color: var(--sp-text); }
+.dl-find input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 0.875rem; color: var(--sp-text); }
 .dl-find input::-webkit-search-cancel-button { filter: grayscale(1); }
 
 .dl-tracks { list-style: none; margin: 0; padding: 0; }
@@ -313,12 +313,12 @@ a { color: inherit; text-decoration: none; }
 .trk-thumb { width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover; background: var(--inset-2); }
 .trk-info { min-width: 0; }
 .trk-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.trk-sub { font-size: 13px; color: var(--sp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.trk-dur { font-size: 13px; color: var(--sp-muted-2); font-variant-numeric: tabular-nums; }
+.trk-sub { font-size: 0.8125rem; color: var(--sp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.trk-dur { font-size: 0.8125rem; color: var(--sp-muted-2); font-variant-numeric: tabular-nums; }
 .trk-act { display: flex; align-items: center; gap: 2px; }
 .trk-act .dl-icon-btn { width: 36px; height: 36px; }
 .trk-act .dl-icon-btn .ic { width: 17px; height: 17px; }
-.trk-state { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--sp-muted); min-width: 0; }
+.trk-state { font-size: 0.75rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--sp-muted); min-width: 0; }
 .trk.done .trk-title { color: var(--sp-green); }
 .trk.done .trk-dl { color: var(--ok); }
 .trk.err .trk-sub { color: var(--err); }
@@ -335,7 +335,7 @@ a { color: inherit; text-decoration: none; }
 .trk-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--sp-muted-2); border-right-color: transparent; animation: spin 0.8s linear infinite; }
 .dl-nomatch { text-align: center; color: var(--sp-muted); padding: 32px 0; }
 
-.dl-foot { margin-top: 36px; text-align: center; font-size: 12px; color: var(--sp-muted-2); }
+.dl-foot { margin-top: 36px; text-align: center; font-size: 0.75rem; color: var(--sp-muted-2); }
 
 /* ===== Dock ===== */
 .dl-dock {
@@ -356,14 +356,14 @@ a { color: inherit; text-decoration: none; }
 .dl-dock[data-state="done"] .dock-done { display: flex; animation: paneIn var(--dur-base) var(--ease-out); }
 @keyframes paneIn { from { opacity: 0; transform: translateY(6px); } }
 .dock-text { flex: 1; min-width: 0; display: grid; }
-.dock-text b { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dock-text small { color: var(--sp-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.dock-text b { font-weight: 600; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock-text small { color: var(--sp-muted); font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .dock-ring { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; }
 .dock-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
 .dock-ring circle { fill: none; stroke-width: 3; }
 .dock-ring .rt { stroke: var(--inset-2); }
 .dock-ring .rv { stroke: var(--sp-green); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; transition: stroke-dashoffset 400ms var(--ease-out); }
-.dock-ring span { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dock-ring span { font-size: 0.6875rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .dock-ok { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; flex: none; background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
 .dock-ok .ic { width: 20px; height: 20px; stroke-width: 2.4; }
 #pauseBtn.paused { color: var(--sp-green); }
@@ -377,11 +377,11 @@ a { color: inherit; text-decoration: none; }
 }
 @keyframes popIn { from { opacity: 0; transform: translateY(-4px) scale(0.97); } }
 .dl-pop { max-height: min(70vh, 520px); overflow-y: auto; overscroll-behavior: contain; }
-.dl-pop-title { padding: 8px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sp-muted); }
-.dl-pop-hint { padding: 6px 10px 6px; font-size: 12px; color: var(--sp-muted-2); max-width: 260px; }
+.dl-pop-title { padding: 8px 10px 4px; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sp-muted); }
+.dl-pop-hint { padding: 6px 10px 6px; font-size: 0.75rem; color: var(--sp-muted-2); max-width: 260px; }
 .dl-pop button {
   display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 40px; padding: 0 10px;
-  border: 0; border-radius: var(--radius-sm); background: none; font-size: 14px; text-align: left;
+  border: 0; border-radius: var(--radius-sm); background: none; font-size: 0.875rem; text-align: left;
 }
 .dl-pop button:hover, .dl-pop button:focus-visible { background: var(--inset-2); outline-offset: -2px; }
 .dl-pop button[aria-selected="true"] { color: var(--sp-green); font-weight: 600; }
@@ -395,17 +395,17 @@ a { color: inherit; text-decoration: none; }
   animation: rise var(--dur-slow) var(--ease-out);
 }
 .dl-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 10px 10px 20px; border-bottom: 1px solid var(--sp-border); }
-.dl-modal-head h3 { font-size: 17px; font-weight: 700; }
+.dl-modal-head h3 { font-size: 1.062rem; font-weight: 700; }
 .dl-modal-body { overflow-y: auto; padding: 8px 20px 18px; }
 .rep-item { padding: 12px 0; border-bottom: 1px solid var(--sp-border); }
 .rep-item:last-child { border-bottom: 0; }
-.rep-item b { display: block; font-weight: 600; font-size: 14px; }
-.rep-item span { color: var(--sp-muted); font-size: 13px; }
+.rep-item b { display: block; font-weight: 600; font-size: 0.875rem; }
+.rep-item span { color: var(--sp-muted); font-size: 0.8125rem; }
 
 .dl-toasts { position: fixed; z-index: 60; top: 16px; left: 50%; transform: translateX(-50%); display: grid; gap: 8px; width: min(420px, calc(100% - 32px)); pointer-events: none; }
 .toast {
   display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: var(--radius-md);
-  background: var(--sp-elevated); border: 1px solid var(--sp-border); font-size: 14px;
+  background: var(--sp-elevated); border: 1px solid var(--sp-border); font-size: 0.875rem;
   box-shadow: 0 14px 30px -14px rgba(0, 0, 0, 0.6);
   animation: toastIn var(--dur-base) var(--ease-out);
 }
@@ -419,9 +419,9 @@ a { color: inherit; text-decoration: none; }
 
 /* ===== Handy ===== */
 @media (max-width: 700px) {
-  .dl-page { padding-top: 12px; padding-bottom: 150px; }
+  .dl-page { padding-top: calc(12px + var(--safe-top)); padding-bottom: 150px; }
   .dl-head { padding-right: 48px; }
-  .dl-head h1 { font-size: 22px; }
+  .dl-head h1 { font-size: 1.375rem; }
   .dl-head p { display: none; }
   .dl-source { margin-top: 14px; padding: 12px; gap: 12px; border-radius: var(--radius-lg); }
   #modeSeg { width: 100%; }
@@ -456,10 +456,79 @@ a { color: inherit; text-decoration: none; }
   .dock-done .btn span, .dock-run #stopBtn span { display: none; }
   .dock-done .btn, .dock-run #stopBtn { padding: 0 12px; }
   .dl-pop { left: 10px !important; right: 10px; top: auto !important; bottom: 10px; min-width: 0; transform-origin: bottom center; }
-  .dl-pop button { min-height: 48px; font-size: 15px; }
+  .dl-pop button { min-height: 48px; font-size: 0.9375rem; }
   .dl-modal { align-items: end; padding: 0; }
   .dl-modal-card { width: 100%; border-radius: 18px 18px 0 0; max-height: 85vh; padding-bottom: var(--safe-bottom); }
 }
+/* ===== Handy: Optionen eingeklappt =====
+   Fuenf Schalter-Reihen (Format, Qualitaet, Studio, gleichzeitig, Hinweis)
+   schoben die Titelliste auf dem Handy aus dem ersten Bild. Eingeklappt
+   bleibt eine Zeile, die sagt, was eingestellt ist. */
+.dl-opts-toggle { display: none; }
+@media (max-width: 700px) {
+  .dl-opts-toggle {
+    display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px;
+    padding: 6px 12px 6px 14px; border-radius: var(--radius-md);
+    border: 1px solid var(--sp-border); background: var(--inset); text-align: left;
+    transition: background-color var(--dur-base), transform var(--dur-fast) var(--ease-out);
+    touch-action: manipulation;
+  }
+  .dl-opts-toggle:active { transform: scale(0.985); background: var(--inset-2); }
+  .dl-opts-ic { display: grid; color: var(--sp-green); }
+  .dl-opts-text { flex: 1; min-width: 0; display: grid; line-height: 1.3; }
+  .dl-opts-text b { font-size: 0.875rem; font-weight: 600; }
+  .dl-opts-text small { font-size: 0.75rem; color: var(--sp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dl-opts-chev { display: grid; color: var(--sp-muted); transition: transform var(--dur-base) var(--ease-out); }
+  .dl-source.opts-open .dl-opts-chev { transform: rotate(180deg); }
+  .dl-source:not(.opts-open) .dl-opts,
+  .dl-source:not(.opts-open) .dl-note { display: none; }
+  .dl-source.opts-open .dl-opts,
+  .dl-source.opts-open .dl-note { animation: rise var(--dur-base) var(--ease-out); }
+  .dl-chip, .seg-sm button { min-height: 40px; }
+  /* Zwei Chips nebeneinander nur, wenn beide ganz lesbar bleiben -
+     auf 320px stehen sie untereinander statt "Studio-Au…". */
+  .dl-opts { grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr)); }
+
+  .trk { cursor: pointer; touch-action: manipulation; }
+  .trk:active { background: var(--inset); }
+  .trk-check { width: 22px; height: 22px; }
+  .dl-sources { margin-top: 12px; }
+  .dl-empty { padding-top: 28px; gap: 8px; }
+  .dl-empty h2 { font-size: 1.125rem; }
+  .dl-empty p { font-size: 0.875rem; }
+}
+
+/* Als Ebene im Player auf dem Handy: dort sitzt eine echte Kopfleiste
+   (Schliessen + Titel) ueber dem Rahmen - die eigene Ueberschrift waere
+   doppelt, und der Knopf schwebte sonst beim Scrollen ueber der Liste. */
+/* Im Rahmen haelt die Ebene im Player (styles.css) schon Abstand zu
+   Status-, Gesten-Leiste und Kamera. Die Android-Huelle schreibt ihre
+   --native-inset-* aber in JEDES Dokument, auch in diesen Rahmen - ohne
+   das hier kaeme der Abstand doppelt. */
+html:has(> body.in-frame) { --safe-top: 0px; --safe-right: 0px; --safe-bottom: 0px; --safe-left: 0px; }
+
+/* Touch: Tippflaechen mindestens 44px, auch im Querformat (breiter als
+   die 700px-Handy-Regeln). */
+@media (pointer: coarse) {
+  .seg button, .seg-sm button, .dl-chip, .btn, .dl-back { min-height: 44px; }
+  .dl-add input { height: 44px; }
+  .dl-paste { width: 44px; height: 44px; }
+  .dl-find { min-height: 44px; }
+  .dl-icon-btn { width: 44px; height: 44px; }
+  .trk-act .dl-icon-btn { width: 44px; height: 44px; }
+}
+@media (max-width: 700px) {
+  /* Zusammenfassung darf zweizeilig werden statt "…" */
+  .dl-opts-text small { white-space: normal; }
+}
+
+@media (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  .in-frame .dl-head { display: none; }
+  .in-frame .dl-page { padding-top: 4px; }
+  .in-frame .dl-source { margin-top: 0; }
+  .in-frame .dl-toasts { top: 8px; }
+}
+
 /* Als eigenstaendige Seite auf dem Handy: Home-Leiste beachten */
 body:not(.in-frame) .dl-dock { bottom: max(16px, calc(var(--safe-bottom) + 8px)); }
 

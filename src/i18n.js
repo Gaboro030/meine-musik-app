@@ -713,6 +713,7 @@
     "Songtext": "Lyrics",
     "Sprachchat": "Voice chat",
     "Studio-Audio": "Studio audio",
+    "Download-Optionen": "Download options",
     "Suchen": "Search",
     "Wartet …": "Waiting …",
     "Warum? Fehler anzeigen": "Why? Show error",
