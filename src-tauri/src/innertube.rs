@@ -381,6 +381,53 @@ pub async fn search(query: &str, limit: usize) -> Result<Vec<crate::discovery::O
     Ok(out)
 }
 
+/// YouTube-Music-Suche, nur "Songs". Das sind die Art Tracks der "- Topic"-
+/// Kanaele, also die Studio-Fassung vom Album - kein Musikvideo mit Vorspann,
+/// kein Fan-Upload. Reihenfolge = Relevanz von YouTube Music.
+pub async fn music_song_search(query: &str, limit: usize) -> Result<Vec<crate::discovery::OnlineTrack>, String> {
+    // Filter "Songs" der YouTube-Music-Suche.
+    const SONGS_PARAMS: &str = "EgWKAQIIAWoMEA4QChADEAQQCRAF";
+    let ctx = json!({ "client": { "clientName": "WEB_REMIX", "clientVersion": "1.20250101.01.00", "hl": "en", "gl": "DE" } });
+    let resp = http()
+        .post("https://music.youtube.com/youtubei/v1/search?prettyPrint=false")
+        .header("Content-Type", "application/json")
+        .header("User-Agent", client_user_agent(&ctx))
+        .header("Origin", "https://music.youtube.com")
+        .json(&json!({ "context": ctx, "query": query, "params": SONGS_PARAMS }))
+        .send()
+        .await
+        .map_err(|e| format!("YouTube Music nicht erreichbar: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("YouTube-Music-API-Fehler: {}", resp.status()));
+    }
+    let data: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let mut nodes = Vec::new();
+    collect_renderers(&data, &["musicResponsiveListItemRenderer"], &mut nodes);
+    let column = |r: &Value, i: usize| {
+        r.pointer(&format!("/flexColumns/{i}/musicResponsiveListItemFlexColumnRenderer/text")).and_then(text_of)
+    };
+    let mut out = Vec::new();
+    for r in nodes {
+        let Some(id) = r.pointer("/playlistItemData/videoId").and_then(|x| x.as_str()) else { continue };
+        let Some(title) = column(r, 0) else { continue };
+        // Zweite Spalte: "Interpret(en) • Album • 3:40"
+        let info = column(r, 1).unwrap_or_default();
+        let parts: Vec<&str> = info.split(" • ").collect();
+        out.push(crate::discovery::OnlineTrack {
+            video_id: id.to_string(),
+            title,
+            artist: parts.first().map(|s| s.trim().to_string()).unwrap_or_default(),
+            duration: parts.last().and_then(|s| parse_length_text(s.trim())),
+            cover: best_thumbnail(r.pointer("/thumbnail/musicThumbnailRenderer").unwrap_or(&Value::Null)),
+            url: format!("https://www.youtube.com/watch?v={id}"),
+        });
+        if out.len() >= limit {
+            break;
+        }
+    }
+    Ok(out)
+}
+
 /// Like collect_renderers, but matches one exact object key anywhere in the
 /// tree - used for the newer "lockupViewModel" playlist-item shape.
 fn collect_by_key<'a>(v: &'a Value, key: &str, out: &mut Vec<&'a Value>) {

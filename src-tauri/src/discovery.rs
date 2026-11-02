@@ -217,10 +217,47 @@ pub(crate) fn fassung_passt(gesucht: &str, kandidat_titel: &str, kandidat_kanal:
 }
 
 fn tokens(text: &str) -> Vec<String> {
-    normalize_title(text)
+    // Zensierte Woerter ("Ni**as", "N****s") als ein Wort mit Platzhalter
+    // ("ni_as") behalten - normalize_title machte daraus sonst zwei Bruchstuecke,
+    // und offizielle Uploads verloren gegen Fan-Uploads mit ausgeschriebenem Titel.
+    static CENSORED: OnceLock<Regex> = OnceLock::new();
+    let censored = CENSORED.get_or_init(|| Regex::new(r"(\w)\*+").unwrap());
+    let text: String = censored.replace_all(text, "${1}_").chars().map(fold_accent).collect();
+    normalize_title(&text)
         .split_whitespace()
         .map(|s| s.to_string())
         .collect()
+}
+
+/// "JAŸ-Z", "Beyoncé": Akzente weg, sonst trifft "jay" nicht "jaÿ".
+fn fold_accent(c: char) -> char {
+    match c {
+        'à'..='å' | 'À'..='Å' => 'a',
+        'è'..='ë' | 'È'..='Ë' => 'e',
+        'ì'..='ï' | 'Ì'..='Ï' => 'i',
+        'ò'..='ö' | 'Ò'..='Ö' => 'o',
+        'ù'..='ü' | 'Ù'..='Ü' => 'u',
+        'ý' | 'ÿ' | 'Ý' | 'Ÿ' => 'y',
+        'ñ' | 'Ñ' => 'n',
+        'ç' | 'Ç' => 'c',
+        _ => c,
+    }
+}
+
+/// Gleiches Wort - oder ein zensiertes ("ni_as") passt auf das ausgeschriebene.
+fn tok_match(a: &str, b: &str) -> bool {
+    fn fits(word: &str, pre: &str, suf: &str) -> bool {
+        word.len() > pre.len() + suf.len() && word.starts_with(pre) && word.ends_with(suf)
+    }
+    if a == b {
+        return true;
+    }
+    match (a.split_once('_'), b.split_once('_')) {
+        (Some((pre, suf)), None) => fits(b, pre, suf),
+        (None, Some((pre, suf))) => fits(a, pre, suf),
+        (Some((p1, _)), Some((p2, _))) => p1.chars().next() == p2.chars().next(),
+        _ => false,
+    }
 }
 
 /// 0 = jedes Wort des gesuchten Titels kommt im Kandidaten vor, 3 = kaum
@@ -231,7 +268,7 @@ fn title_penalty(wanted: &str, candidate: &str) -> u32 {
         return 1;
     }
     let c = tokens(candidate);
-    let hits = w.iter().filter(|t| c.contains(t)).count();
+    let hits = w.iter().filter(|t| c.iter().any(|x| tok_match(t, x))).count();
     let ratio = hits as f64 / w.len() as f64;
     if ratio >= 1.0 {
         0
@@ -253,7 +290,7 @@ fn artist_penalty(wanted_artist: &str, cand_title: &str, cand_uploader: &str) ->
     let found = tokens(wanted_artist)
         .into_iter()
         .filter(|t| t.chars().count() >= 3)
-        .any(|t| hay.contains(&t));
+        .any(|t| hay.iter().any(|h| tok_match(&t, h)));
     if found {
         0
     } else {
@@ -375,6 +412,19 @@ pub(crate) async fn find_audio_alternative(
     if own_score == 0 {
         return None;
     }
+    // Erst YouTube Music, nur Songs: der erste passende Treffer ist die
+    // normale Albumfassung. Die Videosuche unten kommt nur noch dran, wenn
+    // es den Song dort nicht gibt.
+    if let Ok(Ok(songs)) = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        crate::innertube::music_song_search(&music_query(title, uploader), 10),
+    )
+    .await
+    {
+        if let Some(song) = songs.into_iter().find(|s| same_song(title, uploader, s)) {
+            return (song.video_id != original_id).then_some(song.video_id);
+        }
+    }
     let mut candidates = best_audio_candidates(app, title, uploader).await;
     candidates.retain(|r| r.video_id != original_id);
     // Ueber dieselbe Wertung wie ueberall sonst: ein Tausch lohnt nur,
@@ -386,6 +436,37 @@ pub(crate) async fn find_audio_alternative(
     } else {
         None
     }
+}
+
+/// Suchtext fuer YouTube Music. Klammerzusaetze ("(Explicit)", "[Official
+/// Video]") und Kanal-Anhaengsel ("JayZVEVO", "- Topic") liessen die
+/// Song-Suche leer ausgehen. Klammern mit Fassung ("(Acoustic)") bleiben.
+fn music_query(title: &str, uploader: &str) -> String {
+    static BRACKETS: OnceLock<Regex> = OnceLock::new();
+    static CHANNEL: OnceLock<Regex> = OnceLock::new();
+    let brackets = BRACKETS.get_or_init(|| Regex::new(r"[\[\(].*?[\]\)]").unwrap());
+    let channel = CHANNEL.get_or_init(|| Regex::new(r"(?i)vevo$|\s*-\s*topic$|\bofficial\b").unwrap());
+    let title = brackets.replace_all(title, |c: &regex::Captures| {
+        if version_markers(&c[0]).is_empty() { " ".to_string() } else { c[0].to_string() }
+    });
+    format!("{title} {}", channel.replace_all(uploader.trim(), ""))
+}
+
+/// Ist dieser YouTube-Music-Song der gesuchte? Jedes Wort des Songtitels
+/// muss im gesuchten Titel oder Kanal stehen (der darf zusaetzlich Interpret,
+/// "Official Video" usw. tragen), die Fassung (Live, Remix, ...) muss genau
+/// gleich sein, und mindestens ein Interpret des Songs muss vorkommen - sonst
+/// ist es ein Cover oder ein anderer Song mit aehnlichem Namen.
+fn same_song(title: &str, uploader: &str, song: &OnlineTrack) -> bool {
+    if version_markers(title) != version_markers(&song.title) {
+        return false;
+    }
+    let wanted = tokens(&format!("{title} {uploader}"));
+    let in_wanted = |t: &String| wanted.iter().any(|w| tok_match(t, w));
+    let song_words = tokens(&song.title);
+    !song_words.is_empty()
+        && song_words.iter().all(in_wanted)
+        && tokens(&song.artist).iter().filter(|t| t.chars().count() >= 3).any(in_wanted)
 }
 
 /// Fresh best-match search (no existing pick to compare against) - used
@@ -738,6 +819,26 @@ mod tests {
     #[test]
     fn audio_preference_score_ranks_topic_channel_best() {
         assert_eq!(audio_preference_score("Blinding Lights", "The Weeknd - Topic"), 0);
+    }
+
+    #[test]
+    fn zensierte_titel_passen_auf_ausgeschriebene() {
+        assert_eq!(title_penalty("Niggas In Paris", "Jay-Z & Kanye West - Ni**as In Paris (Explicit)"), 0);
+        assert_eq!(title_penalty("N****s In Paris", "Niggas in Paris"), 0);
+        assert_eq!(title_penalty("Niggas In Paris", "Nights In Paris"), 2);
+        assert_eq!(artist_penalty("JAY-Z", "Ni**as In Paris", "JAŸ-Z & Kanye West"), 0);
+    }
+
+    #[test]
+    fn same_song_nimmt_albumfassung_aber_kein_cover_oder_remix() {
+        let song = |t: &str, a: &str| kandidat(t, a, Some(220.0));
+        let gesucht = "JAY Z, Kanye West - Niggas In Paris (Official Music Video)";
+        assert!(same_song(gesucht, "JayZVEVO", &song("Ni**as In Paris", "JAŸ-Z & Kanye West")));
+        assert!(same_song("Niggas In Paris", "JAY-Z, Kanye West", &song("Ni**as In Paris", "JAŸ-Z & Kanye West")));
+        assert!(!same_song(gesucht, "JayZVEVO", &song("Ni**As in Paris", "Royal OG")));
+        assert!(!same_song(gesucht, "JayZVEVO", &song("Ni**as In Paris (Remix)", "JAŸ-Z & Kanye West")));
+        assert!(!same_song("Paris", "Kanye West", &song("Ni**as In Paris", "JAŸ-Z & Kanye West")));
+        assert!(same_song("Gold Digger", "Kanye West", &song("Gold Digger (feat. Jamie Foxx)", "Kanye West")));
     }
 
     // ---- Auswahl der richtigen Fassung ---------------------------------
