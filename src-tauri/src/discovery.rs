@@ -485,6 +485,16 @@ pub(crate) async fn yt_search(app: &tauri::AppHandle, query: &str, limit: u32) -
     if cfg!(target_os = "android") {
         return crate::innertube::search(query, limit as usize).await;
     }
+    // Desktop: erst die native Innertube-Suche (ein HTTP-Aufruf), yt-dlp
+    // startet pro Suche einen eigenen Prozess (~3 s). Bei Fehler, Timeout
+    // oder leerem Ergebnis bleibt yt-dlp der Rueckfall.
+    if let Ok(Ok(found)) =
+        tokio::time::timeout(std::time::Duration::from_secs(8), crate::innertube::search(query, limit as usize)).await
+    {
+        if !found.is_empty() {
+            return Ok(found);
+        }
+    }
     let shell = app.shell();
     let output = shell
         .sidecar("yt-dlp")

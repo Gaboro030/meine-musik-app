@@ -1179,7 +1179,14 @@ pub async fn download_track_progress(
 
     let event_name = format!("dl-progress-{task_id}");
 
-    let attempts = build_attempts(&format, &bitrate, &quality);
+    // Nur der gewuenschte Versuch und der letzte, einfache: die Zwischenstufen
+    // (320 -> 256 -> 192 ...) sind nur Encoder-Einstellungen bzw. mit `?`
+    // ohnehin tolerante Filter, scheitern also nie wegen der Stufe - sie
+    // kosteten bei jedem echten Fehler drei volle yt-dlp-Laeufe.
+    let mut attempts = build_attempts(&format, &bitrate, &quality);
+    if attempts.len() > 2 {
+        attempts.drain(1..attempts.len() - 1);
+    }
     let progress_re = regex::Regex::new(r"([\d.]+)%").unwrap();
     let ext = if format == "mp4" { "mp4" } else { "mp3" };
     let out_path = dest_dir.join(format!("{safe_title}.{ext}"));
