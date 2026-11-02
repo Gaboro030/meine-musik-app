@@ -608,10 +608,14 @@ async function downloadOne(tr) {
     else setRowState(tr, "run", { percent: d.percent || 0, speed: d.speed, eta: d.eta, note: d.phase === "retrying" ? d.note || t("Erneuter Versuch …") : "" });
     if (running) renderRun();
   });
+  // Vorab gesuchte Studio-Fassung (prefetchAlternatives); ohne sie sucht das Backend selbst.
+  const studio = opts.format === "mp3" && opts.studio;
+  const prefetched = studio && tr.altPromise;
   try {
+    const alt = prefetched ? await tr.altPromise : null;
     await invoke("download_track_progress", {
       taskId,
-      videoId: tr.id,
+      videoId: alt || tr.id,
       title: tr.title || "",
       uploader: tr.uploader || "",
       duration: tr.duration || null,
@@ -619,7 +623,7 @@ async function downloadOne(tr) {
       bitrate: opts.bitrate,
       format: opts.format,
       quality: opts.quality,
-      preferAudio: opts.format === "mp3" && opts.studio,
+      preferAudio: studio && !prefetched,
       playlistName: listTitle,
     });
     tr.error = "";
@@ -632,8 +636,29 @@ async function downloadOne(tr) {
     return false;
   } finally {
     tr.taskId = null;
+    if (prefetched) tr.altPromise = null;
     unlisten();
   }
+}
+
+/* Studio-Fassungen schon suchen, waehrend die ersten Titel laden - dann
+   wartet kein Download mehr auf seine eigene Suche. Hoechstens 8 Suchen
+   gleichzeitig, sonst drosselt YouTube. Laeuft auch nach "Abbrechen" zu
+   Ende, damit kein Titel auf eine nie erfuellte Suche wartet. */
+function prefetchAlternatives(list) {
+  const queue = list.filter((tr) => tr.uploader).map((tr) => {
+    let done;
+    tr.altPromise = new Promise((r) => (done = r));
+    return { tr, done };
+  });
+  let i = 0;
+  async function lane() {
+    while (i < queue.length) {
+      const { tr, done } = queue[i++];
+      done(await invoke("audio_alternative", { title: tr.title || "", uploader: tr.uploader, videoId: tr.id }).catch(() => null));
+    }
+  }
+  for (let n = 0; n < Math.min(parallelCount(), 8); n++) lane();
 }
 
 async function downloadSingle(tr) {
@@ -694,6 +719,7 @@ $("startBtn").addEventListener("click", async () => {
   dock.dataset.state = "run";
   renderRun();
   await awaitPoToken();
+  if (opts.format === "mp3" && opts.studio) prefetchAlternatives(list);
 
   let next = 0;
   async function worker() {

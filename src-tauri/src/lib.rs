@@ -218,6 +218,7 @@ pub fn run() {
             discovery::discover_rows,
             discovery::recommend_for_playlist,
             discovery::search_online,
+            discovery::audio_alternative,
             party::party_info,
             party::party_internet,
             party::party_get_state,

@@ -438,6 +438,13 @@ pub(crate) async fn find_audio_alternative(
     }
 }
 
+/// Studio-Fassung vorab suchen (Downloader), damit der Download selbst nicht
+/// mehr auf die Suche wartet. `None` = Original behalten.
+#[tauri::command]
+pub async fn audio_alternative(app: tauri::AppHandle, title: String, uploader: String, video_id: String) -> Option<String> {
+    find_audio_alternative(&app, &title, &uploader, &video_id).await
+}
+
 /// Suchtext fuer YouTube Music. Klammerzusaetze ("(Explicit)", "[Official
 /// Video]") und Kanal-Anhaengsel ("JayZVEVO", "- Topic") liessen die
 /// Song-Suche leer ausgehen. Klammern mit Fassung ("(Acoustic)") bleiben.
