@@ -737,6 +737,16 @@
     "Über Reson": "About Reson",
     "Übergänge": "Transitions",
     "„{title}“ ist in der Bibliothek": "“{title}” is in your library",
+    // ----- YouTube-Music-Abgleich (cloudsync.js) -----
+    "Mit YouTube Music abgleichen": "Sync with YouTube Music",
+    "Eingeschaltete Playlists bleiben auf beiden Seiten gleich - beim Start und alle 10 Minuten, solange Reson offen ist. Neue Songs werden geladen, entfernte landen im Papierkorb.":
+      "Enabled playlists stay the same on both sides - at startup and every 10 minutes while Reson is open. New songs are downloaded, removed ones go to the trash.",
+    "Jetzt abgleichen": "Sync now",
+    "Schalte zuerst mindestens eine Playlist ein.": "Turn on at least one playlist first.",
+    "Gleiche ab …": "Syncing …",
+    "Zuletzt abgeglichen um {zeit}: {geladen} geladen, {eingetragen} eingetragen, {entfernt} entfernt.":
+      "Last synced at {zeit}: {geladen} downloaded, {eingetragen} added, {entfernt} removed.",
+    "{n} bei YouTube Music nicht gefunden.": "{n} not found on YouTube Music.",
     // ----- In-App-Update (updater.js / update-dialog.js) -----
     "Updates": "Updates",
     "Nach Updates suchen": "Check for updates",

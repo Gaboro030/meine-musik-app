@@ -520,6 +520,240 @@ pub async fn youtube_track_entfernen(
     Ok(())
 }
 
+/* --- Automatischer Abgleich (Etappe 5) ------------------------------------ */
+
+/// Was ein Durchgang getan hat - das Frontend zeigt es als eine Zeile an.
+#[derive(Serialize, Default)]
+pub struct AbgleichErgebnis {
+    /// Bei mir neu, drueben eingetragen.
+    pub eingetragen: u32,
+    /// Bei mir geloescht, drueben ausgetragen.
+    pub ausgetragen: u32,
+    /// Drueben neu, heruntergeladen.
+    pub geladen: u32,
+    /// Drueben ausgetragen, bei mir in den Papierkorb.
+    pub papierkorb: u32,
+    /// Bei YouTube Music nicht gefunden - wird beim naechsten Mal erneut
+    /// gesucht (die Suche kostet kein Kontingent).
+    pub nicht_gefunden: Vec<String>,
+    pub fehler: Vec<String>,
+}
+
+const MEDIEN_ENDUNGEN: [&str; 8] = ["mp3", "m4a", "mp4", "webm", "opus", "ogg", "flac", "wav"];
+
+/// Titel grob vergleichbar machen: Klammerzusaetze ("Official Video",
+/// "feat. ...") und alles ausser Buchstaben/Ziffern weg.
+fn titel_kern(t: &str) -> String {
+    let mut tiefe = 0u32;
+    let mut out = String::new();
+    for c in t.chars() {
+        match c {
+            '(' | '[' => tiefe += 1,
+            ')' | ']' => tiefe = tiefe.saturating_sub(1),
+            _ if tiefe == 0 && c.is_alphanumeric() => out.extend(c.to_lowercase()),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Derselbe Song auf beiden Seiten? Drueben heisst er oft "Kuenstler -
+/// Titel (Official Video)", bei mir nur "Titel" - oder umgekehrt.
+/// Kurze Titel muessen exakt passen, sonst steckt "Love" in jedem
+/// zweiten Songnamen.
+fn gleicher_titel(lokal: &str, fern: &str) -> bool {
+    let (a, b) = (titel_kern(lokal), titel_kern(fern));
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    if a == b {
+        return true;
+    }
+    (a.chars().count() >= 6 && b.contains(&a)) || (b.chars().count() >= 6 && a.contains(&b))
+}
+
+/// Die Mediendatei, die ein Download fuer diesen Titel angelegt hat
+/// (Endung je nach Plattform mp3/m4a/mp4). Cover-Bilder daneben zaehlen
+/// nicht.
+fn datei_fuer_titel(dir: &std::path::Path, titel: &str) -> Option<String> {
+    let stamm = crate::commands::safe_filename(titel);
+    std::fs::read_dir(dir).ok()?.filter_map(|e| e.ok()).find_map(|e| {
+        let p = e.path();
+        let ext = p.extension()?.to_str()?.to_ascii_lowercase();
+        (p.file_stem()?.to_str()? == stamm && MEDIEN_ENDUNGEN.contains(&ext.as_str()))
+            .then(|| e.file_name().to_string_lossy().into_owned())
+    })
+}
+
+/// Ein kompletter Abgleich einer Reson-Playlist mit der gleichnamigen
+/// Playlist bei YouTube Music, in beide Richtungen:
+///
+/// * bei mir neu -> drueben eintragen
+/// * bei mir geloescht -> drueben austragen
+/// * drueben neu -> herunterladen
+/// * drueben ausgetragen -> bei mir in den Papierkorb (zurueckholbar)
+///
+/// Gibt es drueben noch keine Playlist mit dem Namen, wird eine private
+/// angelegt.
+#[tauri::command]
+pub async fn youtube_abgleich(
+    app: tauri::AppHandle,
+    client_id: String,
+    playlist: String,
+) -> Result<AbgleichErgebnis, String> {
+    use crate::syncplan::{plan_erstellen, sync_zustand, sync_zustand_setzen, zustand_fortschreiben, Paar};
+    use std::collections::HashSet;
+    use tauri::Manager;
+
+    let state = app.state::<crate::commands::AppState>();
+    let dir = state.music_root.join(crate::commands::safe_filename(&playlist));
+    let lokal_tracks = crate::commands::scan_playlist_dir(&dir, &playlist)
+        .map(|p| p.tracks)
+        .unwrap_or_default();
+
+    let mut z = sync_zustand(app.clone(), "google".into(), playlist.clone());
+    if z.fern_id.is_empty() {
+        let vorhanden = youtube_playlists(app.clone(), client_id.clone()).await?;
+        z.fern_id = match vorhanden.into_iter().find(|p| p.name == playlist) {
+            Some(p) => p.id,
+            None => youtube_playlist_erstellen(app.clone(), client_id.clone(), playlist.clone()).await?.id,
+        };
+        // Sofort merken: bricht der Durchgang ab, wird beim naechsten Mal
+        // nicht noch eine zweite Playlist angelegt.
+        sync_zustand_setzen(app.clone(), "google".into(), playlist.clone(), z.fern_id.clone(), z.paare.clone());
+    }
+
+    let fern = youtube_playlist_tracks(app.clone(), client_id.clone(), z.fern_id.clone()).await?;
+    let lokal: Vec<String> = lokal_tracks.iter().map(|t| t.file.clone()).collect();
+    let fern_ids: Vec<String> = fern.iter().map(|t| t.video_id.clone()).collect();
+    let plan = plan_erstellen(&lokal, &fern_ids, &z.paare);
+
+    // Schutz vor Fehlanzeigen (leere Antwort, Ordner kurz nicht lesbar):
+    // verschwindet auf einer Seite auf einmal mehr als die Haelfte, wird
+    // nichts angefasst.
+    // shortcut: bewusst geleerte Playlists werden dadurch auch blockiert; bei Bedarf eine Bestaetigung im Frontend einbauen.
+    let zu_viel = |n: usize| n > 3 && n * 2 > z.paare.len();
+    if zu_viel(plan.drueben_geloescht.len()) || zu_viel(plan.drueben_austragen.len()) {
+        return Err(format!(
+            "„{playlist}“ nicht abgeglichen: auf einer Seite fehlt plötzlich mehr als die Hälfte der Titel. Zur Sicherheit wurde nichts gelöscht."
+        ));
+    }
+
+    let mut erg = AbgleichErgebnis::default();
+    let mut neue_paare: Vec<Paar> = Vec::new();
+    let mut ausgetragen: Vec<String> = Vec::new();
+
+    let fehlt: HashSet<&str> = plan.bei_mir_fehlt.iter().map(|s| s.as_str()).collect();
+    let mut gesehen = HashSet::new();
+    let mut fern_neu: Vec<&YtTrack> = fern
+        .iter()
+        .filter(|t| fehlt.contains(t.video_id.as_str()) && gesehen.insert(t.video_id.as_str()))
+        .collect();
+    let mut lokal_neu: Vec<_> = lokal_tracks
+        .iter()
+        .filter(|t| plan.drueben_eintragen.contains(&t.file))
+        .collect();
+
+    // 1. Auf beiden Seiten neu und offensichtlich derselbe Song (vor allem
+    //    beim ersten Abgleich): nur verknuepfen, nichts doppelt anlegen.
+    lokal_neu.retain(|t| match fern_neu.iter().position(|f| gleicher_titel(&t.title, &f.title)) {
+        Some(i) => {
+            neue_paare.push(Paar { lokal: t.file.clone(), fern: fern_neu.remove(i).video_id.clone() });
+            false
+        }
+        None => true,
+    });
+
+    // 2. Bei mir neu -> drueben eintragen. Gesucht wird ueber YouTube
+    //    Music direkt (kostenlos, liefert die Studio-Fassung); nur das
+    //    Eintragen kostet Kontingent.
+    for t in lokal_neu {
+        let frage = format!("{} {}", t.title, t.artist);
+        let treffer = crate::innertube::music_song_search(frage.trim(), 5)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .find(|s| crate::discovery::fassung_passt(&t.title, &s.title, &s.artist));
+        let Some(s) = treffer else {
+            erg.nicht_gefunden.push(t.title.clone());
+            continue;
+        };
+        // Steht unter anderem Titel schon drueben -> nur verknuepfen.
+        if let Some(i) = fern_neu.iter().position(|f| f.video_id == s.video_id) {
+            fern_neu.remove(i);
+        } else if let Err(e) =
+            youtube_track_hinzufuegen(app.clone(), client_id.clone(), z.fern_id.clone(), s.video_id.clone()).await
+        {
+            // Kontingent leer oder Netz weg - der Rest kommt beim naechsten Mal.
+            erg.fehler.push(e);
+            break;
+        } else {
+            erg.eingetragen += 1;
+        }
+        neue_paare.push(Paar { lokal: t.file.clone(), fern: s.video_id });
+    }
+
+    // 3. Bei mir geloescht -> drueben austragen (jeden Eintrag des Videos).
+    'austragen: for vid in &plan.drueben_austragen {
+        for f in fern.iter().filter(|f| &f.video_id == vid) {
+            if let Err(e) = youtube_track_entfernen(app.clone(), client_id.clone(), f.item_id.clone()).await {
+                erg.fehler.push(e);
+                break 'austragen;
+            }
+            erg.ausgetragen += 1;
+        }
+        ausgetragen.push(vid.clone());
+    }
+
+    // 4. Drueben neu -> herunterladen. Liegt die Datei schon da, wird nur
+    //    verknuepft.
+    for f in fern_neu {
+        let datei = match datei_fuer_titel(&dir, &f.title) {
+            Some(d) => Some(d),
+            None => match crate::commands::download_track(
+                app.clone(),
+                app.state(),
+                f.video_id.clone(),
+                playlist.clone(),
+                f.title.clone(),
+                Some(f.artist.clone()),
+                None,
+                None,
+                None,
+            )
+            .await
+            {
+                Ok(()) => {
+                    erg.geladen += 1;
+                    datei_fuer_titel(&dir, &f.title)
+                }
+                Err(e) => {
+                    erg.fehler.push(format!("{}: {e}", f.title));
+                    None
+                }
+            },
+        };
+        if let Some(lokal) = datei {
+            neue_paare.push(Paar { lokal, fern: f.video_id.clone() });
+        }
+    }
+
+    // 5. Drueben ausgetragen -> bei mir in den Papierkorb.
+    for datei in &plan.drueben_geloescht {
+        if !dir.join(datei).is_file() {
+            continue;
+        }
+        match crate::commands::remove_track_from_playlist(app.state(), playlist.clone(), datei.clone()) {
+            Ok(_) => erg.papierkorb += 1,
+            Err(e) => erg.fehler.push(format!("{datei}: {e}")),
+        }
+    }
+
+    let paare = zustand_fortschreiben(&z.paare, &plan, &neue_paare, &ausgetragen);
+    sync_zustand_setzen(app.clone(), "google".into(), playlist, z.fern_id, paare);
+    Ok(erg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -575,5 +809,30 @@ mod tests {
         let pro_song = KOSTEN_SUCHE + KOSTEN_LIST + KOSTEN_SCHREIBEN;
         assert_eq!(pro_song, 151);
         assert_eq!(TAGESKONTINGENT / pro_song, 66);
+    }
+
+    #[test]
+    fn gleicher_titel_erkennt_video_und_studiofassung() {
+        assert!(gleicher_titel("Niggas In Paris", "JAY Z, Kanye West - Niggas In Paris (Official Video)"));
+        assert!(gleicher_titel("Kanye West - Stronger", "Stronger"));
+        assert!(gleicher_titel("Go", "GO!"));
+        // Kurze Titel nicht als Teilstueck werten.
+        assert!(!gleicher_titel("Love", "Love Story (Taylor's Version)"));
+        assert!(!gleicher_titel("Love Story (Taylor's Version)", "Love"));
+        assert!(!gleicher_titel("Stronger", "Harder Better Faster"));
+        assert!(!gleicher_titel("", "irgendwas"));
+    }
+
+    #[test]
+    fn datei_fuer_titel_nimmt_nur_mediendateien() {
+        let dir = std::env::temp_dir().join(format!("reson-ytsync-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Song_ Titel.jpg"), b"").unwrap();
+        assert_eq!(datei_fuer_titel(&dir, "Song: Titel"), None);
+        std::fs::write(dir.join("Song_ Titel.m4a.part"), b"").unwrap();
+        assert_eq!(datei_fuer_titel(&dir, "Song: Titel"), None);
+        std::fs::write(dir.join("Song_ Titel.m4a"), b"").unwrap();
+        assert_eq!(datei_fuer_titel(&dir, "Song: Titel").as_deref(), Some("Song_ Titel.m4a"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

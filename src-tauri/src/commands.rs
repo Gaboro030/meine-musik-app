@@ -431,7 +431,7 @@ pub(crate) fn read_track_meta_cached(path: &Path) -> TrackMeta {
     meta
 }
 
-fn scan_playlist_dir(dir: &Path, name: &str) -> Option<PlaylistOut> {
+pub(crate) fn scan_playlist_dir(dir: &Path, name: &str) -> Option<PlaylistOut> {
     if !dir.is_dir() {
         return None;
     }

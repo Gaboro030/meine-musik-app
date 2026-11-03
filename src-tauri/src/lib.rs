@@ -177,6 +177,7 @@ pub fn run() {
             youtubesync::youtube_playlist_erstellen,
             youtubesync::youtube_track_hinzufuegen,
             youtubesync::youtube_track_entfernen,
+            youtubesync::youtube_abgleich,
             syncplan::sync_plan,
             syncplan::sync_zustand,
             syncplan::sync_zustand_setzen,

@@ -753,6 +753,15 @@
               <div class="settings-row-desc" id="googleAuthStatus"></div>
               <button type="button" id="googleAuthBtn" class="settings-select" style="cursor:pointer" data-i18n="Bei Google anmelden">Bei Google anmelden</button>
             </div>
+            <div class="settings-row" id="ytSyncRow" style="display:none">
+              <div class="yt-sync">
+                <div class="settings-row-label" data-i18n="Mit YouTube Music abgleichen">Mit YouTube Music abgleichen</div>
+                <div class="settings-row-desc" data-i18n="Eingeschaltete Playlists bleiben auf beiden Seiten gleich - beim Start und alle 10 Minuten, solange Reson offen ist. Neue Songs werden geladen, entfernte landen im Papierkorb.">Eingeschaltete Playlists bleiben auf beiden Seiten gleich - beim Start und alle 10 Minuten, solange Reson offen ist. Neue Songs werden geladen, entfernte landen im Papierkorb.</div>
+                <div class="yt-sync-list" id="ytSyncList"></div>
+                <div class="settings-row-desc" id="ytSyncStatus" aria-live="polite"></div>
+              </div>
+              <button type="button" id="ytSyncNowBtn" class="btn-secondary" data-icon="refresh"><span data-i18n="Jetzt abgleichen">Jetzt abgleichen</span></button>
+            </div>
           </div>
           <div class="settings-group">
             <div class="settings-group-title" data-i18n="Handy-Sync">Handy-Sync</div>
