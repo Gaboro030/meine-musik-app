@@ -30,6 +30,9 @@
       label: "Google",
       speicher: "googleClientId",
       eingabe: document.getElementById("googleClientIdInput"),
+      // Bewusst nicht im localStorage: der landet im Einstellungs-Backup.
+      // Rust legt ihn beim Anmelden zum Token.
+      geheim: document.getElementById("googleClientSecretInput"),
       knopf: document.getElementById("googleAuthBtn"),
       status: document.getElementById("googleAuthStatus"),
     },
@@ -42,15 +45,18 @@
   function anzeigen() {
     DIENSTE.forEach((d) => {
       const an = !!angemeldet[d.name];
+      const geheimFehlt = !!d.geheim && !d.geheim.value.trim();
       d.status.textContent = an
         ? uebersetzt("✅ Angemeldet.")
-        : d.eingabe.value.trim()
-          ? uebersetzt("Noch nicht angemeldet.")
-          : uebersetzt("Client-ID fehlt noch.");
+        : !d.eingabe.value.trim()
+          ? uebersetzt("Client-ID fehlt noch.")
+          : geheimFehlt
+            ? uebersetzt("Clientschlüssel fehlt noch.")
+            : uebersetzt("Noch nicht angemeldet.");
       d.knopf.textContent = an
         ? uebersetzt("Abmelden")
         : uebersetzt("Anmelden");
-      d.knopf.disabled = !an && !d.eingabe.value.trim();
+      d.knopf.disabled = !an && (!d.eingabe.value.trim() || geheimFehlt);
     });
   }
 
@@ -197,6 +203,7 @@
 
   DIENSTE.forEach((d) => {
     d.eingabe.value = localStorage.getItem(d.speicher) || "";
+    if (d.geheim) d.geheim.addEventListener("input", anzeigen);
     d.eingabe.addEventListener("input", () => {
       localStorage.setItem(d.speicher, d.eingabe.value.trim());
       anzeigen();
@@ -224,7 +231,12 @@
         "Im Browser anmelden … dieses Fenster offen lassen."
       );
       try {
-        await invoke("cloud_login", { dienst: d.name, clientId });
+        await invoke("cloud_login", {
+          dienst: d.name,
+          clientId,
+          clientSecret: d.geheim ? d.geheim.value.trim() : null,
+        });
+        if (d.geheim) d.geheim.value = "";
         if (typeof showToast === "function") {
           showToast(uebersetzt("Bei {dienst} angemeldet.").replace("{dienst}", d.label));
         }

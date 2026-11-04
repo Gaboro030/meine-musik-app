@@ -107,6 +107,11 @@ pub struct Token {
     /// kann.
     #[serde(default)]
     pub client_id: String,
+    /// Google verlangt ihn bei Desktop-Clients trotz PKCE, auch beim
+    /// Erneuern ("client_secret is missing"). Spotify kommt ohne aus, dann
+    /// bleibt er leer. Liegt beim Erneuerungs-Token, das ohnehin mehr wert ist.
+    #[serde(default)]
+    pub client_secret: String,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -268,17 +273,21 @@ async fn auf_rueckleitung_warten(pfad: &str, state_erwartet: &str) -> Result<Str
 async fn code_eintauschen(
     dienst: Dienst,
     client_id: &str,
+    client_secret: &str,
     code: &str,
     verifier: &str,
 ) -> Result<Token, String> {
     let redirect = format!("http://127.0.0.1:{REDIRECT_PORT}{}", dienst.pfad());
-    let formular = [
+    let mut formular = vec![
         ("grant_type", "authorization_code"),
         ("code", code),
         ("redirect_uri", &redirect),
         ("client_id", client_id),
         ("code_verifier", verifier),
     ];
+    if !client_secret.is_empty() {
+        formular.push(("client_secret", client_secret));
+    }
     let client = reqwest::Client::new();
     let resp = client
         .post(dienst.token_endpunkt())
@@ -299,10 +308,15 @@ async fn code_eintauschen(
             .unwrap_or("unbekannt");
         return Err(format!("Anmeldung abgelehnt ({status}): {grund}"));
     }
-    Ok(aus_antwort(&daten, client_id, ""))
+    Ok(aus_antwort(&daten, client_id, client_secret, ""))
 }
 
-fn aus_antwort(daten: &serde_json::Value, client_id: &str, alter_refresh: &str) -> Token {
+fn aus_antwort(
+    daten: &serde_json::Value,
+    client_id: &str,
+    client_secret: &str,
+    alter_refresh: &str,
+) -> Token {
     let feld = |k: &str| daten.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let gueltig = daten.get("expires_in").and_then(|v| v.as_u64()).unwrap_or(3600);
     let refresh = {
@@ -323,15 +337,24 @@ fn aus_antwort(daten: &serde_json::Value, client_id: &str, alter_refresh: &str) 
         // kann.
         laeuft_ab: jetzt() + gueltig.saturating_sub(60),
         client_id: client_id.to_string(),
+        client_secret: client_secret.to_string(),
     }
 }
 
-async fn erneuern(dienst: Dienst, client_id: &str, refresh: &str) -> Result<Token, String> {
-    let formular = [
+async fn erneuern(
+    dienst: Dienst,
+    client_id: &str,
+    client_secret: &str,
+    refresh: &str,
+) -> Result<Token, String> {
+    let mut formular = vec![
         ("grant_type", "refresh_token"),
         ("refresh_token", refresh),
         ("client_id", client_id),
     ];
+    if !client_secret.is_empty() {
+        formular.push(("client_secret", client_secret));
+    }
     let client = reqwest::Client::new();
     let resp = client
         .post(dienst.token_endpunkt())
@@ -344,7 +367,7 @@ async fn erneuern(dienst: Dienst, client_id: &str, refresh: &str) -> Result<Toke
     if !status.is_success() {
         return Err(format!("Erneuern abgelehnt ({status}) - bitte neu anmelden."));
     }
-    Ok(aus_antwort(&daten, client_id, refresh))
+    Ok(aus_antwort(&daten, client_id, client_secret, refresh))
 }
 
 /// Gueltiges Zugriffs-Token, notfalls frisch erneuert. Das ist die
@@ -367,7 +390,7 @@ pub async fn gueltiges_token(
     if token.refresh_token.is_empty() {
         return Err("Zugang abgelaufen - bitte neu anmelden.".into());
     }
-    let neu = erneuern(dienst, client_id, &token.refresh_token).await?;
+    let neu = erneuern(dienst, client_id, &token.client_secret, &token.refresh_token).await?;
     let access = neu.access_token.clone();
     token_ablegen(app, dienst, neu);
     Ok(access)
@@ -383,9 +406,11 @@ pub async fn cloud_login(
     app: tauri::AppHandle,
     dienst: String,
     client_id: String,
+    client_secret: Option<String>,
 ) -> Result<String, String> {
     let dienst = Dienst::aus_str(&dienst).ok_or_else(|| "Unbekannter Dienst.".to_string())?;
     let client_id = client_id.trim().to_string();
+    let client_secret = client_secret.unwrap_or_default().trim().to_string();
     if client_id.is_empty() {
         return Err("Bitte zuerst die Client-Kennung eintragen.".into());
     }
@@ -426,7 +451,7 @@ pub async fn cloud_login(
     let code = warten
         .await
         .map_err(|e| format!("Anmeldevorgang abgebrochen: {e}"))??;
-    let token = code_eintauschen(dienst, &client_id, &code, &verifier).await?;
+    let token = code_eintauschen(dienst, &client_id, &client_secret, &code, &verifier).await?;
     token_ablegen(&app, dienst, token);
     Ok("angemeldet".into())
 }
@@ -504,7 +529,7 @@ mod tests {
         // Google schickt es nur beim allerersten Mal mit. Wer es danach
         // mit einem leeren Feld ueberschreibt, sperrt sich selbst aus.
         let antwort = serde_json::json!({ "access_token": "neu", "expires_in": 3600 });
-        let token = aus_antwort(&antwort, "cid", "alter-refresh");
+        let token = aus_antwort(&antwort, "cid", "", "alter-refresh");
         assert_eq!(token.refresh_token, "alter-refresh");
         assert_eq!(token.access_token, "neu");
     }
@@ -514,14 +539,14 @@ mod tests {
         let antwort = serde_json::json!({
             "access_token": "neu", "refresh_token": "frisch", "expires_in": 3600
         });
-        let token = aus_antwort(&antwort, "cid", "alter-refresh");
+        let token = aus_antwort(&antwort, "cid", "", "alter-refresh");
         assert_eq!(token.refresh_token, "frisch");
     }
 
     #[test]
     fn ablaufzeit_hat_sicherheitsabstand() {
         let antwort = serde_json::json!({ "access_token": "x", "expires_in": 3600 });
-        let token = aus_antwort(&antwort, "cid", "");
+        let token = aus_antwort(&antwort, "cid", "", "");
         let rest = token.laeuft_ab.saturating_sub(jetzt());
         // 3600 minus 60 Sekunden Abstand, ein paar Sekunden Toleranz.
         assert!((3530..=3545).contains(&rest), "Rest war {rest}");
