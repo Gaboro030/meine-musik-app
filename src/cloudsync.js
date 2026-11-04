@@ -78,7 +78,7 @@
     ytAuswahl = JSON.parse(localStorage.getItem(YT_KEY) || "[]");
   } catch (_) {}
   let ytLaeuft = false;
-  let ytListeGeladen = false;
+  let ytFernNamen = null; // Kostet Kontingent - einmal holen reicht
   const googleId = () => (localStorage.getItem("googleClientId") || "").trim();
   const mitWerten = (text, werte) => (window.t ? window.t(text, werte) : text);
 
@@ -115,15 +115,17 @@
     if (!ytRow) return;
     // .settings-row setzt display:flex und schlaegt damit [hidden].
     ytRow.style.display = angemeldet.google ? "" : "none";
-    if (!angemeldet.google || ytListeGeladen) return;
-    ytListeGeladen = true;
+    if (!angemeldet.google) return;
     const namen = new Set(ytAuswahl);
     try {
       (await invoke("list_playlists")).forEach((p) => namen.add(p.name));
     } catch (_) {}
-    try {
-      (await invoke("youtube_playlists", { clientId: googleId() })).forEach((p) => namen.add(p.name));
-    } catch (_) {}
+    if (!ytFernNamen) {
+      try {
+        ytFernNamen = (await invoke("youtube_playlists", { clientId: googleId() })).map((p) => p.name);
+      } catch (_) {}
+    }
+    (ytFernNamen || []).forEach((n) => namen.add(n));
     ytList.replaceChildren(...[...namen].sort((a, b) => a.localeCompare(b)).map(ytSchalter));
   }
 
@@ -138,7 +140,9 @@
     ytStatus.textContent = uebersetzt("Gleiche ab …");
     const summe = { eingetragen: 0, ausgetragen: 0, geladen: 0, papierkorb: 0, nicht: 0 };
     const fehler = [];
-    for (const playlist of ytAuswahl) {
+    for (const playlist of [...ytAuswahl]) {
+      // Waehrend des Durchgangs umbenannt oder ausgeschaltet.
+      if (!ytAuswahl.includes(playlist)) continue;
       try {
         const e = await invoke("youtube_abgleich", { clientId: googleId(), playlist });
         ["eingetragen", "ausgetragen", "geladen", "papierkorb"].forEach((k) => (summe[k] += e[k]));
@@ -174,7 +178,6 @@
     ytAuswahl = ytAuswahl.filter((n) => n !== oldName);
     if (newName) ytAuswahl.push(newName);
     localStorage.setItem(YT_KEY, JSON.stringify(ytAuswahl));
-    ytListeGeladen = false;
     ytListeZeigen();
   });
 
@@ -186,6 +189,7 @@
   // loest deshalb keinen weiteren Durchgang aus.
   let ytBald = 0;
   document.addEventListener("reson-library-changed", () => {
+    ytListeZeigen(); // neue Playlist soll ohne Neustart schaltbar sein
     if (ytLaeuft) return;
     clearTimeout(ytBald);
     ytBald = setTimeout(() => ytAbgleichen(false), 30000);

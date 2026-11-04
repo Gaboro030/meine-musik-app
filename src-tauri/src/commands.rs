@@ -529,6 +529,7 @@ pub fn rename_playlist(
     }
     std::fs::rename(&old_dir, &new_dir).map_err(|e| e.to_string())?;
     crate::syncplan::zustand_umziehen(&app, &old_name, Some(&new_clean));
+    crate::trash::playlist_umbenennen(&state, &old_name, &new_clean);
     Ok(new_clean)
 }
 

@@ -82,6 +82,21 @@ pub fn move_to_trash(
     Ok(id)
 }
 
+/// Playlist umbenannt: Wiederherstellen soll in die umbenannte Playlist
+/// fuehren, nicht den alten Namen als leere Playlist neu anlegen.
+pub fn playlist_umbenennen(state: &AppState, alt: &str, neu: &str) {
+    let _lock = TRASH_LOCK.lock().unwrap();
+    let mut entries = load_index(&state.trash_index_file);
+    let mut geaendert = false;
+    for e in entries.iter_mut().filter(|e| e.playlist == alt) {
+        e.playlist = neu.to_string();
+        geaendert = true;
+    }
+    if geaendert {
+        save_index(&state.trash_index_file, &entries);
+    }
+}
+
 #[tauri::command]
 pub fn list_trash(state: tauri::State<AppState>) -> Result<Vec<TrashEntry>, String> {
     let _lock = TRASH_LOCK.lock().unwrap();

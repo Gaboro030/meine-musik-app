@@ -2989,6 +2989,7 @@ audioEl.addEventListener("ended", () => {
     // Crossfade-Ghost ab (Repeat-One wurde mitten in der Ausblendphase
     // eingeschaltet) - sonst liefe der nächste Song parallel weiter.
     resetFadeForNewTrack();
+    playCountedForTrack = null; // jede Wiederholung zählt als eigene Wiedergabe
     audioEl.currentTime = 0;
     audioEl.play().catch(() => {});
     return;
