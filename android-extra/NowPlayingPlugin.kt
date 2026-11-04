@@ -306,7 +306,7 @@ class NowPlayingPlugin(private val activity: Activity) : Plugin(activity) {
                                 }
                             }
                         }
-                        if (total > 0 && done < total) throw java.io.IOException("Download unvollstaendig")
+                        if (total > 0 && done < total) throw java.io.IOException("Download unvollständig")
                     }
                 }
                 invoke.resolve()

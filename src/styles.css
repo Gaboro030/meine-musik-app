@@ -1049,6 +1049,7 @@ body.has-dynamic-colors .playlist-hero {
 .library-heading-row .home-greeting { padding-bottom: 0; }
 .library-heading-row { flex-wrap: wrap; }
 .library-heading-row .btn-secondary { flex-shrink: 0; }
+#homeView > .library-heading-row { margin-bottom: 20px; }
 
 /* ========= VERLAUF ========= */
 .history-group-heading {
@@ -3981,6 +3982,14 @@ body, .sidebar, .main-view, .player-bar, .card, .track-row {
 /* max(..., --safe-*): Tablets im Querformat nutzen dieses Layout - Kamera-
    Ausschnitt seitlich, Gesten-Leiste unten. Am PC sind die Werte 0. */
 .app-shell { gap: 14px; padding: max(14px, var(--safe-top)) max(14px, var(--safe-right)) 0 max(14px, var(--safe-left)); }
+/* Ohne Player-Leiste gehoert ihr Platz dem Inhalt. Nicht im Handy-Layout,
+   das setzt die Hoehe selbst. */
+@media (pointer: fine), (min-width: 901px) and (min-height: 501px) {
+  body:has(.player-bar-anchor.player-hidden) .app-shell {
+    height: calc(100dvh - var(--safe-bottom));
+    padding-bottom: 14px;
+  }
+}
 
 /* --- Sidebar: floating glass panel --- */
 .sidebar {

@@ -165,6 +165,19 @@
     if (manuell && fehler.length && typeof showToast === "function") showToast(fehler[0]);
   }
 
+  // Umbenannt oder geloescht (newName null): sonst liefe der Abgleich unter
+  // dem alten Namen weiter und holte alles als "neu" zurueck. Den Stand in
+  // sync_state.json zieht rename_playlist/delete_playlist selbst nach.
+  document.addEventListener("reson-playlist-renamed", (e) => {
+    const { oldName, newName } = e.detail;
+    if (!ytAuswahl.includes(oldName)) return;
+    ytAuswahl = ytAuswahl.filter((n) => n !== oldName);
+    if (newName) ytAuswahl.push(newName);
+    localStorage.setItem(YT_KEY, JSON.stringify(ytAuswahl));
+    ytListeGeladen = false;
+    ytListeZeigen();
+  });
+
   if (ytNow) ytNow.addEventListener("click", () => ytAbgleichen(true));
   setTimeout(() => ytAbgleichen(false), 15000);
   setInterval(() => ytAbgleichen(false), 10 * 60 * 1000);

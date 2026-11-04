@@ -158,8 +158,8 @@ pub async fn health_check_cleanup(state: tauri::State<'_, AppState>) -> Result<H
 /// genau diesem Text ab, statt sinnlos ueber die ganze Bibliothek zu
 /// laufen) - deshalb eine Konstante statt drei getippter Kopien.
 const FFMPEG_MISSING: &str =
-    "ffmpeg nicht gefunden - dafuer wird ein auf System-PATH installiertes ffmpeg benoetigt.";
-const ANDROID_NO_FFMPEG: &str = "Auf Android nicht verfuegbar (kein ffmpeg).";
+    "ffmpeg nicht gefunden - dafür wird ein auf System-PATH installiertes ffmpeg benötigt.";
+const ANDROID_NO_FFMPEG: &str = "Auf Android nicht verfügbar (kein ffmpeg).";
 
 #[derive(Serialize, Clone)]
 pub struct SilenceHit {
@@ -702,7 +702,7 @@ pub async fn upgrade_track(
         return Err(ANDROID_NO_FFMPEG.into());
     }
     if !filename.to_lowercase().ends_with(".mp3") {
-        return Err("Nur MP3-Dateien koennen aufgewertet werden.".into());
+        return Err("Nur MP3-Dateien können aufgewertet werden.".into());
     }
     let full = track_full_path(&state, &playlist, &filename)?;
     if !full.is_file() {

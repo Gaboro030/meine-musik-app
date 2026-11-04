@@ -96,7 +96,7 @@ pub async fn import_library_zip(state: tauri::State<'_, AppState>, src_path: Str
                 drop(out);
                 std::fs::remove_file(&dest).ok();
                 return Err(format!(
-                    "Eintrag im Backup ist groesser als {} GB - abgebrochen.",
+                    "Eintrag im Backup ist größer als {} GB - abgebrochen.",
                     MAX_ENTRY_BYTES / (1024 * 1024 * 1024)
                 ));
             }

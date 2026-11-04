@@ -127,8 +127,8 @@
         const name = seg(parts[3] || "");
         if (parts[4] === "rename" && method === "POST") {
           const b = jsonBody();
-          await invoke("rename_playlist", { oldName: name, newName: b.new_name });
-          return jsonResponse({ ok: true, name: b.new_name });
+          const neu = await invoke("rename_playlist", { oldName: name, newName: b.new_name });
+          return jsonResponse({ ok: true, name: neu });
         }
         if (method === "DELETE") {
           await invoke("delete_playlist", { name });

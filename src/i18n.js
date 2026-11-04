@@ -36,12 +36,12 @@
     "Ganze Bibliothek mischen": "Shuffle whole library",
     "Bibliothek ist leer.": "Library is empty.",
     "Stille am Anfang/Ende": "Silence at start/end",
-    "Eigener, separater Scan (nicht Teil des normalen Health-Checks oben) - prueft jede MP3-Datei per ffmpeg auf laengere Stille am Anfang oder Ende und kann sie verlustfrei wegschneiden. Braucht ein auf dem System installiertes ffmpeg.":
+    "Eigener, separater Scan (nicht Teil des normalen Health-Checks oben) - prüft jede MP3-Datei per ffmpeg auf längere Stille am Anfang oder Ende und kann sie verlustfrei wegschneiden. Braucht ein auf dem System installiertes ffmpeg.":
       "Separate scan (not part of the regular health check above) - checks every MP3 file with ffmpeg for longer silence at the start or end and can trim it losslessly. Requires ffmpeg installed on the system.",
     "🔇 Auf Stille prüfen": "🔇 Check for silence",
     "Auf Stille prüfen": "Check for silence",
     "Lautstärke angleichen": "Match volume",
-    "Misst jeden Titel einmal per ffmpeg aus und merkt sich, wie viel lauter oder leiser er gegenüber den anderen ist. Beim Abspielen wird das automatisch ausgeglichen - kein Lautstärke-Sprung mehr beim Songwechsel. Die Messung läuft nur auf Knopfdruck und kann bei grossen Bibliotheken einige Minuten dauern. Braucht ein auf dem System installiertes ffmpeg.":
+    "Misst jeden Titel einmal per ffmpeg aus und merkt sich, wie viel lauter oder leiser er gegenüber den anderen ist. Beim Abspielen wird das automatisch ausgeglichen - kein Lautstärke-Sprung mehr beim Songwechsel. Die Messung läuft nur auf Knopfdruck und kann bei großen Bibliotheken einige Minuten dauern. Braucht ein auf dem System installiertes ffmpeg.":
       "Measures every track once with ffmpeg and remembers how much louder or quieter it is than the rest. Playback then evens that out automatically - no more volume jump when the song changes. The measurement only runs when you ask for it and can take a few minutes on large libraries. Requires ffmpeg installed on the system.",
     "🔊 Lautstärke analysieren": "🔊 Analyse volume",
     "Lautstärke analysieren": "Analyse volume",
@@ -309,7 +309,7 @@
     "Top-Interpreten": "Top artists",
 
     // ----- Health-Check -----
-    "Prueft die Bibliothek auf verwaiste Sidecar-Dateien (Cover/Album/ Interpret-Sidecars ohne zugehoerigen Track) und kaputte Papierkorb-Eintraege (Datei fehlt, Wiederherstellen wuerde scheitern).":
+    "Prüft die Bibliothek auf verwaiste Sidecar-Dateien (Cover/Album/ Interpret-Sidecars ohne zugehörigen Track) und kaputte Papierkorb-Einträge (Datei fehlt, Wiederherstellen würde scheitern).":
       "Checks the library for orphaned sidecar files (cover/album/artist sidecars without a matching track) and broken trash entries (file missing, restoring would fail).",
     "🔍 Erneut scannen": "🔍 Scan again",
     "Erneut scannen": "Scan again",
@@ -318,7 +318,7 @@
     "✅ Alles sauber - nichts gefunden.": "✅ All clean - nothing found.",
     "Alles sauber - nichts gefunden.": "All clean - nothing found.",
     "Verwaiste Sidecar-Dateien": "Orphaned sidecar files",
-    "Kaputte Papierkorb-Eintraege": "Broken trash entries",
+    "Kaputte Papierkorb-Einträge": "Broken trash entries",
 
     // ----- Einstellungen -----
     "⚙️ Einstellungen": "⚙️ Settings",

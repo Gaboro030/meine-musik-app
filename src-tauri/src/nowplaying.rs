@@ -146,6 +146,8 @@ pub async fn clear_now_playing(app: tauri::AppHandle) -> Result<(), String> {
     }
     #[cfg(not(target_os = "android"))]
     {
+        #[cfg(target_os = "windows")]
+        crate::taskbar::zustand_setzen(false);
         let _ = app;
     }
     Ok(())

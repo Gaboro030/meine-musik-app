@@ -509,10 +509,11 @@ pub fn create_playlist(state: tauri::State<AppState>, name: String) -> Result<()
 
 #[tauri::command]
 pub fn rename_playlist(
+    app: tauri::AppHandle,
     state: tauri::State<AppState>,
     old_name: String,
     new_name: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let new_clean = safe_filename(&new_name);
     if new_clean.is_empty() {
         return Err("Neuer Name fehlt.".into());
@@ -526,17 +527,25 @@ pub fn rename_playlist(
     if new_dir.exists() {
         return Err("Es gibt schon eine Playlist mit diesem Namen.".into());
     }
-    std::fs::rename(&old_dir, &new_dir).map_err(|e| e.to_string())
+    std::fs::rename(&old_dir, &new_dir).map_err(|e| e.to_string())?;
+    crate::syncplan::zustand_umziehen(&app, &old_name, Some(&new_clean));
+    Ok(new_clean)
 }
 
 #[tauri::command]
-pub async fn delete_playlist(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
+pub async fn delete_playlist(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    name: String,
+) -> Result<(), String> {
     let _lock = LIBRARY_LOCK.lock().unwrap();
     let dir = safe_join(&state.music_root, &name)?;
     if !dir.is_dir() {
         return Err("Playlist nicht gefunden.".into());
     }
-    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())
+    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+    crate::syncplan::zustand_umziehen(&app, &name, None);
+    Ok(())
 }
 
 /// Moves the track to the trash instead of unlinking it outright - same
@@ -803,7 +812,7 @@ pub async fn get_stream_url(app: tauri::AppHandle, video_id: String) -> Result<S
         return Err("Ungueltige Video-ID.".into());
     }
     if cfg!(target_os = "android") {
-        return Err("Video-Vorschau ist auf Android noch nicht verfuegbar - bitte ueber den Downloader herunterladen.".into());
+        return Err("Video-Vorschau ist auf Android noch nicht verfügbar - bitte über den Downloader herunterladen.".into());
     }
 
     let output = app

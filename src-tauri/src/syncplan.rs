@@ -281,6 +281,25 @@ pub fn sync_zustand_loeschen(app: tauri::AppHandle, dienst: String, playlist: St
     zustand_schreiben(&app, &zustand);
 }
 
+/// Playlist umbenannt (`neu` = Some) oder geloescht (None): Stand in allen
+/// Diensten mitnehmen bzw. vergessen. Sonst hielte der naechste Abgleich
+/// unter dem alten Namen alles fuer lokal geloescht.
+pub fn zustand_umziehen(app: &tauri::AppHandle, alt: &str, neu: Option<&str>) {
+    let mut zustand = zustand_lesen(app);
+    let mut geaendert = false;
+    for dienst in zustand.dienste.values_mut() {
+        if let Some(stand) = dienst.remove(alt) {
+            geaendert = true;
+            if let Some(neu) = neu {
+                dienst.insert(neu.to_string(), stand);
+            }
+        }
+    }
+    if geaendert {
+        zustand_schreiben(app, &zustand);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

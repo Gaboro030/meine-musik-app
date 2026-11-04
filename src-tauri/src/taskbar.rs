@@ -192,7 +192,7 @@ fn buttons(spielt: bool) -> [THUMBBUTTON; 3] {
         } else {
             knopf(ID_PLAY_PAUSE, Form::Play, "Wiedergabe")
         },
-        knopf(ID_NEXT, Form::Next, "Naechster Titel"),
+        knopf(ID_NEXT, Form::Next, "Nächster Titel"),
     ]
 }
 

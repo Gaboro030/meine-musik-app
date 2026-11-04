@@ -849,7 +849,7 @@ pub async fn download_progress(
     drop(file);
     if let Some(total) = total {
         if done < total {
-            return Err(fail("Download unvollstaendig - bitte erneut versuchen.".to_string()));
+            return Err(fail("Download unvollständig - bitte erneut versuchen.".to_string()));
         }
     }
     // Gleicher Titel schon da (erneuter Sammel-Download): ersetzen wie bisher.

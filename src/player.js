@@ -639,9 +639,17 @@ function resyncAfterLibraryRefresh() {
   const byName = (pl) => (pl ? library.find((p) => p.name === pl.name) || null : null);
   if (playingPlaylist) {
     const oldLength = playingPlaylist.tracks.length;
+    const oldIndex = currentTrackIndex;
+    const resumeTrack = playingPlaylist.tracks[queueResumeIndex];
     playingPlaylist = byName(playingPlaylist);
+    if (playingPlaylist && resumeTrack) {
+      queueResumeIndex = playingPlaylist.tracks.findIndex((tr) => tr.file === resumeTrack.file);
+    }
     if (playingPlaylist && currentTrackIndex >= 0 && nowPlayingMeta && nowPlayingMeta.playlist === playingPlaylist.name) {
       currentTrackIndex = playingPlaylist.tracks.findIndex((tr) => tr.file === nowPlayingMeta.file);
+      // Titel ist weg (Abgleich, Handy-Sync): "Weiter" macht an seiner
+      // alten Stelle weiter statt wieder beim ersten Titel.
+      if (currentTrackIndex === -1) queueResumeIndex = oldIndex - 1;
     }
     if (queueResumeIndex >= (playingPlaylist ? playingPlaylist.tracks.length : 0)) queueResumeIndex = -1;
     if (playingPlaylist && isShuffle && playingPlaylist.tracks.length !== oldLength) buildShuffleOrder();
@@ -649,6 +657,19 @@ function resyncAfterLibraryRefresh() {
       currentTrackIndex = -1;
       shuffleOrder = [];
     }
+  }
+  // Warteschlange: Gelöschtes raus, sonst endet es beim Abspielen in einem
+  // Ladefehler. Nach dem Umbenennen stimmt die Adresse nicht mehr.
+  if (userQueue.length) {
+    const tracks = new Map();
+    library.forEach((pl) => pl.tracks.forEach((tr) => tracks.set(`${pl.name}/${tr.file}`, tr)));
+    const before = userQueue.length;
+    userQueue = userQueue.filter((e) => {
+      const tr = tracks.get(`${e.playlist}/${e.file}`);
+      if (tr) e.stream_url = tr.stream_url;
+      return tr;
+    });
+    if (userQueue.length !== before) renderQueuePanel();
   }
   if (currentPlaylist) {
     const viewed = byName(currentPlaylist);
@@ -1096,7 +1117,7 @@ function playMoodPlaylist(entries) {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   const [first, ...rest] = shuffled;
-  playTrackIn(first.plIdx, first.trackIdx);
+  playInPlaylist(library[first.plIdx], first.trackIdx);
   userQueue = rest.map((e) => queueEntryForTrack(e.track, library[e.plIdx].name));
   renderQueuePanel();
 }
@@ -1134,6 +1155,7 @@ function queueEntryForTrack(track, playlistName) {
     stream_url: track.stream_url,
     playlist: playlistName,
     file: track.file || "",
+    duration: track.duration,
   };
 }
 
@@ -1407,7 +1429,10 @@ function playInPlaylist(pl, trackIdx) {
   playingPlaylist = pl;
   if (switched) recentlyPlayed = [];
   playTrack(trackIdx);
-  if (isShuffle && (switched || !shuffleOrder.length)) buildShuffleOrder();
+  if (isShuffle && (switched || !shuffleOrder.length)) {
+    buildShuffleOrder();
+    renderQueuePanel(); // playTrack zeigte noch die alte Reihenfolge
+  }
 }
 
 // Klick in der angezeigten Tabelle / "Alle abspielen".
@@ -1593,6 +1618,7 @@ function migratePlaylistName(oldName, newName) {
   if (currentPlaylist && currentPlaylist.name === oldName) currentPlaylist = { ...currentPlaylist, name: newName };
   if (nowPlayingMeta && nowPlayingMeta.playlist === oldName) nowPlayingMeta.playlist = newName;
   userQueue.forEach((e) => { if (e.playlist === oldName) e.playlist = newName; });
+  document.dispatchEvent(new CustomEvent("reson-playlist-renamed", { detail: { oldName, newName } }));
 }
 
 deletePlaylistBtn.addEventListener("click", () => {
@@ -1609,6 +1635,7 @@ deletePlaylistBtn.addEventListener("click", () => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || t("Löschen fehlgeschlagen."));
         if (nowPlayingMeta) stopIfNowPlaying(name, nowPlayingMeta.file);
+        document.dispatchEvent(new CustomEvent("reson-playlist-renamed", { detail: { oldName: name, newName: null } }));
         showToast(t("🗑 Playlist gelöscht"));
         await refreshLibrary();
         showView("library");
@@ -2619,7 +2646,7 @@ function nextTrack() {
     const pos = shuffleOrder.indexOf(fromIndex);
     const nextPos = (pos + 1) % shuffleOrder.length;
     if (nextPos === 0 && repeatMode !== "all" && pos !== -1) {
-      updatePlayButton(false);
+      updatePlayButton(!audioEl.paused);
       return;
     }
     playTrack(shuffleOrder[nextPos]);
@@ -2627,7 +2654,9 @@ function nextTrack() {
   }
   const next = neighbourTrackIndex(fromIndex, 1);
   if (next === -1) {
-    updatePlayButton(false);
+    // Nicht stur "aus": ein Klick auf Weiter beim letzten Titel laesst den
+    // Song ja weiterlaufen.
+    updatePlayButton(!audioEl.paused);
     return;
   }
   playTrack(next);
@@ -2980,6 +3009,24 @@ const MAX_CONSECUTIVE_AUDIO_ERRORS = 5;
 
 let retriedForSrc = null; // pro Quelle genau EIN Sofort-Retry, bevor übersprungen wird
 
+/* Denselben Titel neu laden und an der alten Stelle weiterspielen. Scheitert
+   das, bleibt der Listener hängen - der nächste Titel darf die alte Position
+   dann nicht erben, deshalb der Vergleich der Quelle. */
+function reloadAtPosition() {
+  const pos = audioEl.currentTime || 0;
+  const src = audioEl.getAttribute("src");
+  audioEl.load();
+  const restore = () => {
+    audioEl.removeEventListener("canplay", restore);
+    if (audioEl.getAttribute("src") !== src) return;
+    if (pos > 0 && isFinite(audioEl.duration) && pos < audioEl.duration) {
+      audioEl.currentTime = pos;
+    }
+    audioEl.play().catch(() => {});
+  };
+  audioEl.addEventListener("canplay", restore);
+}
+
 audioEl.addEventListener("playing", () => {
   consecutiveAudioErrors = 0;
   retriedForSrc = null;
@@ -2996,17 +3043,8 @@ audioEl.addEventListener("error", () => {
   const src = audioEl.getAttribute("src");
   if (retriedForSrc !== src) {
     retriedForSrc = src;
-    const pos = audioEl.currentTime || 0;
     showToast(t("⚠️ Aussetzer im Stream – versuche es erneut …"));
-    audioEl.load();
-    const restore = () => {
-      audioEl.removeEventListener("canplay", restore);
-      if (pos > 0 && isFinite(audioEl.duration) && pos < audioEl.duration) {
-        audioEl.currentTime = pos;
-      }
-      audioEl.play().catch(() => {});
-    };
-    audioEl.addEventListener("canplay", restore);
+    reloadAtPosition();
     return;
   }
 
@@ -3030,17 +3068,8 @@ function armStallWatchdog() {
   clearTimeout(stallTimer);
   stallTimer = setTimeout(() => {
     if (audioEl.paused || !audioEl.getAttribute("src")) return;
-    const pos = audioEl.currentTime || 0;
     showToast(t("⚠️ Stream hängt – lade neu …"));
-    audioEl.load();
-    const restore = () => {
-      audioEl.removeEventListener("canplay", restore);
-      if (pos > 0 && isFinite(audioEl.duration) && pos < audioEl.duration) {
-        audioEl.currentTime = pos;
-      }
-      audioEl.play().catch(() => {});
-    };
-    audioEl.addEventListener("canplay", restore);
+    reloadAtPosition();
   }, 10000);
 }
 audioEl.addEventListener("stalled", armStallWatchdog);
@@ -3078,14 +3107,7 @@ const queuePanelBody = document.getElementById("queuePanelBody");
 const queuePanelClose = document.getElementById("queuePanelClose");
 
 function queueEntryFor(track) {
-  return {
-    title: track.title,
-    artist: track.artist || "",
-    cover: track.cover || "",
-    stream_url: track.stream_url,
-    playlist: currentPlaylist ? currentPlaylist.name : "",
-    file: track.file || "",
-  };
+  return queueEntryForTrack(track, currentPlaylist ? currentPlaylist.name : "");
 }
 
 function enqueueNext(track) {
@@ -7098,13 +7120,14 @@ function prefetchMissingCovers(pl) {
    stable metadata to prefetch against, so those are skipped. */
 function peekNextTrack() {
   if (userQueue.length || liveQueue.length || !playingPlaylist || !playingPlaylist.tracks.length) return null;
+  const fromIndex = currentTrackIndex === -1 && queueResumeIndex >= 0 ? queueResumeIndex : currentTrackIndex;
   if (isShuffle && shuffleOrder.length) {
-    const pos = shuffleOrder.indexOf(currentTrackIndex);
+    const pos = shuffleOrder.indexOf(fromIndex);
     const nextPos = (pos + 1) % shuffleOrder.length;
-    if (nextPos === 0 && repeatMode !== "all") return null;
+    if (nextPos === 0 && repeatMode !== "all" && pos !== -1) return null;
     return playingPlaylist.tracks[shuffleOrder[nextPos]] || null;
   }
-  const next = neighbourTrackIndex(currentTrackIndex, 1);
+  const next = neighbourTrackIndex(fromIndex, 1);
   if (next === -1) return null;
   return playingPlaylist.tracks[next] || null;
 }

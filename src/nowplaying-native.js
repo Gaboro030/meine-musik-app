@@ -12,11 +12,19 @@
   if (!window.__TAURI__) return;
   const { invoke, addPluginListener } = window.__TAURI__.core;
 
+  // Das Plugin gibt es nur in der Android-Huelle (lib.rs).
+  const android = /android/i.test(navigator.userAgent);
+
   const ms = (sekunden) =>
     Number.isFinite(sekunden) && sekunden > 0 ? Math.round(sekunden * 1000) : 0;
 
   function push(playing) {
-    if (!nowPlayingMeta) return;
+    // Laufender Titel geloescht: das pause-Event kommt erst danach an,
+    // Benachrichtigung und Taskleisten-Symbol blieben sonst auf "spielt".
+    if (!nowPlayingMeta) {
+      invoke("clear_now_playing").catch(() => {});
+      return;
+    }
     invoke("update_now_playing", {
       title: nowPlayingMeta.title || "Reson",
       artist: nowPlayingMeta.artist || "",
@@ -92,7 +100,9 @@
         break;
       }
     }
-  }).catch((e) => console.warn("Medientasten nicht verbunden:", e));
+  }).catch((e) => {
+    if (android) console.warn("Medientasten nicht verbunden:", e);
+  });
 
   /* ===== Android Auto =====
      PlaybackService.kt ist zugleich der MediaBrowserService, ueber den
@@ -103,8 +113,6 @@
      Gewaehlt wird ueber eine mediaId, die er als JSON baut:
      ["t", playlist, datei] = Titel, ["ps", playlist] = Playlist gemischt,
      ["s"] = ganze Bibliothek gemischt. */
-  // Das Plugin gibt es nur in der Android-Huelle (lib.rs).
-  const android = /android/i.test(navigator.userAgent);
   let gesendet = "";
   function bibliothekMelden() {
     if (!android || !Array.isArray(library)) return;

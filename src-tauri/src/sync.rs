@@ -298,7 +298,7 @@ pub async fn sync_pair_with_code(
     let name = data
         .get("name")
         .and_then(|v| v.as_str())
-        .unwrap_or("Gekoppeltes Geraet")
+        .unwrap_or("Gekoppeltes Gerät")
         .to_string();
 
     let peer = Peer {
@@ -355,7 +355,7 @@ pub async fn sync_send_playlists(
         let peers = state.0.peers.lock().unwrap();
         let peer = peers
             .get(&peer_id)
-            .ok_or_else(|| "Geraet ist nicht mehr erreichbar.".to_string())?;
+            .ok_or_else(|| "Gerät ist nicht mehr erreichbar.".to_string())?;
         let base = if peer.base_url.is_empty() {
             format!("http://{}:{}", peer.ip, peer.port)
         } else {

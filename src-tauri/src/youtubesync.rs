@@ -607,9 +607,14 @@ pub async fn youtube_abgleich(
 
     let state = app.state::<crate::commands::AppState>();
     let dir = state.music_root.join(crate::commands::safe_filename(&playlist));
-    let lokal_tracks = crate::commands::scan_playlist_dir(&dir, &playlist)
-        .map(|p| p.tracks)
-        .unwrap_or_default();
+    // Ein fehlender Playlist-Ordner ist normal (noch nie geladen, letzter
+    // Titel geloescht). Ein unlesbarer darf dagegen nicht als "alles
+    // geloescht" gelten - kleine Playlists rutschen unter dem Schutz unten durch.
+    let lokal_tracks = match crate::commands::scan_playlist_dir(&dir, &playlist) {
+        Some(p) => p.tracks,
+        None if state.music_root.is_dir() && !dir.exists() => Vec::new(),
+        None => return Err(format!("„{playlist}“ nicht abgeglichen: Musikordner nicht lesbar.")),
+    };
 
     let mut z = sync_zustand(app.clone(), "google".into(), playlist.clone());
     if z.fern_id.is_empty() {

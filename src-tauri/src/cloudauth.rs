@@ -225,9 +225,9 @@ async fn auf_rueckleitung_warten(pfad: &str, state_erwartet: &str) -> Result<Str
             }
 
             let (titel, text) = if fehler.is_some() {
-                ("Anmeldung abgebrochen", "Du kannst dieses Fenster schliessen.")
+                ("Anmeldung abgebrochen", "Du kannst dieses Fenster schließen.")
             } else if code.is_some() && state.as_deref() == Some(state_erwartet) {
-                ("Angemeldet", "Fertig - du kannst dieses Fenster schliessen und zu Reson zurueck.")
+                ("Angemeldet", "Fertig - du kannst dieses Fenster schließen und zu Reson zurück.")
             } else {
                 ("Etwas stimmt nicht", "Die Antwort passt nicht zur Anfrage. Bitte in Reson noch einmal versuchen.")
             };
@@ -359,7 +359,7 @@ pub async fn gueltiges_token(
         return Err("Nicht angemeldet.".into());
     };
     if !token.client_id.is_empty() && token.client_id != client_id {
-        return Err("Die Client-Kennung wurde geaendert - bitte neu anmelden.".into());
+        return Err("Die Client-Kennung wurde geändert - bitte neu anmelden.".into());
     }
     if token.laeuft_ab > jetzt() && !token.access_token.is_empty() {
         return Ok(token.access_token);
