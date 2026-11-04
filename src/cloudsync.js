@@ -84,6 +84,10 @@
     ytAuswahl = JSON.parse(localStorage.getItem(YT_KEY) || "[]");
   } catch (_) {}
   let ytLaeuft = false;
+  let ytNochmal = false; // Wunsch waehrend eines laufenden Durchgangs
+  const YT_AUTO_KEY = "ytSyncAuto";
+  const ytAutoBtn = document.getElementById("ytSyncAutoBtn");
+  let ytAuto = localStorage.getItem(YT_AUTO_KEY) !== "0";
   let ytFernNamen = null; // Kostet Kontingent - einmal holen reicht
   const googleId = () => (localStorage.getItem("googleClientId") || "").trim();
   const mitWerten = (text, werte) => (window.t ? window.t(text, werte) : text);
@@ -136,7 +140,13 @@
   }
 
   async function ytAbgleichen(manuell) {
-    if (ytLaeuft || !angemeldet.google || !googleId()) return;
+    // Laeuft schon: den Wunsch merken. Sonst ging eine gerade eingeschaltete
+    // Playlist leer aus und kam erst nach zehn Minuten dran.
+    if (ytLaeuft) {
+      if (manuell) ytNochmal = true;
+      return;
+    }
+    if (!angemeldet.google || !googleId()) return;
     if (!ytAuswahl.length) {
       if (manuell) ytStatus.textContent = uebersetzt("Schalte zuerst mindestens eine Playlist ein.");
       return;
@@ -173,6 +183,28 @@
     if (fehler.length) zeile += " " + fehler[0];
     ytStatus.textContent = zeile;
     if (manuell && fehler.length && typeof showToast === "function") showToast(fehler[0]);
+    if (ytNochmal) {
+      ytNochmal = false;
+      ytAbgleichen(true);
+    }
+  }
+
+  // Aus: nur noch "Jetzt abgleichen" gleicht ab.
+  const ytAutomatisch = () => {
+    if (ytAuto) ytAbgleichen(false);
+  };
+  const ytAutoZeigen = () => {
+    ytAutoBtn.classList.toggle("active", ytAuto);
+    ytAutoBtn.setAttribute("aria-checked", String(ytAuto));
+  };
+  if (ytAutoBtn) {
+    ytAutoZeigen();
+    ytAutoBtn.addEventListener("click", () => {
+      ytAuto = !ytAuto;
+      localStorage.setItem(YT_AUTO_KEY, ytAuto ? "1" : "0");
+      ytAutoZeigen();
+      ytAutomatisch();
+    });
   }
 
   // Umbenannt oder geloescht (newName null): sonst liefe der Abgleich unter
@@ -188,8 +220,8 @@
   });
 
   if (ytNow) ytNow.addEventListener("click", () => ytAbgleichen(true));
-  setTimeout(() => ytAbgleichen(false), 15000);
-  setInterval(() => ytAbgleichen(false), 10 * 60 * 1000);
+  setTimeout(ytAutomatisch, 15000);
+  setInterval(ytAutomatisch, 10 * 60 * 1000);
   // Lokale Aenderung (Song geladen/geloescht) bald drueben nachziehen.
   // Der eigene refreshLibrary() oben laeuft noch mit ytLaeuft = true und
   // loest deshalb keinen weiteren Durchgang aus.
@@ -198,7 +230,7 @@
     ytListeZeigen(); // neue Playlist soll ohne Neustart schaltbar sein
     if (ytLaeuft) return;
     clearTimeout(ytBald);
-    ytBald = setTimeout(() => ytAbgleichen(false), 30000);
+    ytBald = setTimeout(ytAutomatisch, 30000);
   });
 
   // Knoepfe zu den Seiten, auf denen man die Client-ID bekommt.

@@ -1486,6 +1486,7 @@ body.has-dynamic-colors .playlist-hero {
 .settings-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .yt-sync { flex: 1; min-width: 0; }
 .yt-sync-list { margin: 8px 0; }
+.yt-sync-auto { margin-top: 8px; border-bottom: 1px solid var(--sp-border); padding-bottom: 10px; }
 .yt-sync-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; }
 .yt-sync-item span { font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toggle-switch.active, .toggle-switch[data-update-auto][aria-checked="true"] { background: var(--sp-green); }

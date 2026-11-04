@@ -747,6 +747,7 @@
       "Found in the same OAuth client under „Client secrets“. Only needed to sign in and stays on this device.",
     "Clientschlüssel fehlt noch.": "Client secret is still missing.",
     "Mit YouTube Music abgleichen": "Sync with YouTube Music",
+    "Automatisch abgleichen": "Sync automatically",
     "Eingeschaltete Playlists bleiben auf beiden Seiten gleich - beim Start und alle 10 Minuten, solange Reson offen ist. Neue Songs werden geladen, entfernte landen im Papierkorb.":
       "Enabled playlists stay the same on both sides - at startup and every 10 minutes while Reson is open. New songs are downloaded, removed ones go to the trash.",
     "Jetzt abgleichen": "Sync now",
