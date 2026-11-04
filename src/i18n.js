@@ -233,6 +233,7 @@
     "Sync-Modus beenden": "Stop sync mode",
     "Design": "Theme",
     "Rechtsklick auf ein Theme = anpassen, was es ändert": "Right-click a theme to customize what it changes",
+    "Lade Titel im Downloader herunter - sie tauchen dann automatisch hier auf.": "Download tracks in the Downloader - they will show up here automatically.",
     "Eigenes Theme ✎": "Custom theme ✎",
     "Einstellungen": "Settings",
     "Mehr": "More",
@@ -801,6 +802,9 @@
     });
     document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
       el.placeholder = t(el.getAttribute("data-i18n-placeholder"));
+    });
+    document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+      el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria-label")));
     });
     document.documentElement.lang = currentLang;
   }

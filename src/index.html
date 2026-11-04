@@ -193,7 +193,7 @@
                 <span class="theme-swatch" style="background:conic-gradient(#ff004c,#ffb000,#1db954,#00c3ff,#7b2fff,#ff004c)"></span> Eigenes Theme ✎
               </button>
             </div>
-            <div class="theme-popover-hint">Rechtsklick auf ein Theme = anpassen, was es ändert</div>
+            <div class="theme-popover-hint" data-i18n="Rechtsklick auf ein Theme = anpassen, was es ändert">Rechtsklick auf ein Theme = anpassen, was es ändert</div>
           </div>
         </div>
         <div class="sidebar-tool-wrap">
@@ -226,10 +226,7 @@
         <div id="emptyState" class="empty-state">
           <div class="empty-icon" data-icon="headphones"></div>
           <h2 data-i18n="Noch keine Musik in deiner Bibliothek">Noch keine Musik in deiner Bibliothek</h2>
-          <p>
-            Lade Titel im <a href="downloader.html">Downloader</a> herunter und aktiviere dort
-            „In Bibliothek speichern" — sie tauchen dann automatisch hier auf.
-          </p>
+          <p data-i18n="Lade Titel im Downloader herunter - sie tauchen dann automatisch hier auf.">Lade Titel im Downloader herunter - sie tauchen dann automatisch hier auf.</p>
           <a href="downloader.html" class="btn-primary" data-i18n="Zum Downloader">Zum Downloader</a>
         </div>
 
@@ -927,7 +924,7 @@
   <div id="syncModal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
-        <h3 id="syncModalTitle">Gerät</h3>
+        <h3 id="syncModalTitle" data-i18n="Gerät">Gerät</h3>
         <button type="button" id="syncModalClose" class="modal-close" data-icon="x"></button>
       </div>
       <div class="modal-body">
@@ -1172,7 +1169,7 @@
       <!-- Knopf statt span: Klick schaltet stumm / wieder an. eq-toggle-btn
            nur wegen der gleichen Optik (Hover, Glow) wie der Equalizer daneben. -->
       <button type="button" id="pbVolIcon" class="pb-vol-icon eq-toggle-btn" data-i18n-title="Stummschalten / Ton an (Strg+Alt+M)" title="Stummschalten / Ton an (Strg+Alt+M)" data-icon="volume-2"></button>
-      <div class="pb-volume-wrap" id="pbVolumeWrap" tabindex="0" role="slider" aria-label="Lautstärke" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"
+      <div class="pb-volume-wrap" id="pbVolumeWrap" tabindex="0" role="slider" data-i18n-aria-label="Lautstärke" aria-label="Lautstärke" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"
            data-i18n-title="Lautstärke - Mausrad: 1 %, mit Umschalt: 5 %" title="Lautstärke - Mausrad: 1 %, mit Umschalt: 5 %">
         <div class="pb-volume-track">
           <div class="pb-volume-bar" id="pbVolumeBar"></div>

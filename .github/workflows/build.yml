@@ -229,11 +229,22 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # alle Tags, fuer die Aenderungsliste
 
       - uses: actions/download-artifact@v4
         with:
           path: release
           merge-multiple: true
+
+      # --generate-notes kennt nur Pull Requests. Hier wird direkt auf main
+      # gepusht, im Update-Popup stand deshalb nur der Changelog-Link.
+      - name: Aenderungen seit dem letzten Release
+        run: |
+          set -euo pipefail
+          vorher=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
+          git log --no-merges --format='- %s' "$vorher..$GITHUB_REF_NAME" | { grep -vE '^- Version [0-9.]+$' || true; } > notes.md
+          cat notes.md
 
       # Nur was Nutzer wirklich brauchen: Windows-Installer, Linux-AppImage
       # + .deb, Android-APK. Die .sig-Dateien braucht der Updater.
@@ -242,11 +253,10 @@ jobs:
           set -euo pipefail
           cd release
           ls -la
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"             --title "Reson ${GITHUB_REF_NAME#v}" --generate-notes             windows-*-setup.exe windows-*-setup.exe.sig             ubuntu-*.AppImage ubuntu-*.AppImage.sig ubuntu-*.deb             android-Reson.apk
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"             --title "Reson ${GITHUB_REF_NAME#v}" --notes-file ../notes.md             windows-*-setup.exe windows-*-setup.exe.sig             ubuntu-*.AppImage ubuntu-*.AppImage.sig ubuntu-*.deb             android-Reson.apk
 
       - name: latest.json fuer das In-App-Update
         run: |
           set -euo pipefail
-          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body -q .body > notes.md
           node scripts/make-latest-json.mjs release "$GITHUB_REF_NAME" notes.md
           gh release upload "$GITHUB_REF_NAME" release/latest.json --repo "$GITHUB_REPOSITORY"

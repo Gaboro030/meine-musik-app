@@ -585,6 +585,16 @@ fn datei_fuer_titel(dir: &std::path::Path, titel: &str) -> Option<String> {
     })
 }
 
+/// Titel fuer den Dateinamen. Ist der blanke Titel schon vergeben, kommt der
+/// Interpret dazu.
+fn zieltitel(titel: &str, kanal: &str, vergeben: bool) -> String {
+    if vergeben {
+        format!("{titel} - {}", kanal.trim_end_matches(" - Topic"))
+    } else {
+        titel.to_string()
+    }
+}
+
 /// Ein kompletter Abgleich einer Reson-Playlist mit der gleichnamigen
 /// Playlist bei YouTube Music, in beide Richtungen:
 ///
@@ -607,12 +617,13 @@ pub async fn youtube_abgleich(
 
     let state = app.state::<crate::commands::AppState>();
     let dir = state.music_root.join(crate::commands::safe_filename(&playlist));
-    // Ein fehlender Playlist-Ordner ist normal (noch nie geladen, letzter
-    // Titel geloescht). Ein unlesbarer darf dagegen nicht als "alles
-    // geloescht" gelten - kleine Playlists rutschen unter dem Schutz unten durch.
+    // Fehlt der Ordner oder liegt kein Titel drin, ist das normal (noch nie
+    // geladen, letzter Titel geloescht) - scan_playlist_dir sagt dann None.
+    // Ein unlesbarer Ordner darf dagegen nicht als "alles geloescht" gelten,
+    // kleine Playlists rutschen unter dem Schutz unten durch.
     let lokal_tracks = match crate::commands::scan_playlist_dir(&dir, &playlist) {
         Some(p) => p.tracks,
-        None if state.music_root.is_dir() && !dir.exists() => Vec::new(),
+        None if state.music_root.is_dir() && (!dir.exists() || std::fs::read_dir(&dir).is_ok()) => Vec::new(),
         None => return Err(format!("„{playlist}“ nicht abgeglichen: Musikordner nicht lesbar.")),
     };
 
@@ -713,14 +724,18 @@ pub async fn youtube_abgleich(
     // 4. Drueben neu -> herunterladen. Liegt die Datei schon da, wird nur
     //    verknuepft.
     for f in fern_neu {
-        let datei = match datei_fuer_titel(&dir, &f.title) {
+        // Der Dateiname kommt aus dem Titel. Zwei Songs namens "Intro" haetten
+        // sich sonst eine Datei geteilt, und der zweite fehlte bei mir.
+        let belegt = |d: &String| z.paare.iter().chain(&neue_paare).any(|p| &p.lokal == d);
+        let titel = zieltitel(&f.title, &f.artist, datei_fuer_titel(&dir, &f.title).filter(belegt).is_some());
+        let datei = match datei_fuer_titel(&dir, &titel) {
             Some(d) => Some(d),
             None => match crate::commands::download_track(
                 app.clone(),
                 app.state(),
                 f.video_id.clone(),
                 playlist.clone(),
-                f.title.clone(),
+                titel.clone(),
                 Some(f.artist.clone()),
                 None,
                 None,
@@ -730,7 +745,7 @@ pub async fn youtube_abgleich(
             {
                 Ok(()) => {
                     erg.geladen += 1;
-                    datei_fuer_titel(&dir, &f.title)
+                    datei_fuer_titel(&dir, &titel)
                 }
                 Err(e) => {
                     erg.fehler.push(format!("{}: {e}", f.title));
@@ -826,6 +841,12 @@ mod tests {
         assert!(!gleicher_titel("Love Story (Taylor's Version)", "Love"));
         assert!(!gleicher_titel("Stronger", "Harder Better Faster"));
         assert!(!gleicher_titel("", "irgendwas"));
+    }
+
+    #[test]
+    fn vergebener_titel_bekommt_den_interpreten() {
+        assert_eq!(zieltitel("Intro", "The xx - Topic", false), "Intro");
+        assert_eq!(zieltitel("Intro", "The xx - Topic", true), "Intro - The xx");
     }
 
     #[test]

@@ -238,7 +238,8 @@ pub(crate) fn read_track_meta(path: &Path) -> TrackMeta {
             meta.title = title.to_string();
         }
         if let Some(artist) = tag.artist() {
-            meta.artist = artist.to_string();
+            // YouTube-Music-Kanaele heissen "Interpret - Topic".
+            meta.artist = artist.trim_end_matches(" - Topic").to_string();
         }
         if let Some(album) = tag.album() {
             meta.album = album.to_string();
@@ -918,8 +919,12 @@ pub async fn download_track(
             Ok(cmd) => cmd.args(args).output().await.map_err(|e| e.to_string()),
             Err(e) => Err(e.to_string()),
         };
+        // Wie in download_track_progress: liegt die Datei da, ging hoechstens
+        // Cover oder Tag schief - deswegen nicht alles noch einmal laden.
+        if out_path.is_file() {
+            return Ok(());
+        }
         match output {
-            Ok(o) if o.status.success() && out_path.is_file() => return Ok(()),
             Ok(o) => last_err = String::from_utf8_lossy(&o.stderr).to_string(),
             Err(e) => last_err = e,
         }
@@ -1035,7 +1040,11 @@ pub(crate) fn build_ytdlp_args(out_template: &Path, video_id: &str, format: &str
 
 /// ffmpeg-Ausgabeargumente fuer das Cover: JPG in hoher Qualitaet, auf die
 /// kuerzere Seite quadratisch zugeschnitten (aus Ytms-to-mp3 uebernommen).
-const COVER_CROP_ARGS: &str = "-c:v mjpeg -qmin 1 -qscale:v 3 -vf crop='if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'";
+/// Die doppelten Anfuehrungszeichen sind Pflicht: yt-dlp zerlegt das wie eine
+/// Shell und nimmt die einfachen sonst weg. Die Kommas zerreissen dann den
+/// Filter ("Filter not found") - kein Cover in der MP3, und der Versuch galt
+/// als gescheitert, also lief die ganze Kaskade noch einmal durch.
+const COVER_CROP_ARGS: &str = "-c:v mjpeg -qmin 1 -qscale:v 3 -vf \"crop='if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\"";
 
 /// Laufende Downloads, damit "Abbrechen" den yt-dlp-Prozess beenden kann,
 /// und abgebrochene Auftraege, damit kein weiterer Versuch mehr startet.
@@ -1280,7 +1289,8 @@ pub async fn download_track_progress(
             let prefix = format!("{safe_title}.");
             for entry in rd.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with(&prefix) && (name.contains(".part") || name.ends_with(".ytdl") || name.contains(".temp.")) {
+                let rohdatei = !out_path.is_file() && (name.ends_with(".webm") || name.ends_with(".webp"));
+                if name.starts_with(&prefix) && (name.contains(".part") || name.ends_with(".ytdl") || name.contains(".temp.") || rohdatei) {
                     let _ = std::fs::remove_file(entry.path());
                 }
             }
@@ -1725,7 +1735,7 @@ mod tests {
     fn mp3_args_crop_cover_and_drop_description() {
         let a = &build_attempts("mp3", "320", "best")[0];
         let args = build_ytdlp_args(Path::new("/tmp/x.%(ext)s"), "abc123def", "mp3", a);
-        assert!(args.iter().any(|x| x.starts_with("ThumbnailsConvertor+ffmpeg_o:") && x.contains("crop=")));
+        assert!(args.iter().any(|x| x.starts_with("ThumbnailsConvertor+ffmpeg_o:") && x.contains("\"crop='")));
         assert!(args.iter().any(|x| x == ":(?P<meta_description>)"));
         assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=abc123def");
     }

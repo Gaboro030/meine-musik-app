@@ -27,7 +27,7 @@ pub struct HealthReport {
 // Laengste/spezifischste Endung zuerst - ".cover_cache.jpg" muss vor dem
 // allgemeineren ".jpg" geprueft werden, sonst wuerde dessen Basisname noch
 // die eigentlich nicht dazugehoerende ".cover_cache"-Silbe enthalten.
-const SIDECAR_SUFFIXES: &[&str] = &[".cover_cache.jpg", ".jpg", ".album.txt", ".artist.txt", ".lyrics.json"];
+const SIDECAR_SUFFIXES: &[&str] = &[".cover_cache.jpg", ".jpg", ".webp", ".album.txt", ".artist.txt", ".lyrics.json"];
 const AUDIO_EXTS: &[&str] = &["mp3", "m4a", "mp4"];
 
 /// Sidecar-Dateien (Cover/.jpg, Album/Interpret-Sidecars, Lyrics-Cache), zu

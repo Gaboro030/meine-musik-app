@@ -650,6 +650,13 @@ function resyncAfterLibraryRefresh() {
       // Titel ist weg (Abgleich, Handy-Sync): "Weiter" macht an seiner
       // alten Stelle weiter statt wieder beim ersten Titel.
       if (currentTrackIndex === -1) queueResumeIndex = oldIndex - 1;
+      // Playlist umbenannt: die alte Adresse gibt es nicht mehr, der
+      // nächste Nachlade-Happen ins Leere bräche den Song ab.
+      const now = playingPlaylist.tracks[currentTrackIndex];
+      if (now && now.stream_url !== nowPlayingMeta.stream_url) {
+        nowPlayingMeta.stream_url = now.stream_url;
+        switchSourceKeepingPosition(now.stream_url);
+      }
     }
     if (queueResumeIndex >= (playingPlaylist ? playingPlaylist.tracks.length : 0)) queueResumeIndex = -1;
     if (playingPlaylist && isShuffle && playingPlaylist.tracks.length !== oldLength) buildShuffleOrder();
@@ -3009,6 +3016,21 @@ let consecutiveAudioErrors = 0;
 const MAX_CONSECUTIVE_AUDIO_ERRORS = 5;
 
 let retriedForSrc = null; // pro Quelle genau EIN Sofort-Retry, bevor übersprungen wird
+
+/* Gleicher Song, neue Adresse: Position und Pause bleiben, wie sie sind. */
+function switchSourceKeepingPosition(url) {
+  const pos = audioEl.currentTime || 0;
+  const wasPlaying = !audioEl.paused;
+  audioEl.src = url;
+  audioEl.addEventListener(
+    "loadedmetadata",
+    () => {
+      audioEl.currentTime = pos;
+      if (wasPlaying) audioEl.play().catch(() => {});
+    },
+    { once: true }
+  );
+}
 
 /* Denselben Titel neu laden und an der alten Stelle weiterspielen. Scheitert
    das, bleibt der Listener hängen - der nächste Titel darf die alte Position
@@ -8799,7 +8821,10 @@ document.addEventListener("i18n-changed", () => {
     renderHome();
     renderLibraryGrid();
   }
-  if (currentPlaylist) renderTrackTable();
+  if (currentPlaylist) {
+    playlistTrackCount.textContent = t("{count} Titel", { count: currentPlaylist.tracks.length });
+    renderTrackTable();
+  }
   if (currentView === "history") renderHistory();
   if (currentView === "stats") renderStats();
   // Player-Leiste: der Interpret kann "Unbekannter Interpret" sein.
