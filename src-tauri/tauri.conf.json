@@ -19,7 +19,7 @@
         "title": "Reson",
         "width": 1280,
         "height": 800,
-        "minWidth": 360,
+        "minWidth": 640,
         "minHeight": 640,
         "resizable": true
       }

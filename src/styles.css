@@ -2288,7 +2288,7 @@ body.modal-scroll-lock { overflow: hidden; }
      Transport-Buttons davon ab, gequetscht zu werden. */
   grid-template-columns:
     minmax(min(190px, 22%), 1fr)
-    minmax(min-content, 722px)
+    minmax(min-content, 40%)
     minmax(min(190px, 22%), 1fr);
   align-items: center;
   padding: 0 16px;
@@ -5220,4 +5220,39 @@ th .ic { width: 15px; height: 15px; }
     line-height: 1.3;
     text-align: start;
   }
+}
+
+/* ========= KLEINES PC-FENSTER =========
+   Das Handy-Layout greift nur bei Touch. Ein schmal gezogenes Fenster am PC
+   behielt bisher das volle Layout: Sidebar lief ueber ihren Rahmen, der
+   Playlist-Titel schrumpfte auf "M...", der Songtitel in der Player-Leiste
+   auf 0, und die Titelliste rollte seitlich. */
+@media (pointer: fine), (min-width: 901px) and (min-height: 501px) {
+  .nav-main { min-height: 0; overflow-y: auto; }
+  .playlist-list { min-height: 56px; }
+}
+@media (max-width: 1200px) and (pointer: fine) {
+  .track-table { table-layout: fixed; }
+  .track-table th:nth-child(3) { width: 24%; }
+  .track-table .col-duration { width: 64px; }
+  .track-table .col-more, .track-table .col-add, .track-table .col-remove { width: 54px; }
+}
+@media (max-width: 1000px) and (pointer: fine) {
+  .sidebar { width: 210px; }
+  .playlist-hero { gap: 16px; }
+  .playlist-cover { width: 140px; height: 140px; }
+  .playlist-title-row { flex-wrap: wrap; }
+  .playlist-title-row h1 { flex-basis: 100%; }
+  .track-table th:nth-child(3), .track-row td:nth-child(3) { display: none; }
+
+  /* Zwei Zeilen: Titel und Lautstaerke oben, Steuerung darunter. */
+  .player-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "left right" "center center";
+    row-gap: 8px;
+  }
+  .player-bar-left { grid-area: left; }
+  .player-bar-center { grid-area: center; }
+  .player-bar-right { grid-area: right; }
+  .app-shell { height: calc(100dvh - 185px - var(--safe-bottom)); }
 }
