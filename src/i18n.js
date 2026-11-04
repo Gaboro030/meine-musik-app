@@ -104,8 +104,8 @@
       "From developer.spotify.com/dashboard. Add exactly http://127.0.0.1:8899/oauth/spotify as the redirect URI there. No client secret needed.",
     "Bei Spotify anmelden": "Sign in with Spotify",
     "Google-Client-ID (YouTube Music)": "Google client ID (YouTube Music)",
-    "Aus console.cloud.google.com: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client vom Typ Desktop erstellen, Redirect-URI http://127.0.0.1:8899/oauth/google. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.":
-      "From console.cloud.google.com: create a project, enable „YouTube Data API v3“, create an OAuth client of type Desktop, redirect URI http://127.0.0.1:8899/oauth/google. Google will warn about an unverified app when you sign in - that's fine for your own account.",
+    "Die drei Knöpfe unten führen der Reihe nach zu den Seiten bei Google. Beim OAuth-Client den Typ Desktop wählen. Google zeigt beim Anmelden eine Warnung wegen nicht verifizierter App - für dein eigenes Konto ist das in Ordnung.":
+      "The three buttons below lead to the pages at Google in order. Choose type Desktop for the OAuth client. Google will warn about an unverified app when you sign in - that's fine for your own account.",
     "Bei Google anmelden": "Sign in with Google",
     "✅ Angemeldet.": "✅ Signed in.",
     "Noch nicht angemeldet.": "Not signed in yet.",
@@ -738,6 +738,10 @@
     "Übergänge": "Transitions",
     "„{title}“ ist in der Bibliothek": "“{title}” is in your library",
     // ----- YouTube-Music-Abgleich (cloudsync.js) -----
+    "Spotify-Dashboard öffnen": "Open Spotify dashboard",
+    "1. YouTube-API aktivieren": "1. Enable YouTube API",
+    "2. OAuth-Client erstellen": "2. Create OAuth client",
+    "3. In Produktion stellen": "3. Publish to production",
     "Google-Clientschlüssel": "Google client secret",
     "Steht im selben OAuth-Client unter „Clientschlüssel“. Wird nur zum Anmelden gebraucht und bleibt auf diesem Gerät.":
       "Found in the same OAuth client under „Client secrets“. Only needed to sign in and stays on this device.",

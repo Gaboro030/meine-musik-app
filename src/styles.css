@@ -1483,6 +1483,7 @@ body.has-dynamic-colors .playlist-hero {
   background: #fff;
   transition: transform 0.2s ease;
 }
+.settings-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .yt-sync { flex: 1; min-width: 0; }
 .yt-sync-list { margin: 8px 0; }
 .yt-sync-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; }

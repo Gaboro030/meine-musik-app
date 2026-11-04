@@ -201,6 +201,16 @@
     ytBald = setTimeout(() => ytAbgleichen(false), 30000);
   });
 
+  // Knoepfe zu den Seiten, auf denen man die Client-ID bekommt.
+  document.querySelectorAll("[data-extern]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const ziel = b.dataset.extern;
+      const shell = window.__TAURI__.shell;
+      if (shell && typeof shell.open === "function") shell.open(ziel).catch(() => window.open(ziel, "_blank"));
+      else window.open(ziel, "_blank", "noopener");
+    });
+  });
+
   DIENSTE.forEach((d) => {
     d.eingabe.value = localStorage.getItem(d.speicher) || "";
     if (d.geheim) d.geheim.addEventListener("input", anzeigen);
